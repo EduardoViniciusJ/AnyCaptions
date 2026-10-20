@@ -1,5 +1,6 @@
 pub mod domain;
 pub mod ipc;
+mod window;
 
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
@@ -15,5 +16,10 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
 }
 
 pub fn run() -> tauri::Result<()> {
-    builder(tauri::Builder::default()).run(tauri::generate_context!())
+    builder(tauri::Builder::default())
+        .setup(|app| {
+            window::setup(app)?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
 }
