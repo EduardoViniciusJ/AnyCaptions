@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Local overlay controls and state, with no shell, filesystem or remote access.",
+  "windows": ["overlay"],
+  "local": true,
+  "permissions": [
+    "allow-get-state",
+    "allow-set-caption-mode",
+    "allow-start-capture",
+    "allow-stop-capture",
+    "allow-set-appearance",
+    "allow-set-window-mode",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-close"
+  ]
+}
