@@ -25,7 +25,9 @@
       }
     ],
     "security": {
-      "capabilities": [],
+      "capabilities": [
+        "overlay"
+      ],
       "csp": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'",
       "devCsp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"
     }
