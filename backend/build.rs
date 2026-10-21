@@ -8,6 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "stop_capture",
             "set_appearance",
             "set_window_mode",
+            "set_shortcut",
         ]),
     ))?;
     Ok(())
