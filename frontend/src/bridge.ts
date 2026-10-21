@@ -10,6 +10,8 @@ export const backend: Backend = {
   setAppearance: (request) => invoke("set_appearance", { request }),
   setWindowMode: (mode) => invoke("set_window_mode", { request: { mode } }),
   setShortcut: (shortcut) => invoke("set_shortcut", { request: { shortcut } }),
+  getAudioOutputs: () => invoke("get_audio_outputs"),
+  selectAudioOutput: (id) => invoke("select_audio_output", { request: { id } }),
   subscribe: (listener) => getCurrentWindow().listen<AppSnapshot>("app-state-changed", (event) => listener(event.payload)),
   subscribeCaptions: (listener) => getCurrentWindow().listen<CaptionUpdate>("caption-updated", (event) => listener(event.payload)),
   resize: () => getCurrentWindow().startResizeDragging("SouthEast"),

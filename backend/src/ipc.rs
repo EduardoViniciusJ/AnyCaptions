@@ -1,9 +1,10 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use crate::audio::devices::{AudioDeviceError, OutputSelection, OutputService};
 use crate::domain::{AppSnapshot, AppState, Appearance, CaptionMode, DomainError, WindowMode};
 use crate::preferences::{PreferenceStore, Preferences};
 
@@ -31,11 +32,18 @@ pub enum CommandError {
     WindowUnavailable,
     ShortcutUnavailable,
     PreferencesUnavailable,
+    AudioDevice(AudioDeviceError),
 }
 
 impl From<DomainError> for CommandError {
     fn from(value: DomainError) -> Self {
         Self::Domain(value)
+    }
+}
+
+impl From<AudioDeviceError> for CommandError {
+    fn from(value: AudioDeviceError) -> Self {
+        Self::AudioDevice(value)
     }
 }
 
@@ -55,6 +63,12 @@ pub struct WindowRequest {
 #[serde(deny_unknown_fields)]
 pub struct ShortcutRequest {
     pub shortcut: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputRequest {
+    pub id: String,
 }
 
 pub trait StateEvents {
@@ -302,6 +316,39 @@ pub fn set_shortcut<R: Runtime>(
     let state = controller.change_shortcut(&app, &window, &request.shortcut)?;
     persist(&app, &state)?;
     Ok(state)
+}
+
+#[tauri::command]
+pub async fn get_audio_outputs<R: Runtime>(
+    window: WebviewWindow<R>,
+    service: State<'_, Arc<OutputService>>,
+) -> Result<OutputSelection, CommandError> {
+    authorize(window.label())?;
+    let service = Arc::clone(&service);
+    tauri::async_runtime::spawn_blocking(move || service.selection())
+        .await
+        .map_err(|_| CommandError::StateUnavailable)?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn select_audio_output<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    service: State<'_, Arc<OutputService>>,
+    request: OutputRequest,
+) -> Result<OutputSelection, CommandError> {
+    authorize(window.label())?;
+    let service = Arc::clone(&service);
+    tauri::async_runtime::spawn_blocking(move || {
+        let selection = service.select(&request.id)?;
+        app.state::<PreferenceStore>()
+            .save_output_id(request.id)
+            .map_err(|_| CommandError::PreferencesUnavailable)?;
+        Ok(selection)
+    })
+    .await
+    .map_err(|_| CommandError::StateUnavailable)?
 }
 
 #[cfg(test)]
