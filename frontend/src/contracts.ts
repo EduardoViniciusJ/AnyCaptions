@@ -48,5 +48,6 @@ export interface Backend {
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
   resize(): Promise<void>;
+  fitSettings(): Promise<void>;
   close(): Promise<void>;
 }

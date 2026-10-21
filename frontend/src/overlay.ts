@@ -49,10 +49,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
           <p id="caption-live" class="caption" data-color="white" aria-live="polite" hidden></p>
         </div>
         <section id="settings" class="settings" aria-label="Configurações de legendas" hidden>
-          <div class="settings-status">
-            <p id="status" class="muted" role="status">Conectando…</p>
-            <p id="availability" class="availability">Verificando disponibilidade…</p>
-          </div>
+          <h2>Configurações</h2>
           <div class="setting-row">
             <label for="font-size">Tamanho <output id="font-value" for="font-size">32 px</output></label>
             <input id="font-size" type="range" min="20" max="56" value="32" step="1" disabled />
@@ -65,17 +62,15 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             <label for="audio-output">Saída de áudio</label>
             <select id="audio-output" disabled><option>Nenhuma saída disponível</option></select>
           </div>
-          <p id="audio-output-status" class="muted"></p>
+          <p id="audio-output-status" class="muted" hidden></p>
           <div class="setting-row">
             <label for="shortcut">Atalho de bloqueio</label>
             <div class="setting-actions">
               <input id="shortcut" type="text" value="Ctrl+Alt+L" aria-describedby="shortcut-status" maxlength="16" spellcheck="false" />
-              <button id="save-shortcut" type="button">Salvar</button>
             </div>
           </div>
-          <p id="shortcut-status" class="muted"></p>
-          <p id="models-status" class="muted"></p>
-          ${import.meta.env.DEV ? '<button id="simulate" type="button">Simular legendas</button>' : ''}
+          <p id="shortcut-status" class="muted" hidden></p>
+          <div class="settings-footer"><button id="save-settings" type="button">Salvar</button></div>
         </section>
       </div>
       <p id="notice" class="notice" role="status" hidden></p>
@@ -99,12 +94,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   const preview = get<HTMLElement>("#preview");
   const caption = get<HTMLElement>("#caption-preview");
   const live = get<HTMLElement>("#caption-live");
-  const presenter = new CaptionPresenter(live, undefined, () => { caption.hidden = !live.hidden; });
+  const presenter = new CaptionPresenter(live, undefined, () => {
+    caption.hidden = !live.hidden || state?.capture !== "stopped";
+  });
   const fontSize = get<HTMLInputElement>("#font-size");
   const fontColor = get<HTMLSelectElement>("#font-color");
   const shortcut = get<HTMLInputElement>("#shortcut");
   const audioOutput = get<HTMLSelectElement>("#audio-output");
-  const status = get<HTMLElement>("#status");
   const error = get<HTMLElement>("#error");
   const listeners = new AbortController();
   let state: AppSnapshot | undefined;
@@ -115,8 +111,6 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let hasExplainedClose = false;
   let previousCapture: AppSnapshot["capture"] | undefined;
-  let previousSession: number | undefined;
-  let simulatedSegmentId = 1;
   let outputs: OutputSelection | undefined;
   let outputBusy = false;
 
@@ -135,9 +129,12 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (!outputs.devices.length) audioOutput.add(new Option("Nenhuma saída disponível", ""));
     audioOutput.value = outputs.selectedId ?? "";
     audioOutput.disabled = busy || outputBusy || !outputs.devices.length;
-    get("#audio-output-status").textContent = outputs.selectedId && !outputs.selectedAvailable
+    const outputStatus = get("#audio-output-status");
+    outputStatus.textContent = outputs.selectedId && !outputs.selectedAvailable
       ? "A saída salva foi desconectada. Escolha outra saída."
-      : outputs.devices.length ? "Captura de áudio disponível após integrar o pipeline de IA." : "Nenhuma saída de reprodução ativa.";
+      : outputs.devices.length ? "" : "Nenhuma saída de reprodução ativa.";
+    outputStatus.hidden = !outputStatus.textContent;
+    get<HTMLButtonElement>("#save-settings").disabled = busy || outputBusy;
   }
 
   async function loadOutputs() {
@@ -152,10 +149,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   function render() {
     if (!state || disposed) return;
     overlay.dataset.mode = state.windowMode;
-    if (previousSession !== state.sessionId) { simulatedSegmentId = 1; previousSession = state.sessionId; }
     presenter.setContext(state.sessionId, state.mode);
     if (state.capture === "stopped" && previousCapture && previousCapture !== "stopped") presenter.clear();
     previousCapture = state.capture;
+    caption.hidden = !live.hidden || state.capture !== "stopped";
     if (state.windowMode === "locked" && !settings.hidden) toggleSettings(false);
     language.value = state.mode;
     language.disabled = busy;
@@ -173,19 +170,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     capture.title = stopped && !state.canStart ? "A captura precisa de uma saída de áudio e de modelos disponíveis" : "";
     lock.disabled = busy || !state.canLock;
     lock.title = state.canLock ? "Bloquear janela" : "O bloqueio precisa de atalho ou bandeja disponíveis";
-    shortcut.value = state.shortcut;
-    shortcut.disabled = get<HTMLButtonElement>("#save-shortcut").disabled = busy;
-    get("#shortcut-status").textContent = state.shortcutAvailable
-      ? `Atalho ativo: ${state.shortcut}` : "Atalho indisponível; use a bandeja para recuperar os controles.";
-    const states: Record<AppSnapshot["capture"], string> = {
-      stopped: "Captura parada", preparing: "Carregando modelos", listening: "Aguardando fala",
-      processing: state.mode === "en-en" ? "Transcrevendo" : "Traduzindo", error: "Falha na captura",
-    };
-    status.textContent = states[state.capture];
-    get("#availability").textContent = state.canStart ? "Pronto para iniciar" : "Áudio e modelos indisponíveis";
-    get("#models-status").textContent = state.mode === "en-pt"
-      ? "EN → PT precisa dos modelos locais de transcrição e tradução."
-      : "EN → EN precisa de um modelo local de transcrição.";
+    if (document.activeElement !== shortcut) shortcut.value = state.shortcut;
+    shortcut.disabled = get<HTMLButtonElement>("#save-settings").disabled = busy;
+    const shortcutStatus = get("#shortcut-status");
+    shortcutStatus.textContent = state.shortcutAvailable
+      ? "" : "Atalho indisponível; use a bandeja para recuperar os controles.";
+    shortcutStatus.hidden = state.shortcutAvailable;
+    if (state.error) showError(errorMessage({ code: state.error }));
     renderOutputs();
   }
 
@@ -195,8 +186,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     render();
   }
 
-  function acceptCaption(update: import("./contracts").CaptionUpdate, simulated = false) {
-    if (!state || disposed || (state.capture === "stopped" && !simulated)) return;
+  function acceptCaption(update: import("./contracts").CaptionUpdate) {
+    if (!state || disposed || state.capture === "stopped") return;
     presenter.accept(update);
   }
 
@@ -207,22 +198,28 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   }
 
   async function perform(action: () => Promise<AppSnapshot>) {
-    if (busy || !state || disposed) return;
+    if (busy || !state || disposed) return false;
     busy = true;
     error.hidden = true;
     render();
-    try { accept(await action()); }
+    try { accept(await action()); return true; }
     catch (failure) {
       // A state event may fail after Rust commits the operation; re-query before retrying.
       try { accept(await backend.getState()); } catch { /* Keep last confirmed state. */ }
       showError(errorMessage(failure));
+      return false;
     } finally { busy = false; render(); }
   }
 
   function toggleSettings(open: boolean) {
     settings.hidden = !open;
     preview.hidden = open;
+    overlay.dataset.settings = open ? "open" : "closed";
     settingsToggle.setAttribute("aria-expanded", String(open));
+    if (open) {
+      void backend.fitSettings().catch(() => showError("Não foi possível ampliar as configurações."));
+      void loadOutputs();
+    }
   }
 
   const options = { signal: listeners.signal };
@@ -232,9 +229,12 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     void perform(() => backend.setMode(mode));
   }, options);
   lock.addEventListener("click", () => void perform(() => backend.setWindowMode("locked")), options);
-  get("#save-shortcut").addEventListener("click", () => {
+  get("#save-settings").addEventListener("click", () => {
     const requested = shortcut.value;
-    void perform(() => backend.setShortcut(requested));
+    void perform(() => requested === state?.shortcut ? backend.getState() : backend.setShortcut(requested))
+      .then((saved) => {
+        if (saved && !disposed) { toggleSettings(false); settingsToggle.focus(); }
+      });
   }, options);
   audioOutput.addEventListener("change", () => {
     if (busy || outputBusy || !audioOutput.value) return;
@@ -246,20 +246,9 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       .catch((error) => { showError(errorMessage(error)); reload = true; })
       .finally(() => { outputBusy = false; renderOutputs(); if (reload) void loadOutputs(); });
   }, options);
-  root.querySelector("#simulate")?.addEventListener("click", () => {
-    if (!state) return;
-    const segmentId = simulatedSegmentId++;
-    const text = state.mode === "en-pt"
-      ? "Estas são legendas simuladas em português. Uma tradução longa continua em blocos na ordem certa, sem perder palavras."
-      : "These are simulated captions. Partial words are replaced before the final segment appears.";
-    acceptCaption({ sessionId: state.sessionId, segmentId, revision: 1, mode: state.mode,
-      text: state.mode === "en-en" ? "These are simulated" : text, isFinal: state.mode === "en-pt" }, true);
-    if (state.mode === "en-en") acceptCaption({ sessionId: state.sessionId, segmentId, revision: 2, mode: state.mode, text, isFinal: true }, true);
-  }, options);
   settingsToggle.addEventListener("click", () => {
     const open = settings.hidden !== false;
     toggleSettings(open);
-    if (open) void loadOutputs();
   }, options);
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !settings.hidden) { toggleSettings(false); settingsToggle.focus(); }
@@ -299,8 +288,6 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       accept(await backend.getState());
     } catch {
       if (!disposed) {
-        status.textContent = "Aplicativo desconectado";
-        get("#availability").textContent = "Abra o aplicativo para acessar os controles";
         showError("Não foi possível conectar à aplicação. Feche e abra novamente.");
       }
     }

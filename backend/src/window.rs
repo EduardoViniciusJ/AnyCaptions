@@ -32,7 +32,7 @@ fn restored_geometry<'a>(
     let width = saved.width.max(320.0_f64.min(area.width)).min(area.width);
     let height = saved
         .height
-        .max(160.0_f64.min(area.height))
+        .max(360.0_f64.min(area.height))
         .min(area.height);
     let x = area.x + (area.width - width).max(0.0) * saved.relative_x.clamp(0.0, 1.0);
     let y = area.y + (area.height - height).max(0.0) * saved.relative_y.clamp(0.0, 1.0);
@@ -49,7 +49,7 @@ fn restored_geometry<'a>(
 
 fn initial_geometry(x: f64, y: f64, width: f64, height: f64) -> Geometry {
     let window_width = 800.0_f64.min(width);
-    let window_height = 220.0_f64.min(height);
+    let window_height = 360.0_f64.min(height);
     let margin = 32.0_f64.min((height - window_height).max(0.0));
     Geometry {
         x: x + (width - window_width) / 2.0,
@@ -67,6 +67,54 @@ fn navigation_allowed(url: &tauri::Url) -> bool {
         url.host_str() == Some("tauri.localhost") && url.port_or_known_default() == Some(80);
     let development = cfg!(dev) && url.host_str() == Some("127.0.0.1") && url.port() == Some(1420);
     packaged || development
+}
+
+fn settings_geometry(current: Geometry, area: &WorkArea) -> Geometry {
+    let width = current.width.max(640.0).min(area.width);
+    let height = current.height.max(360.0).min(area.height);
+    Geometry {
+        x: current.x.clamp(area.x, area.x + area.width - width),
+        y: current.y.clamp(area.y, area.y + area.height - height),
+        width,
+        height,
+    }
+}
+
+/// Grow only when settings need space, keeping the window on the current monitor.
+pub fn fit_settings<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
+    let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) else {
+        return Ok(());
+    };
+    let scale = monitor.scale_factor();
+    let work = monitor.work_area();
+    let origin = work.position.to_logical::<f64>(scale);
+    let area = work.size.to_logical::<f64>(scale);
+    let position = window.outer_position()?.to_logical::<f64>(scale);
+    let size = window.inner_size()?.to_logical::<f64>(scale);
+    let geometry = settings_geometry(
+        Geometry {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        },
+        &WorkArea {
+            name: monitor.name().cloned(),
+            scale,
+            x: origin.x,
+            y: origin.y,
+            width: area.width,
+            height: area.height,
+        },
+    );
+    window.set_size(PhysicalSize::new(
+        (geometry.width * scale).round() as u32,
+        (geometry.height * scale).round() as u32,
+    ))?;
+    window.set_position(PhysicalPosition::new(
+        (geometry.x * scale).round() as i32,
+        (geometry.y * scale).round() as i32,
+    ))
 }
 
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -226,9 +274,9 @@ mod tests {
             initial_geometry(0.0, 0.0, 1920.0, 1040.0),
             Geometry {
                 x: 560.0,
-                y: 788.0,
+                y: 648.0,
                 width: 800.0,
-                height: 220.0
+                height: 360.0
             }
         );
     }
@@ -239,9 +287,9 @@ mod tests {
             initial_geometry(-1280.0, 0.0, 1280.0, 720.0),
             Geometry {
                 x: -1040.0,
-                y: 468.0,
+                y: 328.0,
                 width: 800.0,
-                height: 220.0
+                height: 360.0
             }
         );
         assert_eq!(
@@ -253,6 +301,46 @@ mod tests {
                 height: 150.0
             }
         );
+    }
+
+    #[test]
+    fn settings_expand_a_small_window_without_leaving_the_monitor() {
+        let area = WorkArea {
+            name: None,
+            scale: 1.5,
+            x: -1280.0,
+            y: 0.0,
+            width: 1280.0,
+            height: 720.0,
+        };
+        let geometry = settings_geometry(
+            Geometry {
+                x: -400.0,
+                y: 550.0,
+                width: 320.0,
+                height: 160.0,
+            },
+            &area,
+        );
+        assert_eq!(
+            geometry,
+            Geometry {
+                x: -640.0,
+                y: 360.0,
+                width: 640.0,
+                height: 360.0
+            }
+        );
+        let small = WorkArea {
+            width: 300.0,
+            height: 240.0,
+            ..area
+        };
+        let fitted = settings_geometry(geometry, &small);
+        assert_eq!(fitted.width, 300.0);
+        assert_eq!(fitted.height, 240.0);
+        assert_eq!(fitted.x, small.x);
+        assert_eq!(fitted.y, small.y);
     }
 
     #[test]
@@ -284,9 +372,9 @@ mod tests {
             restored,
             Geometry {
                 x: 240.0,
-                y: 500.0,
+                y: 360.0,
                 width: 800.0,
-                height: 220.0
+                height: 360.0
             }
         );
     }
@@ -313,9 +401,9 @@ mod tests {
             restored,
             Geometry {
                 x: 140.0,
-                y: 470.0,
+                y: 360.0,
                 width: 1000.0,
-                height: 250.0
+                height: 360.0
             }
         );
     }

@@ -1,8 +1,10 @@
 pub mod audio;
 pub mod domain;
 pub mod ipc;
+pub mod pipeline;
 mod preferences;
 mod recovery;
+pub mod transcription;
 mod window;
 
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
@@ -18,6 +20,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::set_shortcut,
             ipc::get_audio_outputs,
             ipc::select_audio_output,
+            ipc::fit_settings_window,
         ])
 }
 
@@ -30,15 +33,22 @@ pub fn run() -> tauri::Result<()> {
             let root = app.path().app_config_dir()?;
             let store = preferences::PreferenceStore::load(preferences::config_path(&root));
             let saved = store.snapshot()?;
-            app.manage(std::sync::Arc::new(audio::devices::OutputService::new(
+            let outputs = std::sync::Arc::new(audio::devices::OutputService::new(
                 Box::new(audio::devices::WasapiCatalog),
                 saved.output_id.clone(),
-            )));
+            ));
+            let sessions = transcription::session::CaptionSessionManager::default_native();
             app.state::<ipc::Controller>()
                 .restore_preferences(&saved)
                 .map_err(|_| std::io::Error::other("Cannot restore preferences"))?;
             app.manage(store);
             window::setup(app)?;
+            if let Some(window) = app.get_webview_window("overlay") {
+                let _ =
+                    sessions.refresh_resources(&app.state::<ipc::Controller>(), &outputs, &window);
+            }
+            app.manage(outputs);
+            app.manage(sessions);
             recovery::setup(app)?;
             Ok(())
         })

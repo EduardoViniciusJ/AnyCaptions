@@ -91,7 +91,7 @@ impl Appearance {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Resources {
     pub audio_capture: bool,
@@ -283,6 +283,14 @@ impl AppState {
         if mode != self.window_mode {
             self.advance(false)?;
             self.window_mode = mode;
+        }
+        Ok(())
+    }
+
+    pub fn set_resources(&mut self, resources: Resources) -> Result<(), DomainError> {
+        if self.resources != resources {
+            self.advance(false)?;
+            self.resources = resources;
         }
         Ok(())
     }

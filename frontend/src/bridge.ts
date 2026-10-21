@@ -15,5 +15,6 @@ export const backend: Backend = {
   subscribe: (listener) => getCurrentWindow().listen<AppSnapshot>("app-state-changed", (event) => listener(event.payload)),
   subscribeCaptions: (listener) => getCurrentWindow().listen<CaptionUpdate>("caption-updated", (event) => listener(event.payload)),
   resize: () => getCurrentWindow().startResizeDragging("SouthEast"),
+  fitSettings: () => invoke("fit_settings_window"),
   close: () => getCurrentWindow().close(),
 };

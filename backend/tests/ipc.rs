@@ -95,6 +95,24 @@ fn acl_denies_other_windows_remote_origins_and_ungranted_commands() {
     assert!(invoke(&overlay, "get_state", json!({}), "https://example.com").is_err());
     assert!(
         invoke(
+            &other,
+            "fit_settings_window",
+            json!({}),
+            "http://tauri.localhost"
+        )
+        .is_err()
+    );
+    assert!(
+        invoke(
+            &overlay,
+            "fit_settings_window",
+            json!({}),
+            "https://example.com"
+        )
+        .is_err()
+    );
+    assert!(
+        invoke(
             &overlay,
             "plugin:window|set_always_on_top",
             json!({"value":false}),
