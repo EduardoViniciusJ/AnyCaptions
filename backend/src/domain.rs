@@ -123,6 +123,7 @@ pub enum DomainError {
     TranscriptionUnavailable,
     TranslationUnavailable,
     RecoveryUnavailable,
+    InvalidShortcut,
     CounterExhausted,
 }
 
@@ -138,6 +139,8 @@ pub struct AppSnapshot {
     pub resources: Resources,
     pub can_start: bool,
     pub can_lock: bool,
+    pub shortcut: String,
+    pub shortcut_available: bool,
     pub error: Option<DomainError>,
 }
 
@@ -150,21 +153,46 @@ pub struct AppState {
     appearance: Appearance,
     resources: Resources,
     error: Option<DomainError>,
+    window_mode: WindowMode,
+    tray_available: bool,
+    shortcut: String,
+    shortcut_available: bool,
 }
 
 impl AppState {
+    pub fn normalize_shortcut(value: &str) -> Result<String, DomainError> {
+        let pieces: Vec<_> = value.split('+').map(str::trim).collect();
+        if pieces.len() != 3
+            || !pieces[0].eq_ignore_ascii_case("ctrl")
+            || !pieces[1].eq_ignore_ascii_case("alt")
+        {
+            return Err(DomainError::InvalidShortcut);
+        }
+        let key = pieces[2].to_ascii_uppercase();
+        if key.len() != 1 || !key.as_bytes()[0].is_ascii_uppercase() {
+            return Err(DomainError::InvalidShortcut);
+        }
+        Ok(format!("Ctrl+Alt+{key}"))
+    }
+
     pub fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             revision: self.revision,
             session_id: self.session_id,
             mode: self.mode,
             capture: self.capture,
-            window_mode: WindowMode::Edit,
+            window_mode: self.window_mode,
             appearance: self.appearance,
             resources: self.resources,
             can_start: self.capture == CaptureState::Stopped
                 && self.resources.validate(self.mode).is_ok(),
-            can_lock: false,
+            can_lock: self.tray_available || self.shortcut_available,
+            shortcut: if self.shortcut.is_empty() {
+                "Ctrl+Alt+L".into()
+            } else {
+                self.shortcut.clone()
+            },
+            shortcut_available: self.shortcut_available,
             error: self.error,
         }
     }
@@ -249,11 +277,39 @@ impl AppState {
     }
 
     pub fn set_window_mode(&mut self, mode: WindowMode) -> Result<(), DomainError> {
-        match mode {
-            WindowMode::Edit => Ok(()),
-            // Recovery via tray/shortcut must exist before any native click-through is enabled.
-            WindowMode::Locked => Err(DomainError::RecoveryUnavailable),
+        if mode == WindowMode::Locked && !self.snapshot().can_lock {
+            return Err(DomainError::RecoveryUnavailable);
         }
+        if mode != self.window_mode {
+            self.advance(false)?;
+            self.window_mode = mode;
+        }
+        Ok(())
+    }
+
+    pub fn set_recovery(&mut self, tray: bool, shortcut: bool) -> Result<(), DomainError> {
+        if self.window_mode == WindowMode::Locked && !tray && !shortcut {
+            return Err(DomainError::RecoveryUnavailable);
+        }
+        if self.tray_available != tray || self.shortcut_available != shortcut {
+            self.advance(false)?;
+            self.tray_available = tray;
+            self.shortcut_available = shortcut;
+        }
+        Ok(())
+    }
+
+    pub fn set_shortcut(&mut self, shortcut: String, available: bool) -> Result<(), DomainError> {
+        let shortcut = Self::normalize_shortcut(&shortcut)?;
+        if self.window_mode == WindowMode::Locked && !self.tray_available && !available {
+            return Err(DomainError::RecoveryUnavailable);
+        }
+        if self.shortcut != shortcut || self.shortcut_available != available {
+            self.advance(false)?;
+            self.shortcut = shortcut;
+            self.shortcut_available = available;
+        }
+        Ok(())
     }
 }
 
@@ -378,6 +434,42 @@ mod tests {
             Err(DomainError::RecoveryUnavailable)
         );
         assert_eq!(state.snapshot().window_mode, WindowMode::Edit);
+    }
+
+    #[test]
+    fn tray_recovers_a_locked_window_even_if_the_shortcut_failed() {
+        let mut state = AppState::default();
+        state.set_recovery(true, false).unwrap();
+        assert!(state.snapshot().can_lock);
+        state.set_window_mode(WindowMode::Locked).unwrap();
+        assert_eq!(state.snapshot().window_mode, WindowMode::Locked);
+        assert_eq!(
+            state.set_recovery(false, false),
+            Err(DomainError::RecoveryUnavailable)
+        );
+        state.set_window_mode(WindowMode::Edit).unwrap();
+        assert_eq!(state.snapshot().window_mode, WindowMode::Edit);
+    }
+
+    #[test]
+    fn shortcuts_accept_only_a_small_safe_windows_chord() {
+        assert_eq!(
+            AppState::normalize_shortcut("ctrl + alt + k").unwrap(),
+            "Ctrl+Alt+K"
+        );
+        for value in [
+            "Win+L",
+            "Ctrl+K",
+            "Ctrl+Alt+F4",
+            "Ctrl+Alt+L+X",
+            "Ctrl+Alt+",
+            "Ctrl+Alt+😀",
+        ] {
+            assert_eq!(
+                AppState::normalize_shortcut(value),
+                Err(DomainError::InvalidShortcut)
+            );
+        }
     }
 
     #[test]

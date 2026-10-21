@@ -71,6 +71,15 @@ fn local_overlay_can_query_and_change_mode_but_cannot_start_without_resources() 
         )
         .is_err()
     );
+    assert!(
+        invoke(
+            &window,
+            "set_shortcut",
+            json!({"request":{"shortcut":"Win+L"}}),
+            url
+        )
+        .is_err()
+    );
 }
 
 #[test]

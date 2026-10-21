@@ -5,7 +5,7 @@ import type { AppSnapshot, Backend } from "./contracts";
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return { revision: 0, sessionId: 0, mode: "en-en", capture: "stopped", windowMode: "edit",
     appearance: { fontSize: 32, color: "white" }, resources: { audioCapture: false, transcription: false, translation: false },
-    canStart: false, canLock: false, error: null, ...overrides };
+    canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
 
 const disposers: (() => void)[] = [];
@@ -19,11 +19,13 @@ function setup(initial = snapshot()) {
   const backend: Backend = {
     getState: vi.fn().mockResolvedValue(initial),
     subscribe: vi.fn(async (callback) => { listener = callback; return release; }),
+    subscribeCaptions: vi.fn(async () => vi.fn()),
     setMode: vi.fn(async (mode) => snapshot({ mode, revision: 1, sessionId: 1 })),
     setAppearance: vi.fn(async (appearance) => snapshot({ appearance, revision: 1 })),
     start: vi.fn().mockResolvedValue(snapshot({ capture: "preparing", revision: 1 })),
     stop: vi.fn().mockResolvedValue(snapshot({ revision: 1 })),
     setWindowMode: vi.fn().mockRejectedValue({ kind: "domain", code: "recovery-unavailable" }),
+    setShortcut: vi.fn().mockResolvedValue(snapshot({ revision: 1, shortcutAvailable: true })),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
   };
   const overlay = createOverlay(root, backend);
@@ -108,6 +110,19 @@ describe("overlay controls", () => {
     color.dispatchEvent(new Event("change"));
     await vi.waitFor(() => expect(app.get("#caption-preview").dataset.color).toBe("yellow"));
     expect(app.backend.setAppearance).toHaveBeenCalledWith({ fontSize: 32, color: "yellow" });
+  });
+
+  it("sends the edited shortcut and reflects a locked state from Rust", async () => {
+    const app = setup(snapshot({ canLock: true, shortcutAvailable: true }));
+    await app.overlay.ready;
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    const shortcut = app.get<HTMLInputElement>("#shortcut");
+    shortcut.value = "Ctrl+Alt+K";
+    app.get<HTMLButtonElement>("#save-shortcut").click();
+    await vi.waitFor(() => expect(app.backend.setShortcut).toHaveBeenCalledWith("Ctrl+Alt+K"));
+    app.emit(snapshot({ revision: 2, windowMode: "locked", canLock: true, shortcutAvailable: true }));
+    expect(app.get(".overlay").dataset.mode).toBe("locked");
+    expect(app.get("#settings").hidden).toBe(true);
   });
 
   it("displays sanitized errors and restores confirmed values after rejection", async () => {

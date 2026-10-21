@@ -11,6 +11,7 @@
     "allow-stop-capture",
     "allow-set-appearance",
     "allow-set-window-mode",
+    "allow-set-shortcut",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",

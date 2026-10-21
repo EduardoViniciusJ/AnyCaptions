@@ -12,11 +12,12 @@ name = "anycaptions_lib"
 tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.4", default-features = false, features = ["wry", "compression"] }
+tauri = { version = "2.12.4", default-features = false, features = ["wry", "compression", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }
+tauri-plugin-global-shortcut = "2.4.1"
+serde_json = "1"
 
 [dev-dependencies]
-serde_json = "1"
 tauri = { version = "2.12.4", default-features = false, features = ["test"] }
 
 [features]
