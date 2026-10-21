@@ -5,8 +5,12 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::audio::devices::{AudioDeviceError, OutputSelection, OutputService};
-use crate::domain::{AppSnapshot, AppState, Appearance, CaptionMode, DomainError, WindowMode};
+use crate::domain::{
+    AppSnapshot, AppState, Appearance, CaptionMode, CaptureState, DomainError, Resources,
+    WindowMode,
+};
 use crate::preferences::{PreferenceStore, Preferences};
+use crate::transcription::session::{CaptionSessionManager, SessionSink};
 
 pub const STATE_EVENT: &str = "app-state-changed";
 pub const CAPTION_EVENT: &str = "caption-updated";
@@ -128,12 +132,16 @@ impl<R: Runtime> StateEvents for WebviewWindow<R> {
     }
 }
 
-#[derive(Default)]
-pub struct Controller(Mutex<AppState>, Mutex<()>);
+#[derive(Clone, Default)]
+pub struct Controller(Arc<(Mutex<AppState>, Mutex<()>)>);
 
 impl Controller {
     pub fn restore_preferences(&self, preferences: &Preferences) -> Result<(), CommandError> {
-        let mut state = self.0.lock().map_err(|_| CommandError::StateUnavailable)?;
+        let mut state = self
+            .0
+            .0
+            .lock()
+            .map_err(|_| CommandError::StateUnavailable)?;
         state.set_mode(preferences.mode)?;
         state.set_appearance(preferences.appearance)?;
         state.set_shortcut(preferences.shortcut.clone(), false)?;
@@ -143,6 +151,7 @@ impl Controller {
     pub fn snapshot(&self) -> Result<AppSnapshot, CommandError> {
         Ok(self
             .0
+            .0
             .lock()
             .map_err(|_| CommandError::StateUnavailable)?
             .snapshot())
@@ -150,11 +159,15 @@ impl Controller {
 
     fn update(
         &self,
-        events: &impl StateEvents,
+        events: &(impl StateEvents + ?Sized),
         action: impl FnOnce(&mut AppState) -> Result<(), DomainError>,
     ) -> Result<AppSnapshot, CommandError> {
         let (snapshot, changed) = {
-            let mut state = self.0.lock().map_err(|_| CommandError::StateUnavailable)?;
+            let mut state = self
+                .0
+                .0
+                .lock()
+                .map_err(|_| CommandError::StateUnavailable)?;
             let previous_revision = state.snapshot().revision;
             action(&mut state)?;
             let snapshot = state.snapshot();
@@ -166,6 +179,56 @@ impl Controller {
             events.state_changed(&snapshot)?;
         }
         Ok(snapshot)
+    }
+
+    pub fn set_resources(
+        &self,
+        resources: Resources,
+        events: &(impl StateEvents + ?Sized),
+    ) -> Result<AppSnapshot, CommandError> {
+        self.update(events, |state| state.set_resources(resources))
+    }
+
+    pub fn start_session(
+        &self,
+        events: &(impl StateEvents + ?Sized),
+    ) -> Result<AppSnapshot, CommandError> {
+        self.update(events, AppState::start)
+    }
+
+    pub fn stop_session(
+        &self,
+        events: &(impl StateEvents + ?Sized),
+    ) -> Result<AppSnapshot, CommandError> {
+        self.update(events, AppState::stop)
+    }
+
+    pub fn transition_session(
+        &self,
+        session_id: u32,
+        next: CaptureState,
+        events: &(impl StateEvents + ?Sized),
+    ) -> Result<AppSnapshot, CommandError> {
+        self.update(events, |state| state.transition(session_id, next))
+    }
+
+    pub fn fail_session(
+        &self,
+        session_id: u32,
+        error: DomainError,
+        events: &(impl StateEvents + ?Sized),
+    ) -> Result<AppSnapshot, CommandError> {
+        self.update(events, |state| state.fail(session_id, error))
+    }
+
+    pub fn is_session_active(&self, session_id: u32) -> bool {
+        self.snapshot().is_ok_and(|snapshot| {
+            snapshot.session_id == session_id
+                && matches!(
+                    snapshot.capture,
+                    CaptureState::Preparing | CaptureState::Listening | CaptureState::Processing
+                )
+        })
     }
 
     pub fn enable_tray(&self, window: &impl StateEvents) -> Result<AppSnapshot, CommandError> {
@@ -188,7 +251,11 @@ impl Controller {
         requested: &str,
     ) -> Result<AppSnapshot, CommandError> {
         let normalized = AppState::normalize_shortcut(requested)?;
-        let _change = self.1.lock().map_err(|_| CommandError::StateUnavailable)?;
+        let _change = self
+            .0
+            .1
+            .lock()
+            .map_err(|_| CommandError::StateUnavailable)?;
         let previous = self.snapshot()?;
         if normalized == previous.shortcut && previous.shortcut_available {
             return Ok(previous);
@@ -203,7 +270,11 @@ impl Controller {
         mode: WindowMode,
     ) -> Result<AppSnapshot, CommandError> {
         let (snapshot, changed) = {
-            let mut state = self.0.lock().map_err(|_| CommandError::StateUnavailable)?;
+            let mut state = self
+                .0
+                .0
+                .lock()
+                .map_err(|_| CommandError::StateUnavailable)?;
             let mut candidate = state.clone();
             candidate.set_window_mode(mode)?;
             let changed = candidate.snapshot().revision != state.snapshot().revision;
@@ -224,6 +295,60 @@ impl Controller {
         }
         Ok(snapshot)
     }
+}
+
+pub fn start_live_capture<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    controller: &Controller,
+) -> Result<AppSnapshot, CommandError> {
+    if let (Some(sessions), Some(outputs)) = (
+        app.try_state::<CaptionSessionManager>(),
+        app.try_state::<Arc<OutputService>>(),
+    ) {
+        let _ = sessions.refresh_resources(controller, &outputs, window);
+        let selection = outputs.selection()?;
+        let snapshot = controller.start_session(window)?;
+        let Some(device_id) = selection
+            .selected_id
+            .filter(|_| selection.selected_available)
+        else {
+            let _ = controller.fail_session(
+                snapshot.session_id,
+                DomainError::CaptureUnavailable,
+                window,
+            );
+            return Err(CommandError::Domain(DomainError::CaptureUnavailable));
+        };
+        let sink: Arc<dyn SessionSink> = Arc::new(window.clone());
+        if let Err(err) = sessions.start_session(
+            snapshot.session_id,
+            snapshot.mode,
+            device_id,
+            controller.clone(),
+            sink,
+        ) {
+            let _ = controller.fail_session(
+                snapshot.session_id,
+                DomainError::CaptureUnavailable,
+                window,
+            );
+            return Err(err);
+        }
+        return Ok(snapshot);
+    }
+    controller.start_session(window)
+}
+
+pub fn stop_live_capture<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    controller: &Controller,
+) -> Result<AppSnapshot, CommandError> {
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.stop_session();
+    }
+    controller.stop_session(window)
 }
 
 fn persist<R: Runtime>(app: &AppHandle<R>, state: &AppSnapshot) -> Result<(), CommandError> {
@@ -252,6 +377,18 @@ pub fn get_state<R: Runtime>(
 }
 
 #[tauri::command]
+pub fn fit_settings_window<R: Runtime>(
+    window: WebviewWindow<R>,
+    controller: State<'_, Controller>,
+) -> Result<(), CommandError> {
+    authorize(window.label())?;
+    if controller.snapshot()?.window_mode == WindowMode::Edit {
+        crate::window::fit_settings(&window).map_err(|_| CommandError::WindowUnavailable)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_caption_mode<R: Runtime>(
     window: WebviewWindow<R>,
     app: AppHandle<R>,
@@ -259,6 +396,9 @@ pub fn set_caption_mode<R: Runtime>(
     request: ModeRequest,
 ) -> Result<AppSnapshot, CommandError> {
     authorize(window.label())?;
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.stop_session();
+    }
     let state = controller.update(&window, |state| state.set_mode(request.mode))?;
     persist(&app, &state)?;
     Ok(state)
@@ -267,19 +407,21 @@ pub fn set_caption_mode<R: Runtime>(
 #[tauri::command]
 pub fn start_capture<R: Runtime>(
     window: WebviewWindow<R>,
+    app: AppHandle<R>,
     controller: State<'_, Controller>,
 ) -> Result<AppSnapshot, CommandError> {
     authorize(window.label())?;
-    controller.update(&window, AppState::start)
+    start_live_capture(&app, &window, &controller)
 }
 
 #[tauri::command]
 pub fn stop_capture<R: Runtime>(
     window: WebviewWindow<R>,
+    app: AppHandle<R>,
     controller: State<'_, Controller>,
 ) -> Result<AppSnapshot, CommandError> {
     authorize(window.label())?;
-    controller.update(&window, AppState::stop)
+    stop_live_capture(&app, &window, &controller)
 }
 
 #[tauri::command]
@@ -321,14 +463,24 @@ pub fn set_shortcut<R: Runtime>(
 #[tauri::command]
 pub async fn get_audio_outputs<R: Runtime>(
     window: WebviewWindow<R>,
+    app: AppHandle<R>,
     service: State<'_, Arc<OutputService>>,
 ) -> Result<OutputSelection, CommandError> {
     authorize(window.label())?;
     let service = Arc::clone(&service);
-    tauri::async_runtime::spawn_blocking(move || service.selection())
-        .await
-        .map_err(|_| CommandError::StateUnavailable)?
-        .map_err(Into::into)
+    let selection: OutputSelection =
+        tauri::async_runtime::spawn_blocking(move || service.selection())
+            .await
+            .map_err(|_| CommandError::StateUnavailable)?
+            .map_err(CommandError::from)?;
+    if let (Some(sessions), Some(controller), Some(outputs)) = (
+        app.try_state::<CaptionSessionManager>(),
+        app.try_state::<Controller>(),
+        app.try_state::<Arc<OutputService>>(),
+    ) {
+        let _ = sessions.refresh_resources(&controller, &outputs, &window);
+    }
+    Ok(selection)
 }
 
 #[tauri::command]
@@ -340,15 +492,26 @@ pub async fn select_audio_output<R: Runtime>(
 ) -> Result<OutputSelection, CommandError> {
     authorize(window.label())?;
     let service = Arc::clone(&service);
-    tauri::async_runtime::spawn_blocking(move || {
+    let app_for_save = app.clone();
+    let selection: OutputSelection = tauri::async_runtime::spawn_blocking(move || {
         let selection = service.select(&request.id)?;
-        app.state::<PreferenceStore>()
+        app_for_save
+            .state::<PreferenceStore>()
             .save_output_id(request.id)
             .map_err(|_| CommandError::PreferencesUnavailable)?;
-        Ok(selection)
+        Ok::<_, CommandError>(selection)
     })
     .await
-    .map_err(|_| CommandError::StateUnavailable)?
+    .map_err(|_| CommandError::StateUnavailable)??;
+    if let (Some(sessions), Some(controller), Some(outputs)) = (
+        app.try_state::<CaptionSessionManager>(),
+        app.try_state::<Controller>(),
+        app.try_state::<Arc<OutputService>>(),
+    ) {
+        let _ = stop_live_capture(&app, &window, &controller);
+        let _ = sessions.refresh_resources(&controller, &outputs, &window);
+    }
+    Ok(selection)
 }
 
 #[cfg(test)]

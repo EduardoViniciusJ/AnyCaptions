@@ -6,9 +6,10 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::{
-    domain::WindowMode,
-    ipc::{CommandError, Controller},
+    domain::{CaptureState, WindowMode},
+    ipc::{CommandError, Controller, start_live_capture, stop_live_capture},
     preferences::PreferenceStore,
+    transcription::session::CaptionSessionManager,
 };
 
 fn save_position<R: Runtime>(app: &AppHandle<R>) {
@@ -40,15 +41,31 @@ pub(crate) fn toggle<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+fn toggle_capture<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("overlay")
+        && let Ok(state) = app.state::<Controller>().snapshot()
+    {
+        let controller = app.state::<Controller>();
+        if state.capture == CaptureState::Stopped {
+            let _ = start_live_capture(app, &window, &controller);
+        } else {
+            let _ = stop_live_capture(app, &window, &controller);
+        }
+    }
+}
+
 pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let can_capture = app
+        .state::<Controller>()
+        .snapshot()
+        .is_ok_and(|s| s.resources.audio_capture && s.resources.transcription);
+    let capture_label = if can_capture {
+        "Iniciar/parar legendas"
+    } else {
+        "Iniciar/parar (áudio e modelos indisponíveis)"
+    };
     let show = MenuItem::with_id(app, "show", "Mostrar e editar", true, None::<&str>)?;
-    let capture = MenuItem::with_id(
-        app,
-        "capture",
-        "Iniciar/parar (áudio e modelos indisponíveis)",
-        false,
-        None::<&str>,
-    )?;
+    let capture = MenuItem::with_id(app, "capture", capture_label, can_capture, None::<&str>)?;
     let lock = MenuItem::with_id(app, "lock", "Bloquear/desbloquear", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &capture, &lock, &quit])?;
@@ -62,8 +79,12 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => edit(app),
+            "capture" => toggle_capture(app),
             "lock" => toggle(app),
             "quit" => {
+                if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+                    sessions.stop_and_join();
+                }
                 save_position(app);
                 app.exit(0);
             }

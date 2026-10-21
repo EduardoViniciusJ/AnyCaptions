@@ -88,20 +88,23 @@ impl OutputService {
     }
 }
 
-struct ComApartment;
+struct ComApartment {
+    uninitialize: bool,
+}
 
 impl ComApartment {
-    fn enter() -> Result<Self, AudioDeviceError> {
-        wasapi::initialize_mta()
-            .ok()
-            .map_err(|_| AudioDeviceError::Unavailable)?;
-        Ok(Self)
+    fn enter() -> Self {
+        Self {
+            uninitialize: wasapi::initialize_mta().is_ok(),
+        }
     }
 }
 
 impl Drop for ComApartment {
     fn drop(&mut self) {
-        wasapi::deinitialize();
+        if self.uninitialize {
+            wasapi::deinitialize();
+        }
     }
 }
 
@@ -110,7 +113,7 @@ pub struct WasapiCatalog;
 
 impl AudioDeviceCatalog for WasapiCatalog {
     fn scan(&self) -> Result<OutputInventory, AudioDeviceError> {
-        let _com = ComApartment::enter()?;
+        let _com = ComApartment::enter();
         let enumerator = DeviceEnumerator::new().map_err(|_| AudioDeviceError::Unavailable)?;
         let collection = enumerator
             .get_device_collection(&Direction::Render)

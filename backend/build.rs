@@ -11,6 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "set_shortcut",
             "get_audio_outputs",
             "select_audio_output",
+            "fit_settings_window",
         ]),
     ))?;
     Ok(())

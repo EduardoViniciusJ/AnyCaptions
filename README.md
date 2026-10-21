@@ -2,7 +2,7 @@
 
 Aplicativo desktop para Windows 11 x64, desenvolvido com Rust, Tauri v2 e Vanilla TypeScript.
 
-O overlay abre em modo edição, sem captura. A bandeja oferece mostrar/editar, iniciar/parar, bloquear/desbloquear e sair. O atalho global inicial é `Ctrl+Alt+L` e pode ser alterado para outra letra no painel. O bloqueio torna a janela transparente e permite que os cliques atravessem a área da legenda; a bandeja permanece disponível para recuperar os controles. Fechar a janela a recolhe para a bandeja. Áudio e modelos ainda não estão integrados, por isso iniciar/parar permanece indisponível.
+O overlay abre em modo edição, sem captura. A bandeja oferece mostrar/editar, iniciar/parar, bloquear/desbloquear e sair. O atalho global inicial é `Ctrl+Alt+L` e pode ser alterado para outra letra no painel. O bloqueio torna a janela transparente e permite que os cliques atravessem a área da legenda; a bandeja permanece disponível para recuperar os controles. Fechar a janela a recolhe para a bandeja. O modo EN → EN captura a saída selecionada e transcreve localmente quando os modelos Whisper e Silero estão disponíveis. EN → PT permanece desabilitado até a integração de um tradutor local.
 
 ## Executar
 
@@ -36,9 +36,11 @@ npm.cmd --prefix frontend run typecheck
 npm.cmd --prefix frontend run build
 ```
 
-`cargo test` compila e executa os testes Rust. Vitest verifica os controles no DOM simulado; `typecheck` verifica os tipos TypeScript; `build` gera os arquivos da interface. Os testes usam recursos simulados, sem microfone, áudio, modelos ou janela nativa.
+`cargo test --manifest-path backend/Cargo.toml` compila e executa os testes rápidos Rust. A integração real é separada: `cargo test --manifest-path backend/Cargo.toml --test real_transcription -- --ignored`, com `silero_vad.onnx` e `ggml-tiny.en.bin` em `backend/models/` e os fixtures `jfk.wav` e `silence.wav` em `backend/benchmarks/local/`. Vitest verifica os controles no DOM simulado; `typecheck` verifica os tipos TypeScript; `build` gera os arquivos da interface.
 
-Na janela real, conferir transparência, permanência no topo, arraste pelo nome/ícone e redimensionamento pelo canto inferior direito. Botões e seletores devem responder sem mover a janela. O tamanho inicial é 800 × 220 e o mínimo é 320 × 160 pixels lógicos, limitados à área útil do monitor. Configurações abre aparência e atalho; Escape retorna à prévia. Em `tauri dev`, o botão **Simular legendas** permite verificar texto parcial/final e blocos em português sem IA. Confira também bloqueio com clique atravessando, recuperação pela bandeja/atalho, fechamento para a bandeja e restauração de posição após reiniciar ou desconectar um monitor. A janela inicia sem pedir foco.
+Na janela real, conferir transparência, permanência no topo, arraste pelo nome/ícone e redimensionamento pelo canto inferior direito. Botões e seletores devem responder sem mover a janela. O tamanho inicial é 800 × 360 e o mínimo é 320 × 160 pixels lógicos, limitados à área útil do monitor. Ao abrir configurações, a janela cresce até pelo menos 640 × 360, se houver espaço. Aparência e saída são aplicadas ao alterar; Salvar confirma o atalho e retorna à tela principal. Escape também retorna. Confira bloqueio com clique atravessando, recuperação pela bandeja/atalho e restauração de posição após reiniciar ou desconectar um monitor. A janela inicia sem pedir foco.
+
+EN → EN mostra somente o trecho atual, com até duas linhas e 42 caracteres por linha (menos em janelas estreitas). Revisões substituem o texto; um trecho novo substitui imediatamente o anterior. O frontend acompanha a frase/bloco mais recente da revisão cumulativa, sem reproduzir uma fila de frases antigas. Uma final fica visível por 1,2–3 s, a 22 caracteres/s; uma parcial sem novidades desaparece em 3 s. O Whisper produz snapshots a cada 768 ms de áudio, com 384 ms de tolerância a pausas e contexto de até 8 s. Esses intervalos não incluem o tempo de inferência e não garantem sincronização palavra por palavra.
 
 Modo, aparência, atalho, identificador da saída escolhida futuramente e geometria ficam em `preferences.json` no diretório de configuração do aplicativo (`%APPDATA%\com.anycaptions.app` no Windows). Arquivo ausente ou inválido usa os valores padrão. Áudio e texto das legendas não são persistidos.
 
