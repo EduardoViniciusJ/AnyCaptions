@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod domain;
 pub mod ipc;
 mod preferences;
@@ -15,6 +16,8 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::set_appearance,
             ipc::set_window_mode,
             ipc::set_shortcut,
+            ipc::get_audio_outputs,
+            ipc::select_audio_output,
         ])
 }
 
@@ -27,6 +30,10 @@ pub fn run() -> tauri::Result<()> {
             let root = app.path().app_config_dir()?;
             let store = preferences::PreferenceStore::load(preferences::config_path(&root));
             let saved = store.snapshot()?;
+            app.manage(std::sync::Arc::new(audio::devices::OutputService::new(
+                Box::new(audio::devices::WasapiCatalog),
+                saved.output_id.clone(),
+            )));
             app.state::<ipc::Controller>()
                 .restore_preferences(&saved)
                 .map_err(|_| std::io::Error::other("Cannot restore preferences"))?;

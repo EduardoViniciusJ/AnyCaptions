@@ -29,6 +29,12 @@ export interface CaptionUpdate {
   isFinal: boolean;
 }
 
+export interface OutputSelection {
+  devices: { id: string; name: string }[];
+  selectedId: string | null;
+  selectedAvailable: boolean;
+}
+
 export interface Backend {
   getState(): Promise<AppSnapshot>;
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
@@ -37,6 +43,8 @@ export interface Backend {
   setAppearance(appearance: Appearance): Promise<AppSnapshot>;
   setWindowMode(mode: WindowMode): Promise<AppSnapshot>;
   setShortcut(shortcut: string): Promise<AppSnapshot>;
+  getAudioOutputs(): Promise<OutputSelection>;
+  selectAudioOutput(id: string): Promise<OutputSelection>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
   resize(): Promise<void>;

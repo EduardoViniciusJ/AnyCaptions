@@ -119,6 +119,21 @@ impl PreferenceStore {
         self.write(&state)
     }
 
+    pub fn save_output_id(&self, id: String) -> io::Result<()> {
+        if id.is_empty() || id.len() > 512 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid output ID",
+            ));
+        }
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| io::Error::other("Preferences unavailable"))?;
+        state.output_id = Some(id);
+        self.write(&state)
+    }
+
     fn write(&self, state: &Preferences) -> io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;

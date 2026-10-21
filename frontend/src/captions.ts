@@ -122,7 +122,7 @@ export class CaptionPresenter {
     if (!preservePrevious) this.previousStable = "";
     this.current = this.queue.shift();
     this.render();
-    if (this.current) {
+    if (this.current && this.queue.length > 0) {
       this.timer = this.clock.set(() => { this.timer = undefined; this.advance(); }, readingTime(this.current.text));
     }
   }

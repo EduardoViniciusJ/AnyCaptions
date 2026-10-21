@@ -1,4 +1,4 @@
-import type { AppSnapshot, Appearance, Backend, CaptionColor, CaptionMode } from "./contracts";
+import type { AppSnapshot, Appearance, Backend, CaptionColor, CaptionMode, OutputSelection } from "./contracts";
 import { CaptionPresenter } from "./captions";
 
 const icons = {
@@ -18,6 +18,8 @@ function errorMessage(error: unknown): string {
     case "recovery-unavailable": return "O bloqueio precisa de um atalho ou da bandeja para recuperar os controles.";
     case "invalid-shortcut": return "Use um atalho no formato Ctrl+Alt+L (letra de A a Z).";
     case "shortcut-unavailable": return "Esse atalho está em uso. Escolha outra letra; a bandeja continua disponível.";
+    case "not-found": return "Essa saída de áudio não está disponível. Atualize a lista e escolha outra.";
+    case "invalid-id": return "Selecione uma saída de áudio válida.";
     default: return "Não foi possível concluir a ação. Tente novamente.";
   }
 }
@@ -63,6 +65,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             <label for="audio-output">Saída de áudio</label>
             <select id="audio-output" disabled><option>Nenhuma saída disponível</option></select>
           </div>
+          <p id="audio-output-status" class="muted"></p>
           <div class="setting-row">
             <label for="shortcut">Atalho de bloqueio</label>
             <div class="setting-actions">
@@ -100,6 +103,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   const fontSize = get<HTMLInputElement>("#font-size");
   const fontColor = get<HTMLSelectElement>("#font-color");
   const shortcut = get<HTMLInputElement>("#shortcut");
+  const audioOutput = get<HTMLSelectElement>("#audio-output");
   const status = get<HTMLElement>("#status");
   const error = get<HTMLElement>("#error");
   const listeners = new AbortController();
@@ -113,6 +117,37 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   let previousCapture: AppSnapshot["capture"] | undefined;
   let previousSession: number | undefined;
   let simulatedSegmentId = 1;
+  let outputs: OutputSelection | undefined;
+  let outputBusy = false;
+
+  function renderOutputs() {
+    audioOutput.replaceChildren();
+    if (!outputs) {
+      audioOutput.add(new Option("Verificando saídas…", ""));
+      audioOutput.disabled = true;
+      return;
+    }
+    for (const device of outputs.devices) audioOutput.add(new Option(device.name, device.id));
+    if (outputs.devices.length && !outputs.selectedId) audioOutput.add(new Option("Selecione uma saída", ""), 0);
+    if (outputs.selectedId && !outputs.selectedAvailable) {
+      audioOutput.add(new Option("Saída salva indisponível", outputs.selectedId));
+    }
+    if (!outputs.devices.length) audioOutput.add(new Option("Nenhuma saída disponível", ""));
+    audioOutput.value = outputs.selectedId ?? "";
+    audioOutput.disabled = busy || outputBusy || !outputs.devices.length;
+    get("#audio-output-status").textContent = outputs.selectedId && !outputs.selectedAvailable
+      ? "A saída salva foi desconectada. Escolha outra saída."
+      : outputs.devices.length ? "Captura de áudio disponível após integrar o pipeline de IA." : "Nenhuma saída de reprodução ativa.";
+  }
+
+  async function loadOutputs() {
+    if (outputBusy || disposed) return;
+    outputBusy = true;
+    renderOutputs();
+    try { outputs = await backend.getAudioOutputs(); }
+    catch { showError("Não foi possível listar as saídas de áudio."); }
+    finally { outputBusy = false; renderOutputs(); }
+  }
 
   function render() {
     if (!state || disposed) return;
@@ -151,6 +186,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     get("#models-status").textContent = state.mode === "en-pt"
       ? "EN → PT precisa dos modelos locais de transcrição e tradução."
       : "EN → EN precisa de um modelo local de transcrição.";
+    renderOutputs();
   }
 
   function accept(incoming: AppSnapshot) {
@@ -200,6 +236,16 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     const requested = shortcut.value;
     void perform(() => backend.setShortcut(requested));
   }, options);
+  audioOutput.addEventListener("change", () => {
+    if (busy || outputBusy || !audioOutput.value) return;
+    const id = audioOutput.value;
+    outputBusy = true;
+    audioOutput.disabled = true;
+    let reload = false;
+    void backend.selectAudioOutput(id).then((selection) => { outputs = selection; })
+      .catch((error) => { showError(errorMessage(error)); reload = true; })
+      .finally(() => { outputBusy = false; renderOutputs(); if (reload) void loadOutputs(); });
+  }, options);
   root.querySelector("#simulate")?.addEventListener("click", () => {
     if (!state) return;
     const segmentId = simulatedSegmentId++;
@@ -210,7 +256,11 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       text: state.mode === "en-en" ? "These are simulated" : text, isFinal: state.mode === "en-pt" }, true);
     if (state.mode === "en-en") acceptCaption({ sessionId: state.sessionId, segmentId, revision: 2, mode: state.mode, text, isFinal: true }, true);
   }, options);
-  settingsToggle.addEventListener("click", () => toggleSettings(settings.hidden !== false), options);
+  settingsToggle.addEventListener("click", () => {
+    const open = settings.hidden !== false;
+    toggleSettings(open);
+    if (open) void loadOutputs();
+  }, options);
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !settings.hidden) { toggleSettings(false); settingsToggle.focus(); }
   }, options);

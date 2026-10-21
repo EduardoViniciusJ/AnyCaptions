@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOverlay } from "./overlay";
-import type { AppSnapshot, Backend } from "./contracts";
+import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return { revision: 0, sessionId: 0, mode: "en-en", capture: "stopped", windowMode: "edit",
@@ -15,17 +15,20 @@ function setup(initial = snapshot()) {
   const root = document.createElement("main");
   document.body.append(root);
   let listener: ((state: AppSnapshot) => void) | undefined;
+  let captionListener: ((caption: CaptionUpdate) => void) | undefined;
   const release = vi.fn();
   const backend: Backend = {
     getState: vi.fn().mockResolvedValue(initial),
     subscribe: vi.fn(async (callback) => { listener = callback; return release; }),
-    subscribeCaptions: vi.fn(async () => vi.fn()),
+    subscribeCaptions: vi.fn(async (callback) => { captionListener = callback; return vi.fn(); }),
     setMode: vi.fn(async (mode) => snapshot({ mode, revision: 1, sessionId: 1 })),
     setAppearance: vi.fn(async (appearance) => snapshot({ appearance, revision: 1 })),
     start: vi.fn().mockResolvedValue(snapshot({ capture: "preparing", revision: 1 })),
     stop: vi.fn().mockResolvedValue(snapshot({ revision: 1 })),
     setWindowMode: vi.fn().mockRejectedValue({ kind: "domain", code: "recovery-unavailable" }),
     setShortcut: vi.fn().mockResolvedValue(snapshot({ revision: 1, shortcutAvailable: true })),
+    getAudioOutputs: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
+    selectAudioOutput: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
   };
   const overlay = createOverlay(root, backend);
@@ -35,7 +38,8 @@ function setup(initial = snapshot()) {
     if (!element) throw new Error(`Missing test element ${selector}`);
     return element;
   }
-  return { root, backend, overlay, release, get, emit: (state: AppSnapshot) => listener?.(state) };
+  return { root, backend, overlay, release, get, emit: (state: AppSnapshot) => listener?.(state),
+    emitCaption: (caption: CaptionUpdate) => captionListener?.(caption) };
 }
 
 describe("overlay controls", () => {
@@ -123,6 +127,51 @@ describe("overlay controls", () => {
     app.emit(snapshot({ revision: 2, windowMode: "locked", canLock: true, shortcutAvailable: true }));
     expect(app.get(".overlay").dataset.mode).toBe("locked");
     expect(app.get("#settings").hidden).toBe(true);
+  });
+
+  it("keeps the caption visible when leaving edit mode", async () => {
+    const app = setup(snapshot({ capture: "listening", canLock: true }));
+    await app.overlay.ready;
+    app.emitCaption({ sessionId: 0, segmentId: 1, revision: 1, mode: "en-en", text: "Still visible", isFinal: true });
+    app.emit(snapshot({ revision: 1, capture: "listening", windowMode: "locked", canLock: true }));
+    expect(app.get(".overlay").dataset.mode).toBe("locked");
+    expect(app.get<HTMLElement>("#caption-live").hidden).toBe(false);
+    expect(app.get("#caption-live").textContent).toBe("Still visible");
+  });
+
+  it("lists output names but selects by device ID", async () => {
+    const app = setup();
+    vi.mocked(app.backend.getAudioOutputs).mockResolvedValue({
+      devices: [{ id: "speaker-a", name: "Alto-falantes" }, { id: "speaker-b", name: "Alto-falantes" }],
+      selectedId: "speaker-b", selectedAvailable: true,
+    });
+    vi.mocked(app.backend.selectAudioOutput).mockResolvedValue({
+      devices: [{ id: "speaker-a", name: "Alto-falantes" }, { id: "speaker-b", name: "Alto-falantes" }],
+      selectedId: "speaker-a", selectedAvailable: true,
+    });
+    await app.overlay.ready;
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    const select = app.get<HTMLSelectElement>("#audio-output");
+    await vi.waitFor(() => expect(select.value).toBe("speaker-b"));
+    expect([...select.options].map((option) => option.textContent)).toEqual(["Alto-falantes", "Alto-falantes"]);
+    select.value = "speaker-a";
+    select.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => expect(app.backend.selectAudioOutput).toHaveBeenCalledWith("speaker-a"));
+    await vi.waitFor(() => expect(select.value).toBe("speaker-a"));
+  });
+
+  it("shows a disconnected saved output without switching to another device", async () => {
+    const app = setup();
+    vi.mocked(app.backend.getAudioOutputs).mockResolvedValue({
+      devices: [{ id: "speaker-b", name: "Monitor" }],
+      selectedId: "speaker-a", selectedAvailable: false,
+    });
+    await app.overlay.ready;
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    const select = app.get<HTMLSelectElement>("#audio-output");
+    await vi.waitFor(() => expect(select.value).toBe("speaker-a"));
+    expect(app.get("#audio-output-status").textContent).toContain("desconectada");
+    expect(app.backend.selectAudioOutput).not.toHaveBeenCalled();
   });
 
   it("displays sanitized errors and restores confirmed values after rejection", async () => {
