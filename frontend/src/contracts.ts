@@ -15,6 +15,8 @@ export interface AppSnapshot {
   resources: { audioCapture: boolean; transcription: boolean; translation: boolean };
   canStart: boolean;
   canLock: boolean;
+  shortcut: string;
+  shortcutAvailable: boolean;
   error: string | null;
 }
 
@@ -34,7 +36,9 @@ export interface Backend {
   stop(): Promise<AppSnapshot>;
   setAppearance(appearance: Appearance): Promise<AppSnapshot>;
   setWindowMode(mode: WindowMode): Promise<AppSnapshot>;
+  setShortcut(shortcut: string): Promise<AppSnapshot>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
+  subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
   resize(): Promise<void>;
   close(): Promise<void>;
 }
