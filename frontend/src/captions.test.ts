@@ -37,8 +37,8 @@ describe("caption presenter", () => {
     expect(element.textContent).toBe("Primeira frase");
     vi.advanceTimersByTime(readingTime("Primeira frase"));
     expect(element.textContent).toBe("Segunda frase");
-    vi.advanceTimersByTime(readingTime("Segunda frase"));
-    expect(element.textContent).toBe("");
+    vi.advanceTimersByTime(readingTime("Segunda frase") * 2);
+    expect(element.textContent).toBe("Segunda frase");
   });
 
   it("shows a new English partial immediately beside the previous final", () => {
@@ -48,8 +48,19 @@ describe("caption presenter", () => {
     expect(element.textContent).toBe("First phrase\nSecond");
     presenter.accept(update(2, 2, "Second phrase", true));
     expect(element.textContent).toBe("First phrase\nSecond phrase");
-    vi.advanceTimersByTime(readingTime("Second phrase"));
-    expect(element.textContent).toBe("");
+    vi.advanceTimersByTime(readingTime("Second phrase") * 2);
+    expect(element.textContent).toBe("First phrase\nSecond phrase");
+  });
+
+  it("keeps the latest final caption visible until it is replaced or cleared", () => {
+    const { element, presenter, update } = setup();
+    presenter.accept(update(1, 1, "Persistent caption", true));
+    vi.advanceTimersByTime(readingTime("Persistent caption") * 2);
+    expect(element.textContent).toBe("Persistent caption");
+    presenter.accept(update(2, 1, "Next caption", true));
+    expect(element.textContent).toBe("Persistent caption\nNext caption");
+    presenter.clear();
+    expect(element.hidden).toBe(true);
   });
 
   it("keeps HTML-shaped text literal and releases its timer on clear", () => {
