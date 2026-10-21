@@ -30,6 +30,7 @@ function setup(initial = snapshot()) {
     getAudioOutputs: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     selectAudioOutput: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+    fitSettings: vi.fn().mockResolvedValue(undefined),
   };
   const overlay = createOverlay(root, backend);
   disposers.push(overlay.dispose);
@@ -47,9 +48,9 @@ describe("overlay controls", () => {
     const app = setup();
     await app.overlay.ready;
     expect(app.get(".overlay").dataset.mode).toBe("edit");
-    expect(app.get("#status").textContent).toBe("Captura parada");
+    expect(app.get("#capture-label").textContent).toBe("Iniciar");
     expect(app.get("#settings").hidden).toBe(true);
-    expect(app.get("#status").closest("#settings")).not.toBeNull();
+    expect(app.root.querySelector("#status, #availability, #models-status, #simulate")).toBeNull();
     expect(app.get<HTMLButtonElement>("#capture").disabled).toBe(true);
     expect(app.get<HTMLButtonElement>("#lock").disabled).toBe(true);
     app.get<HTMLButtonElement>("#capture").click();
@@ -68,7 +69,6 @@ describe("overlay controls", () => {
     expect(app.backend.setMode).toHaveBeenCalledWith("en-pt");
     app.emit(snapshot({ revision: 0 }));
     expect(select.value).toBe("en-pt");
-    expect(app.get("#models-status").textContent).toContain("transcrição e tradução");
   });
 
   it("waits for backend confirmation and prevents concurrent control requests", async () => {
@@ -79,10 +79,9 @@ describe("overlay controls", () => {
     const start = app.get<HTMLButtonElement>("#capture");
     start.click(); start.click();
     expect(app.backend.start).toHaveBeenCalledTimes(1);
-    expect(app.get("#status").textContent).toBe("Captura parada");
+    expect(app.get("#capture-label").textContent).toBe("Iniciar");
     resolve?.(snapshot({ capture: "preparing", revision: 1 }));
-    await vi.waitFor(() => expect(app.get("#status").textContent).toBe("Carregando modelos"));
-    expect(app.get("#capture-label").textContent).toBe("Parar");
+    await vi.waitFor(() => expect(app.get("#capture-label").textContent).toBe("Parar"));
   });
 
   it("does not make controls part of the drag region", async () => {
@@ -101,6 +100,7 @@ describe("overlay controls", () => {
     toggle.click();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(app.get("#settings").hidden).toBe(false);
+    expect(app.backend.fitSettings).toHaveBeenCalledOnce();
     app.get("#settings").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(app.get("#settings").hidden).toBe(true);
     expect(document.activeElement).toBe(toggle);
@@ -122,8 +122,11 @@ describe("overlay controls", () => {
     app.get<HTMLButtonElement>("#settings-toggle").click();
     const shortcut = app.get<HTMLInputElement>("#shortcut");
     shortcut.value = "Ctrl+Alt+K";
-    app.get<HTMLButtonElement>("#save-shortcut").click();
+    await vi.waitFor(() => expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false));
+    app.get<HTMLButtonElement>("#save-settings").click();
     await vi.waitFor(() => expect(app.backend.setShortcut).toHaveBeenCalledWith("Ctrl+Alt+K"));
+    await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
+    expect(app.get("#preview").hidden).toBe(false);
     app.emit(snapshot({ revision: 2, windowMode: "locked", canLock: true, shortcutAvailable: true }));
     expect(app.get(".overlay").dataset.mode).toBe("locked");
     expect(app.get("#settings").hidden).toBe(true);
@@ -137,6 +140,31 @@ describe("overlay controls", () => {
     expect(app.get(".overlay").dataset.mode).toBe("locked");
     expect(app.get<HTMLElement>("#caption-live").hidden).toBe(false);
     expect(app.get("#caption-live").textContent).toBe("Still visible");
+  });
+
+  it("keeps settings open after a rejected save and closes them after a successful retry", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    await vi.waitFor(() => expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false));
+    vi.mocked(app.backend.setShortcut).mockRejectedValueOnce({ code: "shortcut-unavailable" });
+    app.get<HTMLInputElement>("#shortcut").value = "Ctrl+Alt+K";
+    app.get<HTMLButtonElement>("#save-settings").click();
+    await vi.waitFor(() => expect(app.get("#error").hidden).toBe(false));
+    expect(app.get("#settings").hidden).toBe(false);
+    await vi.waitFor(() => expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false));
+    app.get<HTMLInputElement>("#shortcut").value = "Ctrl+Alt+K";
+    app.get<HTMLButtonElement>("#save-settings").click();
+    await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
+  });
+
+  it("keeps the listening view empty when there is no current caption", async () => {
+    const app = setup(snapshot({ capture: "listening" }));
+    await app.overlay.ready;
+    expect(app.get("#caption-preview").hidden).toBe(true);
+    expect(app.get("#caption-live").hidden).toBe(true);
+    expect(app.root.textContent).not.toContain("Aguardando fala");
+    expect(app.root.textContent).not.toContain("Áudio e modelos indisponíveis");
   });
 
   it("lists output names but selects by device ID", async () => {
