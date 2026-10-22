@@ -21,6 +21,27 @@ const DEFAULT_SOURCE: &str = "en-US";
 /// Fixed target of the translate mode; more targets become configuration later.
 pub const TARGET_LANGUAGE: &str = "pt-BR";
 
+/// Splits a final caption into sentences. The recognizer punctuates, so sentence
+/// marks are reliable boundaries; decimals and abbreviations may split early,
+/// a small quality cost paid for much lower first-sentence latency.
+fn split_sentences(text: &str) -> Vec<String> {
+    let mut sentences = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        current.push(ch);
+        if matches!(ch, '.' | '!' | '?' | '…') {
+            if !current.trim().is_empty() {
+                sentences.push(current.trim().to_owned());
+            }
+            current.clear();
+        }
+    }
+    if !current.trim().is_empty() {
+        sentences.push(current.trim().to_owned());
+    }
+    sentences
+}
+
 /// What the stage reports back to the session coordinator.
 pub enum StageEvent {
     /// A caption finished translating; the text is already in the target language.
@@ -57,25 +78,51 @@ impl TranslationStage {
             .name("caption-translator".into())
             .spawn(move || {
                 while let Ok(update) = receiver.recv() {
-                    if stop_flag.load(Ordering::Acquire) {
-                        return;
-                    }
-                    let source = update.language.as_deref().unwrap_or(DEFAULT_SOURCE);
-                    match translator.translate(&update.text, source, TARGET_LANGUAGE) {
-                        Ok(text) if text.is_empty() => continue,
-                        Ok(text) => {
-                            let translated = CaptionUpdate {
-                                text,
-                                language: Some(TARGET_LANGUAGE.to_owned()),
-                                ..update
-                            };
-                            if !emit(StageEvent::Translated(translated)) {
+                    let source = update.language.clone();
+                    let source = source.as_deref().unwrap_or(DEFAULT_SOURCE);
+                    // Long finals translate sentence by sentence, so the first
+                    // part reaches the screen while the rest is still decoding.
+                    let sentences = split_sentences(&update.text);
+                    let total = sentences.len();
+                    let mut accumulated = String::new();
+                    for (index, sentence) in sentences.into_iter().enumerate() {
+                        if stop_flag.load(Ordering::Acquire) {
+                            return;
+                        }
+                        let start = std::time::Instant::now();
+                        match translator.translate(&sentence, source, TARGET_LANGUAGE) {
+                            Ok(text) => {
+                                // Timing only; caption text never reaches logs.
+                                eprintln!(
+                                    "[nmt] translate_ms={} chars_in={} chars_out={}",
+                                    start.elapsed().as_millis(),
+                                    sentence.chars().count(),
+                                    text.chars().count(),
+                                );
+                                if !text.is_empty() {
+                                    if !accumulated.is_empty() {
+                                        accumulated.push(' ');
+                                    }
+                                    accumulated.push_str(&text);
+                                }
+                                if accumulated.is_empty() {
+                                    continue;
+                                }
+                                let translated = CaptionUpdate {
+                                    text: accumulated.clone(),
+                                    language: Some(TARGET_LANGUAGE.to_owned()),
+                                    revision: (index + 1) as u32,
+                                    is_final: index + 1 == total,
+                                    ..update.clone()
+                                };
+                                if !emit(StageEvent::Translated(translated)) {
+                                    return;
+                                }
+                            }
+                            Err(_) => {
+                                emit(StageEvent::Failed);
                                 return;
                             }
-                        }
-                        Err(_) => {
-                            emit(StageEvent::Failed);
-                            return;
                         }
                     }
                 }
@@ -194,6 +241,46 @@ mod tests {
             (1, 2),
             "order must be preserved"
         );
+    }
+
+    #[test]
+    fn long_finals_stream_sentence_by_sentence() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|text, source, _| source == "en-US" && (text == "One." || text == "Two."))
+            .times(2)
+            .returning(|text, _, _| Ok(if text == "One." { "Um." } else { "Dois." }.to_owned()));
+
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage = TranslationStage::spawn(Box::new(translator), move |event| match event {
+            StageEvent::Translated(update) => {
+                sink.lock().unwrap().push(update);
+                true
+            }
+            StageEvent::Failed => false,
+        })
+        .unwrap();
+        stage
+            .submit(final_update(3, "One. Two.", Some("en-US")))
+            .unwrap();
+        stage.finish();
+
+        let emitted = emitted.lock().unwrap();
+        // The first sentence reaches the screen before the second finishes decoding.
+        assert_eq!(emitted.len(), 2);
+        assert_eq!(
+            (emitted[0].text.as_str(), emitted[0].is_final),
+            ("Um.", false)
+        );
+        assert_eq!(emitted[0].revision, 1);
+        assert_eq!(
+            (emitted[1].text.as_str(), emitted[1].is_final),
+            ("Um. Dois.", true)
+        );
+        assert_eq!(emitted[1].revision, 2);
+        assert_eq!(emitted[1].segment_id, 3);
     }
 
     #[test]

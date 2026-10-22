@@ -169,6 +169,8 @@ impl NativeRivaTranslator {
             .and_then(|path| CString::new(path).ok())
             .ok_or(TranslatorError::ModelUnavailable)?;
 
+        let load_start = std::time::Instant::now();
+        let mut device = "cpu";
         let mut translator = ptr::null_mut();
         for gpu in [0, -1] {
             let backend = BackendConfig {
@@ -191,6 +193,7 @@ impl NativeRivaTranslator {
             // library defaults.
             let status = unsafe { (api.create)(&config, &mut translator) };
             if status == STATUS_OK && !translator.is_null() {
+                device = if gpu >= 0 { "gpu" } else { "cpu" };
                 break;
             }
             translator = ptr::null_mut();
@@ -198,6 +201,12 @@ impl NativeRivaTranslator {
         if translator.is_null() {
             return Err(TranslatorError::ModelUnavailable);
         }
+        // Timing and device only; translated content never reaches logs. A CPU
+        // fall back here explains a slow translation session.
+        eprintln!(
+            "[nmt] device={device} load_ms={}",
+            load_start.elapsed().as_millis()
+        );
         Ok(Self { translator, api })
     }
 
