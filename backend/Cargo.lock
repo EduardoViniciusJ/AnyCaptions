@@ -53,6 +53,7 @@ version = "0.1.0"
 dependencies = [
  "audioadapter-buffers",
  "hound",
+ "libloading 0.8.9",
  "mockall",
  "ort",
  "rubato",
