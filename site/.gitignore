@@ -1,0 +1,9 @@
+backend/**/bin/
+backend/**/obj/
+backend/.env
+backend/.config/
+frontend/node_modules/
+frontend/dist/
+frontend/.astro/
+frontend/.env
+.env
