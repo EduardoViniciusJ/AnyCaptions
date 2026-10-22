@@ -104,8 +104,8 @@ impl ProcessorFactory for NativeProcessorFactory {
         if mode.requires_translation() {
             return Err(DomainError::TranslationUnavailable);
         }
-        let recognizer =
-            NativeNemotron::load(&self.paths).map_err(|_| DomainError::TranscriptionUnavailable)?;
+        let recognizer = NativeNemotron::load(&self.paths, mode.forced_language())
+            .map_err(|_| DomainError::TranscriptionUnavailable)?;
         Ok(Box::new(StreamingProcessor::new(
             session_id, mode, recognizer,
         )))
@@ -525,6 +525,7 @@ mod tests {
                     .then(|| SpeechResult {
                         text: "Live English caption".into(),
                         is_final: true,
+                        language: Some("en-US".into()),
                     })
                     .into_iter()
                     .collect())

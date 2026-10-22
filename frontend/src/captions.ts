@@ -46,7 +46,7 @@ interface ActiveLiveSegment {
 
 export class CaptionPresenter {
   private sessionId = 0;
-  private mode: CaptionMode = "en-en";
+  private mode: CaptionMode = "auto";
   private revisions = new Map<number, number>();
   private finished = new Set<number>();
   private pending = new Map<number, CaptionUpdate>();
@@ -73,6 +73,11 @@ export class CaptionPresenter {
     this.fitsCaption = fitsCaption ?? this.measurer!.fits;
   }
 
+  /** Modos de transcrição mostram texto ao vivo; a tradução chega em blocos finais. */
+  private get live(): boolean {
+    return this.mode !== "translate-pt";
+  }
+
   setContext(sessionId: number, mode: CaptionMode): void {
     if (sessionId === this.sessionId && mode === this.mode) return;
     this.clear(true);
@@ -89,11 +94,11 @@ export class CaptionPresenter {
     )
       return false;
     if (!Number.isSafeInteger(update.revision) || update.revision < 0 || update.text.length > 4000) return false;
-    if (this.mode === "en-en") return this.acceptLive(update);
+    if (this.live) return this.acceptLive(update);
     const prior = this.revisions.get(update.segmentId) ?? -1;
     if (update.revision <= prior || this.finished.has(update.segmentId) || update.segmentId < this.nextSegmentId)
       return false;
-    if (this.mode === "en-pt" && !update.isFinal) return false;
+    if (this.mode === "translate-pt" && !update.isFinal) return false;
     const blocks = update.isFinal ? paginateCaption(update.text, this.fitsCaption) : [];
     const pendingBlocks = [...this.pending.values()].reduce(
       (sum, item) => sum + paginateCaption(item.text, this.fitsCaption).length,
@@ -197,7 +202,7 @@ export class CaptionPresenter {
   }
 
   refreshLayout(): void {
-    if (this.mode !== "en-en" || this.liveWords().length === 0) return;
+    if (!this.live || this.liveWords().length === 0) return;
     this.layoutLiveCaption();
     this.render();
   }
@@ -279,7 +284,7 @@ export class CaptionPresenter {
     }
     this.element.replaceChildren(content);
 
-    this.element.dataset.state = this.mode === "en-en" && !this.activeFinal ? "partial" : "final";
+    this.element.dataset.state = this.live && !this.activeFinal ? "partial" : "final";
     this.element.hidden = false;
     void this.element.offsetWidth;
     this.element.style.transition = "";

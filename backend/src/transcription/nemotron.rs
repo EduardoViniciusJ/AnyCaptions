@@ -102,6 +102,8 @@ type NextFn = unsafe extern "C" fn(*mut Stream, *mut *mut NativeResult) -> i32;
 type CloseFn = unsafe extern "C" fn(*mut Stream);
 type IsFinalFn = unsafe extern "C" fn(*const NativeResult) -> bool;
 type TranscriptFn = unsafe extern "C" fn(*const NativeResult, usize) -> *const c_char;
+type LanguageCountFn = unsafe extern "C" fn(*const NativeResult, usize) -> usize;
+type LanguageCodeFn = unsafe extern "C" fn(*const NativeResult, usize, usize) -> *const c_char;
 type ResultDestroyFn = unsafe extern "C" fn(*mut NativeResult);
 
 /// Function pointers resolved from the library; valid while `_library` is loaded.
@@ -116,6 +118,8 @@ struct Api {
     close: CloseFn,
     is_final: IsFinalFn,
     transcript: TranscriptFn,
+    language_count: LanguageCountFn,
+    language_code: LanguageCodeFn,
     result_destroy: ResultDestroyFn,
     // Declared last so it is dropped after every handle that uses these pointers.
     _library: Library,
@@ -146,6 +150,8 @@ impl Api {
                 close: symbol!(b"nemo_speech_asr_stream_close\0"),
                 is_final: symbol!(b"nemo_speech_asr_result_is_final\0"),
                 transcript: symbol!(b"nemo_speech_asr_result_transcript\0"),
+                language_count: symbol!(b"nemo_speech_asr_result_language_count\0"),
+                language_code: symbol!(b"nemo_speech_asr_result_language_code\0"),
                 result_destroy: symbol!(b"nemo_speech_asr_result_destroy\0"),
                 _library: library,
             })
@@ -188,10 +194,19 @@ unsafe impl Send for NativeNemotron {}
 
 impl NativeNemotron {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
-    pub fn load(paths: &NemotronPaths) -> Result<Self, RecognizerError> {
+    /// `forced_language` restricts recognition to one language from the model's prompt
+    /// dictionary (e.g. `en-US`); `None` keeps auto-detection.
+    pub fn load(
+        paths: &NemotronPaths,
+        forced_language: Option<&str>,
+    ) -> Result<Self, RecognizerError> {
         NEMOTRON_STREAMING_Q8
             .verify(&paths.model)
             .map_err(|_| RecognizerError::ModelUnavailable)?;
+        let language = match forced_language {
+            Some(code) => CString::new(code).map_err(|_| RecognizerError::RecognitionFailed)?,
+            None => LANGUAGE_AUTO.to_owned(),
+        };
         let api = Api::load(&paths.library_dir)?;
         let model_path = paths
             .model
@@ -214,7 +229,7 @@ impl NativeNemotron {
         // fields are changed, and the strings outlive the call.
         let stream = unsafe {
             let mut options = (api.options_default)();
-            options.language_code = LANGUAGE_AUTO.as_ptr();
+            options.language_code = language.as_ptr();
             options.interim_results = true;
             options.enable_automatic_punctuation = true;
             let mut stream = ptr::null_mut();
@@ -244,7 +259,7 @@ impl NativeNemotron {
             if result.is_null() {
                 return Ok(results);
             }
-            // SAFETY: `result` is valid until destroyed; the transcript is copied first.
+            // SAFETY: `result` is valid until destroyed; transcript and language are copied first.
             unsafe {
                 let text = (self.api.transcript)(result, 0);
                 let text = if text.is_null() {
@@ -253,8 +268,17 @@ impl NativeNemotron {
                     CStr::from_ptr(text).to_string_lossy().into_owned()
                 };
                 let is_final = (self.api.is_final)(result);
+                let language = ((self.api.language_count)(result, 0) > 0)
+                    .then(|| (self.api.language_code)(result, 0, 0))
+                    .filter(|code| !code.is_null())
+                    .map(|code| CStr::from_ptr(code).to_string_lossy().into_owned())
+                    .filter(|code| !code.is_empty());
                 (self.api.result_destroy)(result);
-                results.push(SpeechResult { text, is_final });
+                results.push(SpeechResult {
+                    text,
+                    is_final,
+                    language,
+                });
             }
         }
     }
@@ -355,7 +379,7 @@ mod tests {
             model: empty.join("missing.gguf"),
         };
         assert!(matches!(
-            NativeNemotron::load(&paths),
+            NativeNemotron::load(&paths, None),
             Err(RecognizerError::ModelUnavailable)
         ));
         assert!(matches!(
