@@ -16,66 +16,63 @@ use crate::{
     },
     domain::{AppSnapshot, CaptionMode, CaptureState, DomainError, Resources},
     ipc::{CAPTION_EVENT, CaptionUpdate, CommandError, Controller, StateEvents},
-    pipeline::{
-        AudioProcessor, Cancellation, MAX_BLOCK_SAMPLES, Pipeline,
-        segmenter::{SegmenterConfig, SpeechSegmenter},
-        vad::{SileroVad, VAD_FRAME_SAMPLES, VadModelProfile},
-    },
+    pipeline::{AudioProcessor, Cancellation, MAX_BLOCK_SAMPLES, Pipeline},
 };
 
-use super::{TranscriptionProcessor, profile::WhisperModelProfile};
+use super::{
+    nemotron::{LIBRARY_FILENAME, NativeNemotron, NemotronModelProfile, NemotronPaths},
+    streaming::StreamingProcessor,
+};
 
-pub const SILERO_FILENAME: &str = "silero_vad.onnx";
+// Development build of NeMo-Speech.cpp (see backend/local-data/nemo-speech).
+const DEV_NEMO_LIBRARY_DIR: &str = "local-data/nemo-speech/build-vulkan-asr/bin";
+// Audio is submitted in 128 ms blocks at 16 kHz.
+const SUBMIT_BLOCK_SAMPLES: usize = 2_048;
+// 32 ms of silence, matching the capture receive timeout, keeps the stream paced in real time.
+const IDLE_SILENCE_SAMPLES: usize = 512;
 
-#[derive(Debug, Clone)]
-pub struct ModelPaths {
-    pub vad: PathBuf,
-    pub whisper: PathBuf,
-}
-
-impl ModelPaths {
-    pub fn from_dir(dir: &Path) -> Self {
-        let whisper_profile = WhisperModelProfile::active();
-        Self {
-            vad: dir.join(SILERO_FILENAME),
-            whisper: dir.join(whisper_profile.filename),
-        }
-    }
-
+impl NemotronPaths {
+    /// Model: `ANYCAPTIONS_MODELS_DIR`, `backend/models`, or `models/` next to the executable.
+    /// Library: `ANYCAPTIONS_NEMO_DIR`, the local development build, or the executable folder.
     pub fn resolve() -> Self {
-        if let Some(override_dir) = std::env::var_os("ANYCAPTIONS_MODELS_DIR") {
-            let dir = PathBuf::from(override_dir);
-            if dir.is_dir() {
-                return Self::from_dir(&dir);
-            }
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf));
+        let first_dir = |candidates: Vec<Option<PathBuf>>, fallback: PathBuf| {
+            candidates
+                .into_iter()
+                .flatten()
+                .find(|dir| dir.is_dir())
+                .unwrap_or(fallback)
+        };
+        let models = first_dir(
+            vec![
+                std::env::var_os("ANYCAPTIONS_MODELS_DIR").map(PathBuf::from),
+                Some(manifest.join("models")),
+                exe_dir.as_ref().map(|dir| dir.join("models")),
+            ],
+            manifest.join("models"),
+        );
+        let library_dir = first_dir(
+            vec![
+                std::env::var_os("ANYCAPTIONS_NEMO_DIR").map(PathBuf::from),
+                Some(manifest.join(DEV_NEMO_LIBRARY_DIR)),
+                exe_dir.clone(),
+            ],
+            manifest.join(DEV_NEMO_LIBRARY_DIR),
+        );
+        Self {
+            library_dir,
+            model: models.join(NemotronModelProfile::streaming_q8().filename),
         }
-        let manifest_models = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        if manifest_models.is_dir() {
-            return Self::from_dir(&manifest_models);
-        }
-        if let Ok(exe) = std::env::current_exe()
-            && let Some(parent) = exe.parent()
-        {
-            let sibling = parent.join("models");
-            if sibling.is_dir() {
-                return Self::from_dir(&sibling);
-            }
-        }
-        Self::from_dir(&manifest_models)
     }
 
     pub fn transcription_available(&self) -> bool {
-        #[cfg(not(feature = "whisper"))]
-        {
-            false
-        }
-        #[cfg(feature = "whisper")]
-        {
-            VadModelProfile::silero_v5()
-                .verify_and_read(&self.vad)
+        self.library_dir.join(LIBRARY_FILENAME).is_file()
+            && NemotronModelProfile::streaming_q8()
+                .verify(&self.model)
                 .is_ok()
-                && WhisperModelProfile::active().verify(&self.whisper).is_ok()
-        }
     }
 }
 
@@ -100,11 +97,11 @@ pub trait ProcessorFactory: Send + Sync {
 }
 
 pub struct NativeProcessorFactory {
-    paths: ModelPaths,
+    paths: NemotronPaths,
 }
 
 impl NativeProcessorFactory {
-    pub fn new(paths: ModelPaths) -> Self {
+    pub fn new(paths: NemotronPaths) -> Self {
         Self { paths }
     }
 }
@@ -122,30 +119,11 @@ impl ProcessorFactory for NativeProcessorFactory {
         if mode.requires_translation() {
             return Err(DomainError::TranslationUnavailable);
         }
-        #[cfg(not(feature = "whisper"))]
-        {
-            let _ = session_id;
-            Err(DomainError::TranscriptionUnavailable)
-        }
-        #[cfg(feature = "whisper")]
-        {
-            let vad = SileroVad::load(&self.paths.vad, &VadModelProfile::silero_v5())
-                .map_err(|_| DomainError::TranscriptionUnavailable)?;
-            let segmenter = SpeechSegmenter::new(SegmenterConfig::default())
-                .ok_or(DomainError::TranscriptionUnavailable)?;
-            let transcriber = super::whisper::NativeWhisperTranscriber::load(
-                &self.paths.whisper,
-                &WhisperModelProfile::active(),
-            )
-            .map_err(|_| DomainError::TranscriptionUnavailable)?;
-            Ok(Box::new(TranscriptionProcessor::new(
-                session_id,
-                mode,
-                vad,
-                segmenter,
-                transcriber,
-            )))
-        }
+        let recognizer =
+            NativeNemotron::load(&self.paths).map_err(|_| DomainError::TranscriptionUnavailable)?;
+        Ok(Box::new(StreamingProcessor::new(
+            session_id, mode, recognizer,
+        )))
     }
 }
 
@@ -186,7 +164,7 @@ impl CaptionSessionManager {
     pub fn default_native() -> Self {
         Self::new(
             Arc::new(WasapiLoopback),
-            Arc::new(NativeProcessorFactory::new(ModelPaths::resolve())),
+            Arc::new(NativeProcessorFactory::new(NemotronPaths::resolve())),
         )
     }
 
@@ -248,7 +226,7 @@ impl CaptionSessionManager {
             .start_lock
             .lock()
             .map_err(|_| CommandError::StateUnavailable)?;
-        // Whisper inference runs in native code and cannot be interrupted safely.
+        // NeMo inference runs in native code and cannot be interrupted safely.
         // Join the cancelled coordinator before loading another model/session.
         self.join_active();
         let cancel = Cancellation::default();
@@ -362,7 +340,6 @@ fn run_coordinator(
     let mut resampled_buf = Vec::new();
     let mut pending_samples = Vec::with_capacity(MAX_BLOCK_SAMPLES);
     let mut pending_discontinuity = false;
-    const MIN_SUBMIT_SAMPLES: usize = 4 * VAD_FRAME_SAMPLES; // 2048 samples (128 ms) per queue slot
 
     while !cancel.is_cancelled() && controller.is_session_active(session_id) {
         match capture.recv_timeout(Duration::from_millis(32)) {
@@ -390,7 +367,7 @@ fn run_coordinator(
                     break;
                 }
                 pending_samples.extend_from_slice(&resampled_buf);
-                while pending_samples.len() >= MIN_SUBMIT_SAMPLES {
+                while pending_samples.len() >= SUBMIT_BLOCK_SAMPLES {
                     let take = pending_samples.len().min(MAX_BLOCK_SAMPLES);
                     if pipeline
                         .submit(pipeline_id, &pending_samples[..take], pending_discontinuity)
@@ -411,8 +388,8 @@ fn run_coordinator(
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // Flush any buffered samples plus a silent VAD frame when WASAPI is idle so pending speech finalizes.
-                pending_samples.extend_from_slice(&[0.0_f32; VAD_FRAME_SAMPLES]);
+                // WASAPI sends nothing while the output is idle; silence lets NeMo end the utterance.
+                pending_samples.extend_from_slice(&[0.0_f32; IDLE_SILENCE_SAMPLES]);
                 let take = pending_samples.len().min(MAX_BLOCK_SAMPLES);
                 let _ =
                     pipeline.submit(pipeline_id, &pending_samples[..take], pending_discontinuity);
@@ -516,8 +493,7 @@ mod tests {
             capture::{AudioPacket, CaptureError, MockCaptureBackend},
             convert::{PcmEncoding, PcmFormat},
         },
-        pipeline::vad::MockVoiceActivityDetector,
-        transcription::whisper::MockSpeechTranscriber,
+        transcription::streaming::{MockStreamingRecognizer, SpeechResult},
     };
     use std::{
         sync::atomic::{AtomicBool, Ordering},
@@ -556,34 +532,21 @@ mod tests {
             session_id: u32,
             mode: CaptionMode,
         ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-            let mut vad = MockVoiceActivityDetector::new();
-            vad.expect_predict_frame()
-                .returning(|frame| Ok(if frame[0].abs() > 0.1 { 0.9 } else { 0.05 }));
-            vad.expect_reset().return_const(());
-
-            let mut transcriber = MockSpeechTranscriber::new();
-            transcriber
-                .expect_transcribe_raw()
-                .returning(|_| Ok("Live English caption".into()));
-
-            let segmenter = SpeechSegmenter::new(SegmenterConfig {
-                speech_threshold: 0.5,
-                silence_threshold: 0.35,
-                pre_roll_frames: 1,
-                min_speech_frames: 3,
-                hangover_frames: 2,
-                partial_interval_frames: 10,
-                max_segment_frames: 20,
-                overlap_frames: 2,
-            })
-            .unwrap();
-
-            Ok(Box::new(TranscriptionProcessor::new(
-                session_id,
-                mode,
-                vad,
-                segmenter,
-                transcriber,
+            // Speech yields a finished utterance; silence yields nothing.
+            let mut recognizer = MockStreamingRecognizer::new();
+            recognizer.expect_push().returning(|samples| {
+                let voiced = samples.iter().any(|sample| sample.abs() > 0.1);
+                Ok(voiced
+                    .then(|| SpeechResult {
+                        text: "Live English caption".into(),
+                        is_final: true,
+                    })
+                    .into_iter()
+                    .collect())
+            });
+            recognizer.expect_finish().returning(|| Ok(Vec::new()));
+            Ok(Box::new(StreamingProcessor::new(
+                session_id, mode, recognizer,
             )))
         }
     }
@@ -617,9 +580,9 @@ mod tests {
                         encoding: PcmEncoding::Float32,
                     }))
                     .unwrap();
-                // Send 4 frames (2048 samples) of voiced audio, then go idle so timeout flushes it.
-                let mut bytes = Vec::with_capacity(4 * VAD_FRAME_SAMPLES * 4);
-                for _ in 0..(4 * VAD_FRAME_SAMPLES) {
+                // One block of voiced audio, then idle so the timeout flushes it.
+                let mut bytes = Vec::with_capacity(SUBMIT_BLOCK_SAMPLES * 4);
+                for _ in 0..SUBMIT_BLOCK_SAMPLES {
                     bytes.extend_from_slice(&0.25_f32.to_le_bytes());
                 }
                 let _ = events.try_send(CaptureEvent::Packet(AudioPacket {

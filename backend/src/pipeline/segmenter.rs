@@ -23,8 +23,8 @@ impl Default for SegmenterConfig {
             min_speech_frames: 6,        // 192 ms minimum speech
             hangover_frames: 14,         // 448 ms pause keeps the full spoken line together
             partial_interval_frames: 12, // 384 ms smooth live partial updates
-            max_segment_frames: 188,     // 6.00 s window so natural speech pauses drive segment boundaries
-            overlap_frames: 6,           // 192 ms boundary overlap
+            max_segment_frames: 188, // 6.00 s window so natural speech pauses drive segment boundaries
+            overlap_frames: 6,       // 192 ms boundary overlap
         }
     }
 }

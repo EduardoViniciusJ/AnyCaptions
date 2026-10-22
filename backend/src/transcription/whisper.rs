@@ -113,9 +113,7 @@ impl SpeechTranscriber for NativeWhisperTranscriber {
         use whisper_rs::{FullParams, SamplingStrategy};
 
         // 1. Automatic peak normalization for quiet desktop/game/Discord audio + 200 ms trailing pad
-        let peak = samples
-            .iter()
-            .fold(0.0_f32, |max, &s| max.max(s.abs()));
+        let peak = samples.iter().fold(0.0_f32, |max, &s| max.max(s.abs()));
         let gain = if peak > 0.002 && peak < 0.80 {
             (0.85 / peak).min(8.0)
         } else {
