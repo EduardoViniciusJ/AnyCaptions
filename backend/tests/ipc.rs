@@ -46,11 +46,11 @@ fn local_overlay_can_query_and_change_mode_but_cannot_start_without_resources() 
     let changed = invoke(
         &window,
         "set_caption_mode",
-        json!({"request":{"mode":"en-pt"}}),
+        json!({"request":{"mode":"translate-pt-br"}}),
         url,
     )
     .unwrap();
-    assert_eq!(changed["mode"], "en-pt");
+    assert_eq!(changed["mode"], "translate-pt-br");
     assert_eq!(changed["sessionId"], 1);
     assert!(invoke(&window, "start_capture", json!({}), url).is_err());
     assert!(
@@ -66,7 +66,7 @@ fn local_overlay_can_query_and_change_mode_but_cannot_start_without_resources() 
         invoke(
             &window,
             "set_caption_mode",
-            json!({"request":{"mode":"auto"}}),
+            json!({"request":{"mode":"en-pt"}}),
             url
         )
         .is_err()

@@ -9,8 +9,11 @@ use std::{
 
 use libloading::Library;
 
-use super::streaming::{RecognizerError, SpeechResult, StreamingRecognizer};
-use crate::models::catalog::NEMOTRON_STREAMING_Q8;
+use super::{
+    streaming::{RecognizerError, SpeechResult, StreamingRecognizer},
+    tuning::RecognizerTuning,
+};
+use crate::{models::catalog::NEMOTRON_STREAMING_Q8, native::open_library};
 
 #[cfg(windows)]
 pub const LIBRARY_FILENAME: &str = "nemo_speech_asr_c.dll";
@@ -102,6 +105,8 @@ type NextFn = unsafe extern "C" fn(*mut Stream, *mut *mut NativeResult) -> i32;
 type CloseFn = unsafe extern "C" fn(*mut Stream);
 type IsFinalFn = unsafe extern "C" fn(*const NativeResult) -> bool;
 type TranscriptFn = unsafe extern "C" fn(*const NativeResult, usize) -> *const c_char;
+type LanguageCountFn = unsafe extern "C" fn(*const NativeResult, usize) -> usize;
+type LanguageCodeFn = unsafe extern "C" fn(*const NativeResult, usize, usize) -> *const c_char;
 type ResultDestroyFn = unsafe extern "C" fn(*mut NativeResult);
 
 /// Function pointers resolved from the library; valid while `_library` is loaded.
@@ -116,6 +121,8 @@ struct Api {
     close: CloseFn,
     is_final: IsFinalFn,
     transcript: TranscriptFn,
+    language_count: LanguageCountFn,
+    language_code: LanguageCodeFn,
     result_destroy: ResultDestroyFn,
     // Declared last so it is dropped after every handle that uses these pointers.
     _library: Library,
@@ -146,26 +153,13 @@ impl Api {
                 close: symbol!(b"nemo_speech_asr_stream_close\0"),
                 is_final: symbol!(b"nemo_speech_asr_result_is_final\0"),
                 transcript: symbol!(b"nemo_speech_asr_result_transcript\0"),
+                language_count: symbol!(b"nemo_speech_asr_result_language_count\0"),
+                language_code: symbol!(b"nemo_speech_asr_result_language_code\0"),
                 result_destroy: symbol!(b"nemo_speech_asr_result_destroy\0"),
                 _library: library,
             })
         }
     }
-}
-
-#[cfg(windows)]
-fn open_library(path: &Path) -> Result<Library, libloading::Error> {
-    use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WindowsLibrary};
-    // The library's dependencies (ggml*.dll, nemo_speech_asr.dll) live next to it, not next to
-    // the executable; this flag makes Windows resolve them from the library's own folder.
-    // SAFETY: loading runs the library's initializers; it is the pinned NeMo-Speech.cpp build.
-    unsafe { WindowsLibrary::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH).map(Into::into) }
-}
-
-#[cfg(not(windows))]
-fn open_library(path: &Path) -> Result<Library, libloading::Error> {
-    // SAFETY: loading runs the library's initializers; it is the pinned NeMo-Speech.cpp build.
-    unsafe { Library::new(path) }
 }
 
 /// Where the NeMo-Speech library and model are found.
@@ -188,10 +182,21 @@ unsafe impl Send for NativeNemotron {}
 
 impl NativeNemotron {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
-    pub fn load(paths: &NemotronPaths) -> Result<Self, RecognizerError> {
+    /// `forced_language` restricts recognition to one language from the model's prompt
+    /// dictionary (e.g. `en-US`); `None` keeps auto-detection. `tuning` adjusts
+    /// endpointing per caption mode (see `super::tuning`).
+    pub fn load(
+        paths: &NemotronPaths,
+        forced_language: Option<&str>,
+        tuning: RecognizerTuning,
+    ) -> Result<Self, RecognizerError> {
         NEMOTRON_STREAMING_Q8
             .verify(&paths.model)
             .map_err(|_| RecognizerError::ModelUnavailable)?;
+        let language = match forced_language {
+            Some(code) => CString::new(code).map_err(|_| RecognizerError::RecognitionFailed)?,
+            None => LANGUAGE_AUTO.to_owned(),
+        };
         let api = Api::load(&paths.library_dir)?;
         let model_path = paths
             .model
@@ -201,7 +206,7 @@ impl NativeNemotron {
 
         let mut recognizer = ptr::null_mut();
         for gpu in [0, -1] {
-            recognizer = create_recognizer(&api, &model_path, gpu);
+            recognizer = create_recognizer(&api, &model_path, gpu, tuning);
             if !recognizer.is_null() {
                 break;
             }
@@ -214,7 +219,7 @@ impl NativeNemotron {
         // fields are changed, and the strings outlive the call.
         let stream = unsafe {
             let mut options = (api.options_default)();
-            options.language_code = LANGUAGE_AUTO.as_ptr();
+            options.language_code = language.as_ptr();
             options.interim_results = true;
             options.enable_automatic_punctuation = true;
             let mut stream = ptr::null_mut();
@@ -244,7 +249,7 @@ impl NativeNemotron {
             if result.is_null() {
                 return Ok(results);
             }
-            // SAFETY: `result` is valid until destroyed; the transcript is copied first.
+            // SAFETY: `result` is valid until destroyed; transcript and language are copied first.
             unsafe {
                 let text = (self.api.transcript)(result, 0);
                 let text = if text.is_null() {
@@ -253,14 +258,28 @@ impl NativeNemotron {
                     CStr::from_ptr(text).to_string_lossy().into_owned()
                 };
                 let is_final = (self.api.is_final)(result);
+                let language = ((self.api.language_count)(result, 0) > 0)
+                    .then(|| (self.api.language_code)(result, 0, 0))
+                    .filter(|code| !code.is_null())
+                    .map(|code| CStr::from_ptr(code).to_string_lossy().into_owned())
+                    .filter(|code| !code.is_empty());
                 (self.api.result_destroy)(result);
-                results.push(SpeechResult { text, is_final });
+                results.push(SpeechResult {
+                    text,
+                    is_final,
+                    language,
+                });
             }
         }
     }
 }
 
-fn create_recognizer(api: &Api, model_path: &CStr, gpu: i32) -> *mut Recognizer {
+fn create_recognizer(
+    api: &Api,
+    model_path: &CStr,
+    gpu: i32,
+    tuning: RecognizerTuning,
+) -> *mut Recognizer {
     let backend = BackendConfig {
         size: size_of::<BackendConfig>(),
         gpu,
@@ -275,7 +294,7 @@ fn create_recognizer(api: &Api, model_path: &CStr, gpu: i32) -> *mut Recognizer 
         size: size_of::<EndpointingConfig>(),
         enable: true,
         vad_based: false,
-        stop_history_eou_ms: 0, // library default
+        stop_history_eou_ms: tuning.stop_history_eou_ms,
     };
     let config = RecognizerConfig {
         size: size_of::<RecognizerConfig>(),
@@ -355,7 +374,7 @@ mod tests {
             model: empty.join("missing.gguf"),
         };
         assert!(matches!(
-            NativeNemotron::load(&paths),
+            NativeNemotron::load(&paths, None, crate::transcription::tuning::TRANSCRIPTION),
             Err(RecognizerError::ModelUnavailable)
         ));
         assert!(matches!(
