@@ -22,6 +22,8 @@ audioadapter-buffers = "5.2.0"
 sha2 = "0.11.1"
 # Loads the NeMo-Speech C library at runtime, so the app still builds and starts without it.
 libloading = "0.8.9"
+# Detects the caption language locally when the recognizer does not tag it.
+whatlang = "0.18.0"
 
 [dev-dependencies]
 mockall = "0.15.0"

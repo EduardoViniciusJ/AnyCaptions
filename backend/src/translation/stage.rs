@@ -19,6 +19,96 @@ const QUEUE_CAPACITY: usize = 8;
 /// Captions without a detected language assume English, the dominant case.
 const DEFAULT_SOURCE: &str = "en-US";
 
+/// Minimum whatlang confidence to trust a detection; caption-sized sentences
+/// rarely reach the crate's own `is_reliable` bar, but 0.5 over the allowlist
+/// below proved accurate, and anything lower falls back to the session memory.
+const MIN_DETECTION_CONFIDENCE: f64 = 0.5;
+
+/// Detects the caption language from its text (locally, via whatlang) over the
+/// languages the translation model supports, mapped to the model's tags. The
+/// recognizer tags results with the spoken language only sporadically, so the
+/// text is the reliable signal.
+fn detect_source(text: &str) -> Option<&'static str> {
+    use whatlang::{Detector, Lang};
+    const LANGS: [Lang; 34] = [
+        Lang::Eng,
+        Lang::Por,
+        Lang::Spa,
+        Lang::Fra,
+        Lang::Deu,
+        Lang::Ita,
+        Lang::Nld,
+        Lang::Pol,
+        Lang::Ces,
+        Lang::Slk,
+        Lang::Slv,
+        Lang::Hrv,
+        Lang::Hun,
+        Lang::Ron,
+        Lang::Bul,
+        Lang::Ell,
+        Lang::Est,
+        Lang::Lit,
+        Lang::Lav,
+        Lang::Fin,
+        Lang::Swe,
+        Lang::Dan,
+        Lang::Nob,
+        Lang::Ara,
+        Lang::Hin,
+        Lang::Ind,
+        Lang::Jpn,
+        Lang::Kor,
+        Lang::Rus,
+        Lang::Tha,
+        Lang::Tur,
+        Lang::Ukr,
+        Lang::Vie,
+        Lang::Cmn,
+    ];
+    let info = Detector::with_allowlist(LANGS.to_vec()).detect(text)?;
+    if info.confidence() < MIN_DETECTION_CONFIDENCE {
+        return None;
+    }
+    Some(match info.lang() {
+        Lang::Eng => "en",
+        Lang::Por => "pt-br",
+        Lang::Spa => "es",
+        Lang::Fra => "fr",
+        Lang::Deu => "de",
+        Lang::Ita => "it",
+        Lang::Nld => "nl",
+        Lang::Pol => "pl",
+        Lang::Ces => "cs",
+        Lang::Slk => "sk",
+        Lang::Slv => "sl",
+        Lang::Hrv => "hr",
+        Lang::Hun => "hu",
+        Lang::Ron => "ro",
+        Lang::Bul => "bg",
+        Lang::Ell => "el",
+        Lang::Est => "et",
+        Lang::Lit => "lt",
+        Lang::Lav => "lv",
+        Lang::Fin => "fi",
+        Lang::Swe => "sv",
+        Lang::Dan => "da",
+        Lang::Nob => "no",
+        Lang::Ara => "ar",
+        Lang::Hin => "hi",
+        Lang::Ind => "id",
+        Lang::Jpn => "ja",
+        Lang::Kor => "ko",
+        Lang::Rus => "ru",
+        Lang::Tha => "th",
+        Lang::Tur => "tr",
+        Lang::Ukr => "uk",
+        Lang::Vie => "vi",
+        Lang::Cmn => "zh-cn",
+        _ => return None,
+    })
+}
+
 /// Splits a final caption into sentences. The recognizer punctuates, so sentence
 /// marks are reliable boundaries; decimals and abbreviations may split early,
 /// a small quality cost paid for much lower first-sentence latency.
@@ -77,8 +167,18 @@ impl TranslationStage {
         let worker = thread::Builder::new()
             .name("caption-translator".into())
             .spawn(move || {
+                // Source language: recognizer tag, else detected from the text,
+                // else the last one seen in the session, else English.
+                let mut last_language: Option<String> = None;
                 while let Ok(update) = receiver.recv() {
-                    let source = update.language.clone();
+                    let detected = update
+                        .language
+                        .clone()
+                        .or_else(|| detect_source(&update.text).map(str::to_owned));
+                    if detected.is_some() {
+                        last_language = detected.clone();
+                    }
+                    let source = detected.or_else(|| last_language.clone());
                     let source = source.as_deref().unwrap_or(DEFAULT_SOURCE);
                     // Long finals translate sentence by sentence, so the first
                     // part reaches the screen while the rest is still decoding.
@@ -198,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn translates_finals_in_order_with_detected_or_default_source() {
+    fn translates_finals_in_order_with_detected_or_last_known_source() {
         let mut translator = MockTranslator::new();
         translator
             .expect_translate()
@@ -206,7 +306,7 @@ mod tests {
                 target == "pt-br"
                     && match text {
                         "First" => source == "es-ES",
-                        "Second" => source == DEFAULT_SOURCE,
+                        "Second" => source == "es-ES", // sticky: last detected language
                         _ => false,
                     }
             })
@@ -337,6 +437,53 @@ mod tests {
         assert!(overloaded, "the bounded queue must refuse further captions");
         // Dropping the stage must not wait for the sleeping translator forever:
         // the worker drains remaining items only after the current call returns.
+    }
+
+    #[test]
+    fn detector_maps_supported_languages_and_ignores_short_or_odd_text() {
+        assert_eq!(
+            detect_source("Olá pessoal, hoje vamos conversar sobre o projeto novo."),
+            Some("pt-br")
+        );
+        assert_eq!(
+            detect_source("The update will be released next week for everyone."),
+            Some("en")
+        );
+        assert_eq!(detect_source(""), None);
+    }
+
+    #[test]
+    fn untagged_portuguese_finals_are_detected_from_the_text() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|_, source, target| source == "pt-br" && target == "pt-br")
+            .times(1)
+            .returning(|text, _, _| Ok(text.to_owned()));
+
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage =
+            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
+                match event {
+                    StageEvent::Translated(update) => {
+                        sink.lock().unwrap().push(update);
+                        true
+                    }
+                    StageEvent::Failed => false,
+                }
+            })
+            .unwrap();
+        // The recognizer did not tag the final; the text itself is Portuguese.
+        stage
+            .submit(final_update(
+                1,
+                "Olá pessoal, hoje vamos conversar sobre o projeto novo.",
+                None,
+            ))
+            .unwrap();
+        stage.finish();
+        assert_eq!(emitted.lock().unwrap().len(), 1);
     }
 
     #[test]
