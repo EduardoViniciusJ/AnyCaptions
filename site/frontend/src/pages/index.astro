@@ -1,0 +1,29 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CaptionPreview from '../components/CaptionPreview.astro';
+import { getLatestRelease } from '../lib/api/releases';
+const release = await getLatestRelease();
+const secureUrl = (url?: string | null) => url && URL.canParse(url) && new URL(url).protocol === 'https:' ? url : null;
+const installerUrl = secureUrl(release?.windowsInstallerUrl);
+---
+<Layout title="Legendas em tempo real" description="Transcreva o áudio de jogos, vídeos e chamadas no Windows com IA local e um overlay que acompanha você.">
+  <section class="hero container">
+    <h1>legendas em tempo real<br /><span>de qualquer áudio.</span></h1>
+    <p class="hero-copy">transcreva e traduza o áudio de jogos, vídeos e conversas.<br class="desktop-break" /> direto na sua tela, com o áudio no seu computador.</p>
+    <div class="hero-actions" id="download">
+      {installerUrl
+        ? <a class="button primary" href={installerUrl} download rel="noreferrer">baixar <span aria-hidden="true">↓</span></a>
+        : <button class="button disabled" type="button" disabled title="O instalador estará disponível após a publicação da versão.">baixar <span aria-hidden="true">↓</span></button>}
+    </div>
+  </section>
+  <CaptionPreview />
+
+  <section class="section-block"><div class="container faq-container">
+    <div class="section-label">algumas respostas, antes de começar</div>
+    <details class="faq-item"><summary>preciso de uma conta?</summary><p>o download e o uso das legendas são públicos. a conta do site é opcional.</p></details>
+    <details class="faq-item"><summary>meu áudio vai para a nuvem?</summary><p>o reconhecimento de voz roda no computador. o site não recebe o áudio nem o texto das suas legendas.</p></details>
+    <details class="faq-item"><summary>funciona durante um jogo?</summary><p>o overlay acompanha outras janelas e permite clicar através dele. use modo janela ou janela sem bordas; tela cheia exclusiva pode impedir a exibição.</p></details>
+    <details class="faq-item"><summary>posso traduzir para todos esses idiomas?</summary><p>o seletor mostra traduções de frases de exemplo para explorar a interface. a tradução no aplicativo será disponibilizada conforme a integração do modelo local estiver pronta.</p></details>
+    <details class="faq-item"><summary>como volto aos controles?</summary><p>use o atalho padrão Ctrl+Alt+L ou o ícone na bandeja do Windows para mostrar e editar a janela.</p></details>
+  </div></section>
+</Layout>

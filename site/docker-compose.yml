@@ -1,0 +1,49 @@
+services:
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      FrontendUrl: https://${SITE_DOMAIN:?Set SITE_DOMAIN}
+      TrustedProxyNetwork: ${TRUSTED_PROXY_NETWORK:?Set TRUSTED_PROXY_NETWORK}
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      Authentication__GitHub__ClientId: ${GITHUB_CLIENT_ID:-}
+      Authentication__GitHub__ClientSecret: ${GITHUB_CLIENT_SECRET:-}
+      Authentication__Discord__ClientId: ${DISCORD_CLIENT_ID:-}
+      Authentication__Discord__ClientSecret: ${DISCORD_CLIENT_SECRET:-}
+    networks: [dokploy-network]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.anycaptions-api.rule=Host(`${SITE_DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.anycaptions-api.entrypoints=websecure
+      - traefik.http.routers.anycaptions-api.tls=true
+      - traefik.http.routers.anycaptions-api.priority=100
+      - traefik.http.services.anycaptions-api.loadbalancer.server.port=8080
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        PUBLIC_API_URL: /api
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8080
+      DEMO_VIDEO_URL: ${DEMO_VIDEO_URL:-}
+    depends_on: [api]
+    networks: [dokploy-network]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.anycaptions-web.rule=Host(`${SITE_DOMAIN}`)
+      - traefik.http.routers.anycaptions-web.entrypoints=websecure
+      - traefik.http.routers.anycaptions-web.tls=true
+      - traefik.http.routers.anycaptions-web.priority=1
+      - traefik.http.services.anycaptions-web.loadbalancer.server.port=4321
+
+networks:
+  dokploy-network:
+    external: true

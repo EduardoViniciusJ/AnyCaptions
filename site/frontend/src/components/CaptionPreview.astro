@@ -1,0 +1,41 @@
+---
+const languages = [
+  { code: 'pt-BR', name: 'Português (Brasil)', flag: 'br' },
+  { code: 'en', name: 'English', flag: 'us' },
+  { code: 'es', name: 'Español', flag: 'es' },
+  { code: 'zh', name: '中文（简体）', flag: 'cn' },
+  { code: 'fr', name: 'Français', flag: 'fr' },
+  { code: 'ru', name: 'Русский', flag: 'ru' },
+];
+---
+<section class="preview-section container" aria-label="Prévia de transcrição e tradução">
+  <div class="caption-preview" data-caption-preview>
+    <div class="preview-topbar">
+      <div class="preview-window"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>anycaptions / transcrição ao vivo</span></div>
+      <div class="preview-controls">
+        <span class="source-language">áudio <strong>EN</strong></span><span class="language-arrow" aria-hidden="true">→</span>
+        <div class="language-picker">
+          <button type="button" class="language-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="preview-languages" aria-label="Idioma da legenda: English">
+            <img src="/flags/us.svg" width="20" height="14" alt="" /><span data-language-label>English</span><span class="picker-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="language-menu" id="preview-languages" role="listbox" aria-label="Idioma da legenda" hidden>
+            {languages.map(language => <button type="button" role="option" aria-selected={language.code === 'en'} data-language={language.code} data-language-name={language.name} data-language-flag={language.flag}>
+              <img src={`/flags/${language.flag}.svg`} width="20" height="14" alt="" /><span>{language.name}</span><span class="selection-mark" aria-hidden="true">✓</span>
+            </button>)}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="preview-stage">
+      <div class="audio-visual" aria-hidden="true">{Array.from({ length: 35 }, (_, index) => <span style={`--bar:${8 + ((index * 17 + 11) % 49)}px;--delay:${index * -0.08}s`}></span>)}</div>
+      <div class="preview-caption-area">
+        <p class="preview-caption" data-caption-text lang="en">The captions follow every word you hear.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<script>
+  import { setupCaptionPreview } from '../features/preview/caption-preview';
+  const preview = document.querySelector<HTMLElement>('[data-caption-preview]');
+  if (preview) setupCaptionPreview(preview);
+</script>

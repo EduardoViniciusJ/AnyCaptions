@@ -1,0 +1,17 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getReleases } from '../lib/api/releases';
+const releases = await getReleases();
+---
+<Layout title="Atualizações" description="Histórico de versões do AnyCaptions.">
+  <section class="container page-heading"><p class="kicker">O QUE MUDOU</p><h1>Atualizações</h1><p>Novidades e melhorias de cada versão publicada.</p></section>
+  <section class="container release-list" aria-label="Histórico de versões">
+    {releases.length === 0 && <div class="empty-state">Ainda não há versões publicadas.</div>}
+    {releases.map(release =>
+      <article class="release-entry">
+        <div><span class="platform-tag">VERSÃO</span><h2>{release.version}</h2><time datetime={release.publishedAt}>{new Date(release.publishedAt).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}</time></div>
+        <p>{release.releaseNotes}</p>
+      </article>
+    )}
+  </section>
+</Layout>
