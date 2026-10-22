@@ -9,7 +9,10 @@ use std::{
 
 use libloading::Library;
 
-use super::streaming::{RecognizerError, SpeechResult, StreamingRecognizer};
+use super::{
+    streaming::{RecognizerError, SpeechResult, StreamingRecognizer},
+    tuning::RecognizerTuning,
+};
 use crate::{models::catalog::NEMOTRON_STREAMING_Q8, native::open_library};
 
 #[cfg(windows)]
@@ -180,10 +183,12 @@ unsafe impl Send for NativeNemotron {}
 impl NativeNemotron {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
     /// `forced_language` restricts recognition to one language from the model's prompt
-    /// dictionary (e.g. `en-US`); `None` keeps auto-detection.
+    /// dictionary (e.g. `en-US`); `None` keeps auto-detection. `tuning` adjusts
+    /// endpointing per caption mode (see `super::tuning`).
     pub fn load(
         paths: &NemotronPaths,
         forced_language: Option<&str>,
+        tuning: RecognizerTuning,
     ) -> Result<Self, RecognizerError> {
         NEMOTRON_STREAMING_Q8
             .verify(&paths.model)
@@ -201,7 +206,7 @@ impl NativeNemotron {
 
         let mut recognizer = ptr::null_mut();
         for gpu in [0, -1] {
-            recognizer = create_recognizer(&api, &model_path, gpu);
+            recognizer = create_recognizer(&api, &model_path, gpu, tuning);
             if !recognizer.is_null() {
                 break;
             }
@@ -269,7 +274,12 @@ impl NativeNemotron {
     }
 }
 
-fn create_recognizer(api: &Api, model_path: &CStr, gpu: i32) -> *mut Recognizer {
+fn create_recognizer(
+    api: &Api,
+    model_path: &CStr,
+    gpu: i32,
+    tuning: RecognizerTuning,
+) -> *mut Recognizer {
     let backend = BackendConfig {
         size: size_of::<BackendConfig>(),
         gpu,
@@ -284,7 +294,7 @@ fn create_recognizer(api: &Api, model_path: &CStr, gpu: i32) -> *mut Recognizer 
         size: size_of::<EndpointingConfig>(),
         enable: true,
         vad_based: false,
-        stop_history_eou_ms: 0, // library default
+        stop_history_eou_ms: tuning.stop_history_eou_ms,
     };
     let config = RecognizerConfig {
         size: size_of::<RecognizerConfig>(),
@@ -364,7 +374,7 @@ mod tests {
             model: empty.join("missing.gguf"),
         };
         assert!(matches!(
-            NativeNemotron::load(&paths, None),
+            NativeNemotron::load(&paths, None, crate::transcription::tuning::TRANSCRIPTION),
             Err(RecognizerError::ModelUnavailable)
         ));
         assert!(matches!(

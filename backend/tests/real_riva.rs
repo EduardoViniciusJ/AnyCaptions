@@ -56,8 +56,12 @@ fn recognizer_and_translator_work_loaded_together() {
         streaming::StreamingRecognizer,
     };
 
-    let mut recognizer =
-        NativeNemotron::load(&NemotronPaths::resolve(), None).expect("ASR library and model");
+    let mut recognizer = NativeNemotron::load(
+        &NemotronPaths::resolve(),
+        None,
+        anycaptions_lib::transcription::tuning::TRANSLATION,
+    )
+    .expect("ASR library and model");
     let mut translator =
         NativeRivaTranslator::load(&anycaptions_lib::translation::riva::RivaPaths::resolve())
             .expect("NMT library and model");

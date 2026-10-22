@@ -102,7 +102,13 @@ impl ProcessorFactory for NativeProcessorFactory {
         }
         // Both modes transcribe with model auto-detection; forcing one language on the
         // recognizer stays available in `NativeNemotron::load` for future features.
-        let recognizer = NativeNemotron::load(&self.paths, None)
+        // Auto keeps the recognizer untouched; translate mode closes finals sooner.
+        let tuning = if mode.requires_translation() {
+            super::tuning::TRANSLATION
+        } else {
+            super::tuning::TRANSCRIPTION
+        };
+        let recognizer = NativeNemotron::load(&self.paths, None, tuning)
             .map_err(|_| DomainError::TranscriptionUnavailable)?;
         Ok(Box::new(StreamingProcessor::new(
             session_id, mode, recognizer,
