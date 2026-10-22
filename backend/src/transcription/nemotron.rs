@@ -9,12 +9,9 @@ use std::{
 
 use libloading::Library;
 
-use super::{
-    profile::{ModelProfileError, verify_model_file},
-    streaming::{RecognizerError, SpeechResult, StreamingRecognizer},
-};
+use super::streaming::{RecognizerError, SpeechResult, StreamingRecognizer};
+use crate::models::catalog::NEMOTRON_STREAMING_Q8;
 
-const MAX_NEMOTRON_MODEL_BYTES: u64 = 1024 * 1024 * 1024;
 #[cfg(windows)]
 pub const LIBRARY_FILENAME: &str = "nemo_speech_asr_c.dll";
 #[cfg(not(windows))]
@@ -23,33 +20,6 @@ pub const LIBRARY_FILENAME: &str = "libnemo_speech_asr_c.so";
 const MODEL_RATE: i32 = 0;
 // Model-based detection; the product shows English and Portuguese speech.
 const LANGUAGE_AUTO: &CStr = c"auto";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NemotronModelProfile {
-    pub id: &'static str,
-    pub filename: &'static str,
-    pub revision: &'static str,
-    pub source: &'static str,
-    pub license: &'static str,
-    pub sha256: &'static str,
-}
-
-impl NemotronModelProfile {
-    pub const fn streaming_q8() -> Self {
-        Self {
-            id: "nemotron-3.5-asr-streaming-0.6b-q8_0",
-            filename: "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
-            revision: "ea30d66debe3740a08b573244286791d423d6b3e",
-            source: "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b",
-            license: "OpenMDW-1.1",
-            sha256: "3fc991d3badad7277c11030a7519832cddaf2057aafed6d4b25147e953a070b1",
-        }
-    }
-
-    pub fn verify(&self, path: &Path) -> Result<(), ModelProfileError> {
-        verify_model_file(path, self.sha256, MAX_NEMOTRON_MODEL_BYTES)
-    }
-}
 
 // ---- C ABI mirror of asr.h. Field order and types must match the header exactly. ----
 
@@ -219,7 +189,7 @@ unsafe impl Send for NativeNemotron {}
 impl NativeNemotron {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
     pub fn load(paths: &NemotronPaths) -> Result<Self, RecognizerError> {
-        NemotronModelProfile::streaming_q8()
+        NEMOTRON_STREAMING_Q8
             .verify(&paths.model)
             .map_err(|_| RecognizerError::ModelUnavailable)?;
         let api = Api::load(&paths.library_dir)?;

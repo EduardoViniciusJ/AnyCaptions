@@ -16,11 +16,12 @@ use crate::{
     },
     domain::{AppSnapshot, CaptionMode, CaptureState, DomainError, Resources},
     ipc::{CAPTION_EVENT, CaptionUpdate, CommandError, Controller, StateEvents},
+    models::{catalog::NEMOTRON_STREAMING_Q8, models_root},
     pipeline::{AudioProcessor, Cancellation, MAX_BLOCK_SAMPLES, Pipeline},
 };
 
 use super::{
-    nemotron::{LIBRARY_FILENAME, NativeNemotron, NemotronModelProfile, NemotronPaths},
+    nemotron::{LIBRARY_FILENAME, NativeNemotron, NemotronPaths},
     streaming::StreamingProcessor,
 };
 
@@ -32,47 +33,31 @@ const SUBMIT_BLOCK_SAMPLES: usize = 2_048;
 const IDLE_SILENCE_SAMPLES: usize = 512;
 
 impl NemotronPaths {
-    /// Model: `ANYCAPTIONS_MODELS_DIR`, `backend/models`, or `models/` next to the executable.
+    /// Model: the catalog layout under the models root (see `crate::models::models_root`).
     /// Library: `ANYCAPTIONS_NEMO_DIR`, the local development build, or the executable folder.
     pub fn resolve() -> Self {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
         let exe_dir = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        let first_dir = |candidates: Vec<Option<PathBuf>>, fallback: PathBuf| {
-            candidates
-                .into_iter()
-                .flatten()
-                .find(|dir| dir.is_dir())
-                .unwrap_or(fallback)
-        };
-        let models = first_dir(
-            vec![
-                std::env::var_os("ANYCAPTIONS_MODELS_DIR").map(PathBuf::from),
-                Some(manifest.join("models")),
-                exe_dir.as_ref().map(|dir| dir.join("models")),
-            ],
-            manifest.join("models"),
-        );
-        let library_dir = first_dir(
-            vec![
-                std::env::var_os("ANYCAPTIONS_NEMO_DIR").map(PathBuf::from),
-                Some(manifest.join(DEV_NEMO_LIBRARY_DIR)),
-                exe_dir.clone(),
-            ],
-            manifest.join(DEV_NEMO_LIBRARY_DIR),
-        );
+        let library_dir = [
+            std::env::var_os("ANYCAPTIONS_NEMO_DIR").map(PathBuf::from),
+            Some(manifest.join(DEV_NEMO_LIBRARY_DIR)),
+            exe_dir,
+        ]
+        .into_iter()
+        .flatten()
+        .find(|dir| dir.is_dir())
+        .unwrap_or_else(|| manifest.join(DEV_NEMO_LIBRARY_DIR));
         Self {
             library_dir,
-            model: models.join(NemotronModelProfile::streaming_q8().filename),
+            model: NEMOTRON_STREAMING_Q8.path_in(&models_root()),
         }
     }
 
     pub fn transcription_available(&self) -> bool {
         self.library_dir.join(LIBRARY_FILENAME).is_file()
-            && NemotronModelProfile::streaming_q8()
-                .verify(&self.model)
-                .is_ok()
+            && NEMOTRON_STREAMING_Q8.verify(&self.model).is_ok()
     }
 }
 
