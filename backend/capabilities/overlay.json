@@ -15,6 +15,7 @@
     "allow-get-audio-outputs",
     "allow-select-audio-output",
     "allow-fit-settings-window",
+    "allow-fit-caption-window",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",

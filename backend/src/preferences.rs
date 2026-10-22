@@ -57,7 +57,7 @@ impl Default for Preferences {
 
 impl Preferences {
     fn valid(&self) -> bool {
-        (20..=56).contains(&self.appearance.font_size)
+        self.appearance.validate().is_ok()
             && crate::domain::AppState::normalize_shortcut(&self.shortcut).is_ok()
             && self
                 .output_id
@@ -208,7 +208,8 @@ mod tests {
         snapshot.mode = CaptionMode::EnPt;
         snapshot.appearance = Appearance {
             font_size: 44,
-            color: CaptionColor::Yellow,
+            color: CaptionColor::YELLOW,
+            partial_color: CaptionColor::DEFAULT_PARTIAL,
         };
         snapshot.shortcut = "Ctrl+Alt+K".into();
         store.sync_snapshot(&snapshot).unwrap();
@@ -226,6 +227,11 @@ mod tests {
         let restored = PreferenceStore::load(path.clone()).snapshot().unwrap();
         assert_eq!(restored.mode, CaptionMode::EnPt);
         assert_eq!(restored.appearance.font_size, 44);
+        assert_eq!(restored.appearance.color, CaptionColor::YELLOW);
+        assert_eq!(
+            restored.appearance.partial_color,
+            CaptionColor::DEFAULT_PARTIAL
+        );
         assert_eq!(restored.geometry.unwrap().relative_x, 0.3);
         fs::remove_file(path).unwrap();
         fs::remove_dir(dir).unwrap();

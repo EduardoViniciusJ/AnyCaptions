@@ -3,6 +3,10 @@ use tauri::{PhysicalPosition, PhysicalSize, WebviewWindowBuilder, webview::NewWi
 
 use crate::preferences::{PreferenceStore, SavedGeometry};
 
+const CAPTION_HEIGHT: f64 = 160.0;
+const SETTINGS_HEIGHT: f64 = 480.0;
+const MIN_WINDOW_WIDTH: f64 = 320.0;
+
 #[derive(Debug, PartialEq)]
 struct Geometry {
     x: f64,
@@ -29,11 +33,11 @@ fn restored_geometry<'a>(
         .iter()
         .find(|area| area.name == saved.monitor)
         .or_else(|| areas.first())?;
-    let width = saved.width.max(320.0_f64.min(area.width)).min(area.width);
-    let height = saved
-        .height
-        .max(360.0_f64.min(area.height))
-        .min(area.height);
+    let width = saved
+        .width
+        .max(MIN_WINDOW_WIDTH.min(area.width))
+        .min(area.width);
+    let height = CAPTION_HEIGHT.min(area.height);
     let x = area.x + (area.width - width).max(0.0) * saved.relative_x.clamp(0.0, 1.0);
     let y = area.y + (area.height - height).max(0.0) * saved.relative_y.clamp(0.0, 1.0);
     Some((
@@ -49,7 +53,7 @@ fn restored_geometry<'a>(
 
 fn initial_geometry(x: f64, y: f64, width: f64, height: f64) -> Geometry {
     let window_width = 800.0_f64.min(width);
-    let window_height = 360.0_f64.min(height);
+    let window_height = CAPTION_HEIGHT.min(height);
     let margin = 32.0_f64.min((height - window_height).max(0.0));
     Geometry {
         x: x + (width - window_width) / 2.0,
@@ -71,13 +75,53 @@ fn navigation_allowed(url: &tauri::Url) -> bool {
 
 fn settings_geometry(current: Geometry, area: &WorkArea) -> Geometry {
     let width = current.width.max(640.0).min(area.width);
-    let height = current.height.max(360.0).min(area.height);
+    let height = SETTINGS_HEIGHT.min(area.height);
     Geometry {
         x: current.x.clamp(area.x, area.x + area.width - width),
         y: current.y.clamp(area.y, area.y + area.height - height),
         width,
         height,
     }
+}
+
+fn caption_geometry(current: Geometry, area: &WorkArea) -> Geometry {
+    let width = current.width.min(area.width);
+    let height = CAPTION_HEIGHT.min(area.height);
+    Geometry {
+        x: current.x.clamp(area.x, area.x + area.width - width),
+        y: (current.y + current.height - height).clamp(area.y, area.y + area.height - height),
+        width,
+        height,
+    }
+}
+
+fn apply_geometry<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    geometry: &Geometry,
+    area: &WorkArea,
+) -> tauri::Result<()> {
+    let height = (geometry.height * area.scale).round() as u32;
+    let minimum = PhysicalSize::new(
+        (MIN_WINDOW_WIDTH.min(area.width) * area.scale).round() as u32,
+        height,
+    );
+    let maximum = PhysicalSize::new((area.width * area.scale).round() as u32, height);
+    let growing = height >= window.inner_size()?.height;
+    if growing {
+        window.set_max_size(Some(maximum))?;
+        window.set_min_size(Some(minimum))?;
+    } else {
+        window.set_min_size(Some(minimum))?;
+        window.set_max_size(Some(maximum))?;
+    }
+    window.set_size(PhysicalSize::new(
+        (geometry.width * area.scale).round() as u32,
+        height,
+    ))?;
+    window.set_position(PhysicalPosition::new(
+        (geometry.x * area.scale).round() as i32,
+        (geometry.y * area.scale).round() as i32,
+    ))
 }
 
 /// Grow only when settings need space, keeping the window on the current monitor.
@@ -107,14 +151,48 @@ pub fn fit_settings<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> taur
             height: area.height,
         },
     );
-    window.set_size(PhysicalSize::new(
-        (geometry.width * scale).round() as u32,
-        (geometry.height * scale).round() as u32,
-    ))?;
-    window.set_position(PhysicalPosition::new(
-        (geometry.x * scale).round() as i32,
-        (geometry.y * scale).round() as i32,
-    ))
+    apply_geometry(
+        window,
+        &geometry,
+        &WorkArea {
+            name: monitor.name().cloned(),
+            scale,
+            x: origin.x,
+            y: origin.y,
+            width: area.width,
+            height: area.height,
+        },
+    )
+}
+
+pub fn fit_caption<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
+    let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) else {
+        return Ok(());
+    };
+    let scale = monitor.scale_factor();
+    let work = monitor.work_area();
+    let origin = work.position.to_logical::<f64>(scale);
+    let size = work.size.to_logical::<f64>(scale);
+    let position = window.outer_position()?.to_logical::<f64>(scale);
+    let current = window.inner_size()?.to_logical::<f64>(scale);
+    let area = WorkArea {
+        name: monitor.name().cloned(),
+        scale,
+        x: origin.x,
+        y: origin.y,
+        width: size.width,
+        height: size.height,
+    };
+    let geometry = caption_geometry(
+        Geometry {
+            x: position.x,
+            y: position.y,
+            width: current.width,
+            height: current.height,
+        },
+        &area,
+    );
+    apply_geometry(window, &geometry, &area)
 }
 
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -170,18 +248,7 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     &areas[0],
                 )
             });
-        window.set_min_size(Some(PhysicalSize::new(
-            (320.0_f64.min(selected.width) * selected.scale).round() as u32,
-            (160.0_f64.min(selected.height) * selected.scale).round() as u32,
-        )))?;
-        window.set_size(PhysicalSize::new(
-            (geometry.width * selected.scale).round() as u32,
-            (geometry.height * selected.scale).round() as u32,
-        ))?;
-        window.set_position(PhysicalPosition::new(
-            (geometry.x * selected.scale).round() as i32,
-            (geometry.y * selected.scale).round() as i32,
-        ))?;
+        apply_geometry(&window, &geometry, selected)?;
     }
     window.set_ignore_cursor_events(false)?;
     window.show()?;
@@ -228,18 +295,18 @@ pub fn ensure_visible<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> ta
         let pos = area.position.to_logical::<f64>(scale);
         let size = area.size.to_logical::<f64>(scale);
         let geometry = initial_geometry(pos.x, pos.y, size.width, size.height);
-        window.set_min_size(Some(PhysicalSize::new(
-            (320.0_f64.min(size.width) * scale).round() as u32,
-            (160.0_f64.min(size.height) * scale).round() as u32,
-        )))?;
-        window.set_size(PhysicalSize::new(
-            (geometry.width * scale).round() as u32,
-            (geometry.height * scale).round() as u32,
-        ))?;
-        window.set_position(PhysicalPosition::new(
-            (geometry.x * scale).round() as i32,
-            (geometry.y * scale).round() as i32,
-        ))?;
+        apply_geometry(
+            window,
+            &geometry,
+            &WorkArea {
+                name: monitor.name().cloned(),
+                scale,
+                x: pos.x,
+                y: pos.y,
+                width: size.width,
+                height: size.height,
+            },
+        )?;
     }
     Ok(())
 }
@@ -274,9 +341,9 @@ mod tests {
             initial_geometry(0.0, 0.0, 1920.0, 1040.0),
             Geometry {
                 x: 560.0,
-                y: 648.0,
+                y: 848.0,
                 width: 800.0,
-                height: 360.0
+                height: 160.0
             }
         );
     }
@@ -287,9 +354,9 @@ mod tests {
             initial_geometry(-1280.0, 0.0, 1280.0, 720.0),
             Geometry {
                 x: -1040.0,
-                y: 328.0,
+                y: 528.0,
                 width: 800.0,
-                height: 360.0
+                height: 160.0
             }
         );
         assert_eq!(
@@ -326,9 +393,9 @@ mod tests {
             geometry,
             Geometry {
                 x: -640.0,
-                y: 360.0,
+                y: 240.0,
                 width: 640.0,
-                height: 360.0
+                height: 480.0
             }
         );
         let small = WorkArea {
@@ -348,6 +415,35 @@ mod tests {
         let geometry = initial_geometry(0.0, 0.0, 1920.0 / 1.5, 1080.0 / 1.5);
         assert_eq!(geometry.width, 800.0);
         assert!(geometry.y + geometry.height <= 720.0);
+    }
+
+    #[test]
+    fn caption_mode_restores_the_compact_height_and_keeps_the_bottom_edge() {
+        let area = WorkArea {
+            name: None,
+            scale: 1.0,
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1040.0,
+        };
+        assert_eq!(
+            caption_geometry(
+                Geometry {
+                    x: 400.0,
+                    y: 300.0,
+                    width: 900.0,
+                    height: 480.0,
+                },
+                &area,
+            ),
+            Geometry {
+                x: 400.0,
+                y: 620.0,
+                width: 900.0,
+                height: 160.0,
+            }
+        );
     }
 
     #[test]
@@ -372,9 +468,9 @@ mod tests {
             restored,
             Geometry {
                 x: 240.0,
-                y: 360.0,
+                y: 560.0,
                 width: 800.0,
-                height: 360.0
+                height: 160.0
             }
         );
     }
@@ -401,9 +497,9 @@ mod tests {
             restored,
             Geometry {
                 x: 140.0,
-                y: 360.0,
+                y: 560.0,
                 width: 1000.0,
-                height: 360.0
+                height: 160.0
             }
         );
     }

@@ -21,6 +21,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::get_audio_outputs,
             ipc::select_audio_output,
             ipc::fit_settings_window,
+            ipc::fit_caption_window,
         ])
 }
 
