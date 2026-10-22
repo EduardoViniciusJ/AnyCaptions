@@ -63,6 +63,53 @@ pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
     TargetLanguage("zh-tw"),
 ];
 
+/// A user-interface language, held as its tag (e.g. `pt-br`). Only tags from
+/// [`UI_LANGUAGES`] can be constructed; the frontend owns the actual strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UiLanguage(&'static str);
+
+impl UiLanguage {
+    pub const fn tag(self) -> &'static str {
+        self.0
+    }
+
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        UI_LANGUAGES
+            .iter()
+            .copied()
+            .find(|language| language.0.eq_ignore_ascii_case(tag))
+    }
+}
+
+impl Default for UiLanguage {
+    fn default() -> Self {
+        UiLanguage("pt-br")
+    }
+}
+
+/// Languages the interface is translated into.
+pub const UI_LANGUAGES: &[UiLanguage] = &[
+    UiLanguage("pt-br"),
+    UiLanguage("en"),
+    UiLanguage("es"),
+    UiLanguage("zh-cn"),
+    UiLanguage("fr"),
+    UiLanguage("ru"),
+];
+
+impl Serialize for UiLanguage {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for UiLanguage {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_tag(&value).ok_or_else(|| de::Error::custom("unsupported interface language"))
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CaptionMode {
     /// Transcribe whatever language is spoken.
@@ -275,6 +322,7 @@ pub enum DomainError {
 #[serde(rename_all = "camelCase")]
 pub struct AppSnapshot {
     pub revision: u32,
+    pub ui_language: UiLanguage,
     pub session_id: u32,
     pub mode: CaptionMode,
     pub capture: CaptureState,
@@ -291,6 +339,7 @@ pub struct AppSnapshot {
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     revision: u32,
+    ui_language: UiLanguage,
     session_id: u32,
     mode: CaptionMode,
     capture: CaptureState,
@@ -322,6 +371,7 @@ impl AppState {
     pub fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             revision: self.revision,
+            ui_language: self.ui_language,
             session_id: self.session_id,
             mode: self.mode,
             capture: self.capture,
@@ -361,6 +411,15 @@ impl AppState {
             self.mode = mode;
             self.capture = CaptureState::Stopped;
             self.error = None;
+        }
+        Ok(())
+    }
+
+    /// Changes the interface language; captions and capture are unaffected.
+    pub fn set_ui_language(&mut self, language: UiLanguage) -> Result<(), DomainError> {
+        if language != self.ui_language {
+            self.advance(false)?;
+            self.ui_language = language;
         }
         Ok(())
     }
@@ -639,6 +698,18 @@ mod tests {
             "translate-",
         ] {
             assert!(serde_json::from_value::<CaptionMode>(serde_json::json!(value)).is_err());
+        }
+        // Interface languages round-trip and unknown tags are rejected.
+        for language in UI_LANGUAGES {
+            let wire = serde_json::to_value(language).unwrap();
+            assert_eq!(wire, language.tag());
+            assert_eq!(
+                serde_json::from_value::<UiLanguage>(wire).unwrap(),
+                *language
+            );
+        }
+        for value in ["de", "pt", "", "xx"] {
+            assert!(serde_json::from_value::<UiLanguage>(serde_json::json!(value)).is_err());
         }
         // Every catalog target round-trips through the wire format.
         for target in TRANSLATION_TARGETS {

@@ -4,6 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tauri_build::AppManifest::new().commands(&[
             "get_state",
             "set_caption_mode",
+            "set_ui_language",
             "start_capture",
             "stop_capture",
             "set_appearance",
@@ -11,8 +12,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "set_shortcut",
             "get_audio_outputs",
             "select_audio_output",
-            "fit_settings_window",
-            "fit_caption_window",
         ]),
     ))?;
     Ok(())

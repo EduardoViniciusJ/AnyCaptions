@@ -3,7 +3,7 @@ import { createOverlay } from "./overlay";
 import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  return { revision: 0, sessionId: 0, mode: "auto", capture: "stopped", windowMode: "edit",
+  return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", capture: "stopped", windowMode: "edit",
     appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
@@ -22,6 +22,7 @@ function setup(initial = snapshot()) {
     subscribe: vi.fn(async (callback) => { listener = callback; return release; }),
     subscribeCaptions: vi.fn(async (callback) => { captionListener = callback; return vi.fn(); }),
     setMode: vi.fn(async (mode) => snapshot({ mode, revision: 1, sessionId: 1 })),
+    setUiLanguage: vi.fn(async (uiLanguage) => snapshot({ uiLanguage, revision: 1 })),
     setAppearance: vi.fn(async (appearance) => snapshot({ appearance, revision: 1 })),
     start: vi.fn().mockResolvedValue(snapshot({ capture: "preparing", revision: 1 })),
     stop: vi.fn().mockResolvedValue(snapshot({ revision: 1 })),
@@ -30,7 +31,6 @@ function setup(initial = snapshot()) {
     getAudioOutputs: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     selectAudioOutput: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
-    fitSettings: vi.fn().mockResolvedValue(undefined), fitCaption: vi.fn().mockResolvedValue(undefined),
   };
   const overlay = createOverlay(root, backend);
   disposers.push(overlay.dispose);
@@ -71,6 +71,25 @@ describe("overlay controls", () => {
     expect(portuguese.getAttribute("aria-disabled")).toBe("true");
     app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
     expect(portuguese.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("switches the interface language and applies the texts", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    expect(app.get("#capture-label").textContent).toBe("Iniciar");
+    app.emit(snapshot({ revision: 1, uiLanguage: "en" }));
+    expect(app.get("#capture-label").textContent).toBe("Start");
+    expect(app.get("#settings h2").textContent).toBe("Settings");
+    expect(app.get("#ui-language-label").textContent).toBe("English");
+    expect(app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]').textContent)
+      .toContain("Translate to JA");
+    // Escolher outro idioma no menu chama o backend.
+    app.get<HTMLButtonElement>("#ui-language").click();
+    app.get<HTMLLIElement>('#ui-language-menu li[data-value="ru"]').click();
+    await vi.waitFor(() => expect(app.backend.setUiLanguage).toHaveBeenCalledWith("ru"));
+    // Volta para o português para os demais testes.
+    app.emit(snapshot({ revision: 2, uiLanguage: "pt-br" }));
+    expect(app.get("#capture-label").textContent).toBe("Iniciar");
   });
 
   it("changes modes through Rust and ignores stale event revisions", async () => {
@@ -117,11 +136,9 @@ describe("overlay controls", () => {
     toggle.click();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(app.get("#settings").hidden).toBe(false);
-    expect(app.backend.fitSettings).toHaveBeenCalledOnce();
     app.get("#settings").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(app.get("#settings").hidden).toBe(true);
     expect(document.activeElement).toBe(toggle);
-    expect(app.backend.fitCaption).toHaveBeenCalledOnce();
   });
 
   it("previews appearance changes and applies them only after saving", async () => {
@@ -268,7 +285,7 @@ describe("overlay controls", () => {
     await vi.waitFor(() => expect(app.get("#error").hidden).toBe(false));
     expect(app.get("#error").querySelector("img")).toBeNull();
     expect(app.get("#error").textContent).toBe("Não foi possível concluir a ação. Tente novamente.");
-    expect(app.get("#language-label").textContent).toBe("Auto");
+    expect(app.get("#language-label").textContent).toBe("Automático");
   });
 
   it("releases listeners and ignores events after disposal", async () => {
@@ -276,7 +293,7 @@ describe("overlay controls", () => {
     await app.overlay.ready;
     app.overlay.dispose();
     app.emit(snapshot({ revision: 2, mode: "translate-pt-br" }));
-    expect(app.get("#language-label").textContent).toBe("Auto");
+    expect(app.get("#language-label").textContent).toBe("Automático");
     expect(app.release).toHaveBeenCalledOnce();
     app.get<HTMLButtonElement>("#close").click();
     expect(app.backend.close).not.toHaveBeenCalled();

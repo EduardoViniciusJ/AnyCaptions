@@ -4,7 +4,6 @@ use tauri::{PhysicalPosition, PhysicalSize, WebviewWindowBuilder, webview::NewWi
 use crate::preferences::{PreferenceStore, SavedGeometry};
 
 const CAPTION_HEIGHT: f64 = 160.0;
-const SETTINGS_HEIGHT: f64 = 480.0;
 const MIN_WINDOW_WIDTH: f64 = 320.0;
 
 #[derive(Debug, PartialEq)]
@@ -37,7 +36,10 @@ fn restored_geometry<'a>(
         .width
         .max(MIN_WINDOW_WIDTH.min(area.width))
         .min(area.width);
-    let height = CAPTION_HEIGHT.min(area.height);
+    let height = saved
+        .height
+        .max(CAPTION_HEIGHT.min(area.height))
+        .min(area.height);
     let x = area.x + (area.width - width).max(0.0) * saved.relative_x.clamp(0.0, 1.0);
     let y = area.y + (area.height - height).max(0.0) * saved.relative_y.clamp(0.0, 1.0);
     Some((
@@ -73,126 +75,30 @@ fn navigation_allowed(url: &tauri::Url) -> bool {
     packaged || development
 }
 
-fn settings_geometry(current: Geometry, area: &WorkArea) -> Geometry {
-    let width = current.width.max(640.0).min(area.width);
-    let height = SETTINGS_HEIGHT.min(area.height);
-    Geometry {
-        x: current.x.clamp(area.x, area.x + area.width - width),
-        y: current.y.clamp(area.y, area.y + area.height - height),
-        width,
-        height,
-    }
-}
-
-fn caption_geometry(current: Geometry, area: &WorkArea) -> Geometry {
-    let width = current.width.min(area.width);
-    let height = CAPTION_HEIGHT.min(area.height);
-    Geometry {
-        x: current.x.clamp(area.x, area.x + area.width - width),
-        y: (current.y + current.height - height).clamp(area.y, area.y + area.height - height),
-        width,
-        height,
-    }
-}
-
 fn apply_geometry<R: tauri::Runtime>(
     window: &tauri::WebviewWindow<R>,
     geometry: &Geometry,
     area: &WorkArea,
 ) -> tauri::Result<()> {
-    let height = (geometry.height * area.scale).round() as u32;
+    // Width and height stay free for the user to drag; only sane bounds apply.
     let minimum = PhysicalSize::new(
         (MIN_WINDOW_WIDTH.min(area.width) * area.scale).round() as u32,
-        height,
+        (CAPTION_HEIGHT.min(area.height) * area.scale).round() as u32,
     );
-    let maximum = PhysicalSize::new((area.width * area.scale).round() as u32, height);
-    let growing = height >= window.inner_size()?.height;
-    if growing {
-        window.set_max_size(Some(maximum))?;
-        window.set_min_size(Some(minimum))?;
-    } else {
-        window.set_min_size(Some(minimum))?;
-        window.set_max_size(Some(maximum))?;
-    }
+    let maximum = PhysicalSize::new(
+        (area.width * area.scale).round() as u32,
+        (area.height * area.scale).round() as u32,
+    );
+    window.set_min_size(Some(minimum))?;
+    window.set_max_size(Some(maximum))?;
     window.set_size(PhysicalSize::new(
         (geometry.width * area.scale).round() as u32,
-        height,
+        (geometry.height * area.scale).round() as u32,
     ))?;
     window.set_position(PhysicalPosition::new(
         (geometry.x * area.scale).round() as i32,
         (geometry.y * area.scale).round() as i32,
     ))
-}
-
-/// Grow only when settings need space, keeping the window on the current monitor.
-pub fn fit_settings<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
-    let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) else {
-        return Ok(());
-    };
-    let scale = monitor.scale_factor();
-    let work = monitor.work_area();
-    let origin = work.position.to_logical::<f64>(scale);
-    let area = work.size.to_logical::<f64>(scale);
-    let position = window.outer_position()?.to_logical::<f64>(scale);
-    let size = window.inner_size()?.to_logical::<f64>(scale);
-    let geometry = settings_geometry(
-        Geometry {
-            x: position.x,
-            y: position.y,
-            width: size.width,
-            height: size.height,
-        },
-        &WorkArea {
-            name: monitor.name().cloned(),
-            scale,
-            x: origin.x,
-            y: origin.y,
-            width: area.width,
-            height: area.height,
-        },
-    );
-    apply_geometry(
-        window,
-        &geometry,
-        &WorkArea {
-            name: monitor.name().cloned(),
-            scale,
-            x: origin.x,
-            y: origin.y,
-            width: area.width,
-            height: area.height,
-        },
-    )
-}
-
-pub fn fit_caption<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
-    let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) else {
-        return Ok(());
-    };
-    let scale = monitor.scale_factor();
-    let work = monitor.work_area();
-    let origin = work.position.to_logical::<f64>(scale);
-    let size = work.size.to_logical::<f64>(scale);
-    let position = window.outer_position()?.to_logical::<f64>(scale);
-    let current = window.inner_size()?.to_logical::<f64>(scale);
-    let area = WorkArea {
-        name: monitor.name().cloned(),
-        scale,
-        x: origin.x,
-        y: origin.y,
-        width: size.width,
-        height: size.height,
-    };
-    let geometry = caption_geometry(
-        Geometry {
-            x: position.x,
-            y: position.y,
-            width: current.width,
-            height: current.height,
-        },
-        &area,
-    );
-    apply_geometry(window, &geometry, &area)
 }
 
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -371,79 +277,10 @@ mod tests {
     }
 
     #[test]
-    fn settings_expand_a_small_window_without_leaving_the_monitor() {
-        let area = WorkArea {
-            name: None,
-            scale: 1.5,
-            x: -1280.0,
-            y: 0.0,
-            width: 1280.0,
-            height: 720.0,
-        };
-        let geometry = settings_geometry(
-            Geometry {
-                x: -400.0,
-                y: 550.0,
-                width: 320.0,
-                height: 160.0,
-            },
-            &area,
-        );
-        assert_eq!(
-            geometry,
-            Geometry {
-                x: -640.0,
-                y: 240.0,
-                width: 640.0,
-                height: 480.0
-            }
-        );
-        let small = WorkArea {
-            width: 300.0,
-            height: 240.0,
-            ..area
-        };
-        let fitted = settings_geometry(geometry, &small);
-        assert_eq!(fitted.width, 300.0);
-        assert_eq!(fitted.height, 240.0);
-        assert_eq!(fitted.x, small.x);
-        assert_eq!(fitted.y, small.y);
-    }
-
-    #[test]
     fn dimensions_are_logical_at_high_dpi() {
         let geometry = initial_geometry(0.0, 0.0, 1920.0 / 1.5, 1080.0 / 1.5);
         assert_eq!(geometry.width, 800.0);
         assert!(geometry.y + geometry.height <= 720.0);
-    }
-
-    #[test]
-    fn caption_mode_restores_the_compact_height_and_keeps_the_bottom_edge() {
-        let area = WorkArea {
-            name: None,
-            scale: 1.0,
-            x: 0.0,
-            y: 0.0,
-            width: 1920.0,
-            height: 1040.0,
-        };
-        assert_eq!(
-            caption_geometry(
-                Geometry {
-                    x: 400.0,
-                    y: 300.0,
-                    width: 900.0,
-                    height: 480.0,
-                },
-                &area,
-            ),
-            Geometry {
-                x: 400.0,
-                y: 620.0,
-                width: 900.0,
-                height: 160.0,
-            }
-        );
     }
 
     #[test]
@@ -468,9 +305,9 @@ mod tests {
             restored,
             Geometry {
                 x: 240.0,
-                y: 560.0,
+                y: 500.0,
                 width: 800.0,
-                height: 160.0
+                height: 220.0
             }
         );
     }
@@ -497,9 +334,9 @@ mod tests {
             restored,
             Geometry {
                 x: 140.0,
-                y: 560.0,
+                y: 470.0,
                 width: 1000.0,
-                height: 160.0
+                height: 250.0
             }
         );
     }

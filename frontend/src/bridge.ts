@@ -5,6 +5,7 @@ import type { Backend, AppSnapshot, CaptionUpdate } from "./contracts";
 export const backend: Backend = {
   getState: () => invoke("get_state"),
   setMode: (mode) => invoke("set_caption_mode", { request: { mode } }),
+  setUiLanguage: (language) => invoke("set_ui_language", { request: { language } }),
   start: () => invoke("start_capture"),
   stop: () => invoke("stop_capture"),
   setAppearance: (request) => invoke("set_appearance", { request }),
@@ -15,7 +16,5 @@ export const backend: Backend = {
   subscribe: (listener) => getCurrentWindow().listen<AppSnapshot>("app-state-changed", (event) => listener(event.payload)),
   subscribeCaptions: (listener) => getCurrentWindow().listen<CaptionUpdate>("caption-updated", (event) => listener(event.payload)),
   resize: (direction) => getCurrentWindow().startResizeDragging(direction),
-  fitSettings: () => invoke("fit_settings_window"),
-  fitCaption: () => invoke("fit_caption_window"),
   close: () => getCurrentWindow().close(),
 };

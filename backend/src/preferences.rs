@@ -37,6 +37,8 @@ impl SavedGeometry {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Preferences {
     pub mode: CaptionMode,
+    #[serde(default)]
+    pub ui_language: crate::domain::UiLanguage,
     pub output_id: Option<String>,
     pub appearance: Appearance,
     pub shortcut: String,
@@ -47,6 +49,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             mode: CaptionMode::Auto,
+            ui_language: crate::domain::UiLanguage::default(),
             output_id: None,
             appearance: Appearance::default(),
             shortcut: "Ctrl+Alt+L".into(),
@@ -99,6 +102,7 @@ impl PreferenceStore {
             .lock()
             .map_err(|_| io::Error::other("Preferences unavailable"))?;
         state.mode = snapshot.mode;
+        state.ui_language = snapshot.ui_language;
         state.appearance = snapshot.appearance;
         state.shortcut = snapshot.shortcut.clone();
         self.write(&state)
