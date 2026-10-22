@@ -2,16 +2,18 @@
 
 use super::{ModelKind, ModelProfile};
 
-pub const RIVA_TRANSLATE_Q8: ModelProfile = ModelProfile {
+pub const RIVA_TRANSLATE_Q4: ModelProfile = ModelProfile {
     kind: ModelKind::Translation,
-    id: "riva-translate-4b-instruct-v2-q8_0",
+    id: "riva-translate-4b-instruct-v2-q4_k_m",
     directory: "riva-translate-4b-instruct-v2",
-    filename: "riva-translate-4b-instruct-v2.q8_0.gguf",
+    filename: "riva-translate-4b-instruct-v2.q4_k_m.gguf",
     revision: "040d958b128018ff0bed2542a7b51005e9ea563c",
     source: "https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2",
     license: "NVIDIA Open Model License",
-    // SHA-256 of the GGUF converted locally from the revision above (convert_model.py, q8_0).
-    sha256: "fb820b6e092e0dde67c53d8d5cface294c47fd67d0462df6a58f6e2bda9f2772",
+    // SHA-256 of the GGUF requantized locally (llama-quantize --allow-requantize)
+    // from the q8_0 conversion of the revision above. Regenerate straight from
+    // the checkpoint before distributing.
+    sha256: "decbb4d3b12f756cc384833fceeac10bf7699cd2286dc3e18a746af9c8df71af",
     max_bytes: 5 * 1024 * 1024 * 1024,
 };
 

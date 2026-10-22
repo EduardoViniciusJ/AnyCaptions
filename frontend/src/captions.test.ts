@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  CaptionPresenter,
-  readingTime,
-} from "./captions";
+import { CaptionPresenter } from "./captions";
 import { captionWords, paginateCaption } from "./caption-layout";
 import type { CaptionUpdate } from "./contracts";
 
@@ -53,19 +50,21 @@ describe("caption presenter", () => {
     expect(presenter.accept(update(1, 3, "Late", true))).toBe(false);
   });
 
-  it("shows only final Portuguese segments in order and keeps the last block visible", () => {
+  it("shows translated segments immediately, without pacing or queues", () => {
     const { element, presenter, update } = setup("translate-pt");
-    expect(presenter.accept(update(1, 1, "English partial", false))).toBe(false);
-    expect(element.textContent).toBe("");
-    expect(presenter.accept(update(2, 1, "Segunda frase", true))).toBe(true);
-    expect(element.textContent).toBe("");
-    expect(presenter.accept(update(1, 1, "Primeira frase", true))).toBe(true);
-    expect(element.textContent).toBe("Primeira frase");
-    vi.advanceTimersByTime(readingTime("Primeira frase"));
-    expect(element.textContent).toBe("Segunda frase");
-    vi.advanceTimersByTime(readingTime("Segunda frase") * 2);
+    // A primeira sentença traduzida aparece na hora, como revisão parcial.
+    expect(presenter.accept(update(1, 1, "Primeira frase.", false))).toBe(true);
+    expect(element.textContent).toBe("Primeira frase.");
+    expect(presenter.accept(update(1, 2, "Primeira frase. Segunda frase.", true))).toBe(true);
+    expect(element.textContent).toBe("Primeira frase. Segunda frase.");
+    // Um segmento novo entra imediatamente, sem esperar tempo de leitura.
+    expect(presenter.accept(update(2, 1, "Terceira frase.", true))).toBe(true);
+    expect(element.textContent).toBe("Primeira frase. Segunda frase. Terceira frase.");
+    // Revisões atrasadas de segmentos antigos são ignoradas.
+    expect(presenter.accept(update(1, 3, "Atrasada", true))).toBe(false);
+    vi.advanceTimersByTime(60_000);
     expect(element.hidden).toBe(false);
-    expect(element.textContent).toBe("Segunda frase");
+    expect(element.textContent).toBe("Primeira frase. Segunda frase. Terceira frase.");
   });
 
   it("fills the measured width before starting a new block without repeating old words", () => {
@@ -116,8 +115,6 @@ describe("caption presenter", () => {
     expect(blocks.length).toBeGreaterThan(1);
     expect(blocks.join(" ").replace(/\s+/gu, " ")).toBe(text);
     expect(blocks.every((block) => captionWords(block).length <= 6)).toBe(true);
-    expect(readingTime("oi")).toBe(2000);
-    expect(readingTime("x".repeat(200))).toBe(7000);
   });
 
   it("keeps a final caption through silence and appends the next segment while it fits", () => {

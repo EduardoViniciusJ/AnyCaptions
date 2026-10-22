@@ -50,7 +50,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
         <div class="controls" aria-label="Controles de legendas">
           <button id="capture" class="capture-button" disabled>${icons.play}<span id="capture-label">Iniciar</span></button>
           <label class="sr-only" for="language">Idioma das legendas</label>
-          <select id="language" disabled><option value="auto" title="Detecta o idioma e transcreve no idioma falado">Auto</option><option value="only-en" title="Transcreve apenas falas em inglês">Somente EN</option><option value="only-pt" title="Transcreve apenas falas em português">Somente PT</option><option value="translate-pt" title="Transcreve qualquer idioma e traduz para português">Traduzir para PT</option></select>
+          <select id="language" disabled><option value="auto" title="Detecta o idioma e transcreve no idioma falado">Auto</option><option value="translate-pt" title="Transcreve qualquer idioma e traduz para português">Traduzir para PT</option></select>
           <button id="settings-toggle" class="icon-button" aria-label="Configurações" title="Configurações" aria-expanded="false" aria-controls="settings">${icons.settings}</button>
           <button id="lock" class="icon-button" aria-label="Bloquear janela" title="O bloqueio precisa de atalho ou bandeja disponíveis" disabled>${icons.lock}</button>
         </div>
@@ -248,6 +248,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (state.windowMode === "locked" && !settings.hidden) toggleSettings(false);
     language.value = state.mode;
     language.disabled = busy;
+    const translateOption = language.querySelector<HTMLOptionElement>('option[value="translate-pt"]');
+    if (translateOption) {
+      translateOption.disabled = !state.resources.translation;
+      translateOption.title = state.resources.translation
+        ? "Transcreve qualquer idioma e traduz para português"
+        : "Tradução indisponível: instale o modelo de tradução";
+    }
     if (settings.hidden || !appearanceDraft) setAppearanceInputs(state.appearance);
     applyAppearance(caption, state.appearance);
     applyAppearance(live, state.appearance);

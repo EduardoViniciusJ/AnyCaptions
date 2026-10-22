@@ -11,7 +11,7 @@ use std::{
 use libloading::Library;
 
 use super::{Translator, TranslatorError};
-use crate::{models::catalog::RIVA_TRANSLATE_Q8, native::open_library};
+use crate::{models::catalog::RIVA_TRANSLATE_Q4, native::open_library};
 
 #[cfg(windows)]
 pub const LIBRARY_FILENAME: &str = "nemo_speech_nmt_c.dll";
@@ -135,13 +135,13 @@ impl RivaPaths {
     pub fn resolve() -> Self {
         Self {
             library_dir: crate::native::nemo_library_dir(),
-            model: RIVA_TRANSLATE_Q8.path_in(&crate::models::models_root()),
+            model: RIVA_TRANSLATE_Q4.path_in(&crate::models::models_root()),
         }
     }
 
     pub fn translation_available(&self) -> bool {
         self.library_dir.join(LIBRARY_FILENAME).is_file()
-            && RIVA_TRANSLATE_Q8.verify(&self.model).is_ok()
+            && RIVA_TRANSLATE_Q4.verify(&self.model).is_ok()
     }
 }
 
@@ -159,7 +159,7 @@ unsafe impl Send for NativeRivaTranslator {}
 impl NativeRivaTranslator {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
     pub fn load(paths: &RivaPaths) -> Result<Self, TranslatorError> {
-        RIVA_TRANSLATE_Q8
+        RIVA_TRANSLATE_Q4
             .verify(&paths.model)
             .map_err(|_| TranslatorError::ModelUnavailable)?;
         let api = Api::load(&paths.library_dir)?;
@@ -169,6 +169,8 @@ impl NativeRivaTranslator {
             .and_then(|path| CString::new(path).ok())
             .ok_or(TranslatorError::ModelUnavailable)?;
 
+        let load_start = std::time::Instant::now();
+        let mut device = "cpu";
         let mut translator = ptr::null_mut();
         for gpu in [0, -1] {
             let backend = BackendConfig {
@@ -191,6 +193,7 @@ impl NativeRivaTranslator {
             // library defaults.
             let status = unsafe { (api.create)(&config, &mut translator) };
             if status == STATUS_OK && !translator.is_null() {
+                device = if gpu >= 0 { "gpu" } else { "cpu" };
                 break;
             }
             translator = ptr::null_mut();
@@ -198,7 +201,19 @@ impl NativeRivaTranslator {
         if translator.is_null() {
             return Err(TranslatorError::ModelUnavailable);
         }
-        Ok(Self { translator, api })
+        // Timing and device only; translated content never reaches logs. A CPU
+        // fall back here explains a slow translation session.
+        eprintln!(
+            "[nmt] device={device} load_ms={}",
+            load_start.elapsed().as_millis()
+        );
+        let mut loaded = Self { translator, api };
+        // One tiny fixed warmup call compiles the GPU pipelines now, so the first
+        // real caption is not ~1 s slower than the rest.
+        let warmup = std::time::Instant::now();
+        let _ = loaded.translate_tag("Ok.", ENGLISH, "pt-br");
+        eprintln!("[nmt] warmup_ms={}", warmup.elapsed().as_millis());
+        Ok(loaded)
     }
 
     fn translate_tag(

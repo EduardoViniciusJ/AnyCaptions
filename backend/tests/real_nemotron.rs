@@ -3,6 +3,7 @@ use std::{path::PathBuf, time::Instant};
 use anycaptions_lib::transcription::{
     nemotron::{NativeNemotron, NemotronPaths},
     streaming::{SpeechResult, StreamingRecognizer},
+    tuning::TRANSCRIPTION,
 };
 
 // Same block size the capture coordinator submits (128 ms at 16 kHz).
@@ -48,7 +49,8 @@ fn nemotron_streams_real_english_speech_and_ignores_silence() {
     let jfk = jfk_samples();
 
     let load = Instant::now();
-    let mut recognizer = NativeNemotron::load(&paths, None).expect("NeMo library and model");
+    let mut recognizer =
+        NativeNemotron::load(&paths, None, TRANSCRIPTION).expect("NeMo library and model");
     let load_ms = load.elapsed().as_millis();
 
     let decode = Instant::now();
@@ -86,7 +88,8 @@ fn nemotron_streams_real_english_speech_and_ignores_silence() {
         "no final should carry a wrong language: {detected:?}"
     );
 
-    let mut quiet = NativeNemotron::load(&paths, None).expect("NeMo library and model");
+    let mut quiet =
+        NativeNemotron::load(&paths, None, TRANSCRIPTION).expect("NeMo library and model");
     let silence = stream(&mut quiet, &vec![0.0; 16_000 * 3]);
     assert!(silence.iter().all(|result| result.text.trim().is_empty()));
 }
@@ -98,7 +101,8 @@ fn forcing_a_language_keeps_matches_and_filters_other_speech() {
     let jfk = jfk_samples();
 
     // English speech with English forced is kept.
-    let mut english = NativeNemotron::load(&paths, Some("en-US")).expect("NeMo library and model");
+    let mut english =
+        NativeNemotron::load(&paths, Some("en-US"), TRANSCRIPTION).expect("NeMo library and model");
     let kept = final_text(&stream(&mut english, &jfk));
     assert!(
         kept.contains("ask not what your country can do for you"),
@@ -107,7 +111,7 @@ fn forcing_a_language_keeps_matches_and_filters_other_speech() {
 
     // English speech with Portuguese forced is filtered out, not mistranscribed.
     let mut portuguese =
-        NativeNemotron::load(&paths, Some("pt-BR")).expect("NeMo library and model");
+        NativeNemotron::load(&paths, Some("pt-BR"), TRANSCRIPTION).expect("NeMo library and model");
     let filtered = final_text(&stream(&mut portuguese, &jfk));
     assert!(filtered.trim().is_empty(), "{filtered}");
 }
