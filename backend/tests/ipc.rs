@@ -57,7 +57,7 @@ fn local_overlay_can_query_and_change_mode_but_cannot_start_without_resources() 
         invoke(
             &window,
             "set_appearance",
-            json!({"request":{"fontSize":100,"color":"white"}}),
+            json!({"request":{"fontSize":100,"color":"#FFFFFF","partialColor":"#B8B8B8"}}),
             url
         )
         .is_err()
@@ -97,6 +97,15 @@ fn acl_denies_other_windows_remote_origins_and_ungranted_commands() {
         invoke(
             &other,
             "fit_settings_window",
+            json!({}),
+            "http://tauri.localhost"
+        )
+        .is_err()
+    );
+    assert!(
+        invoke(
+            &other,
+            "fit_caption_window",
             json!({}),
             "http://tauri.localhost"
         )

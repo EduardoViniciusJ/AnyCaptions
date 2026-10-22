@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -58,12 +58,55 @@ pub enum WindowMode {
     Locked,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum CaptionColor {
-    #[default]
-    White,
-    Yellow,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptionColor(u32);
+
+impl CaptionColor {
+    pub const WHITE: Self = Self(0xFFFFFF);
+    pub const YELLOW: Self = Self(0xFFE600);
+    pub const DEFAULT_PARTIAL: Self = Self(0xB8B8B8);
+
+    fn parse(value: &str) -> Option<Self> {
+        let value = match value {
+            "white" => "#FFFFFF",
+            "yellow" => "#FFE600",
+            value => value,
+        };
+        let hex = value.strip_prefix('#')?;
+        (hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .then(|| u32::from_str_radix(hex, 16).ok())
+            .flatten()
+            .map(Self)
+    }
+
+    fn as_hex(self) -> String {
+        format!("#{:06X}", self.0)
+    }
+}
+
+impl Default for CaptionColor {
+    fn default() -> Self {
+        Self::WHITE
+    }
+}
+
+impl Serialize for CaptionColor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.as_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for CaptionColor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).ok_or_else(|| de::Error::custom("expected a #RRGGBB caption color"))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,20 +114,27 @@ pub enum CaptionColor {
 pub struct Appearance {
     pub font_size: u16,
     pub color: CaptionColor,
+    #[serde(default = "default_partial_color")]
+    pub partial_color: CaptionColor,
+}
+
+fn default_partial_color() -> CaptionColor {
+    CaptionColor::DEFAULT_PARTIAL
 }
 
 impl Default for Appearance {
     fn default() -> Self {
         Self {
             font_size: 32,
-            color: CaptionColor::White,
+            color: CaptionColor::WHITE,
+            partial_color: CaptionColor::DEFAULT_PARTIAL,
         }
     }
 }
 
 impl Appearance {
-    fn validate(self) -> Result<(), DomainError> {
-        if !(20..=56).contains(&self.font_size) {
+    pub(crate) fn validate(self) -> Result<(), DomainError> {
+        if !(16..=80).contains(&self.font_size) {
             return Err(DomainError::InvalidFontSize);
         }
         Ok(())
@@ -413,21 +463,23 @@ mod tests {
     #[test]
     fn appearance_is_validated_before_mutation() {
         let mut state = AppState::default();
-        for size in [0, 19, 57, u16::MAX] {
+        for size in [0, 15, 81, u16::MAX] {
             assert_eq!(
                 state.set_appearance(Appearance {
                     font_size: size,
-                    color: CaptionColor::Yellow
+                    color: CaptionColor::YELLOW,
+                    partial_color: CaptionColor::DEFAULT_PARTIAL,
                 }),
                 Err(DomainError::InvalidFontSize)
             );
         }
         assert_eq!(state.snapshot().appearance, Appearance::default());
-        for size in [20, 56] {
+        for size in [16, 80] {
             state
                 .set_appearance(Appearance {
                     font_size: size,
-                    color: CaptionColor::Yellow,
+                    color: CaptionColor::YELLOW,
+                    partial_color: CaptionColor::DEFAULT_PARTIAL,
                 })
                 .unwrap();
             assert_eq!(state.snapshot().appearance.font_size, size);
@@ -487,19 +539,35 @@ mod tests {
         }
         assert!(
             serde_json::from_value::<Appearance>(
-                serde_json::json!({"fontSize":32,"color":"white","path":"secret"})
+                serde_json::json!({"fontSize":32,"color":"#FFFFFF","partialColor":"#B8B8B8","path":"secret"})
             )
             .is_err()
         );
         assert!(
             serde_json::from_value::<Appearance>(
-                serde_json::json!({"fontSize":-1,"color":"white"})
+                serde_json::json!({"fontSize":-1,"color":"#FFFFFF","partialColor":"#B8B8B8"})
             )
             .is_err()
         );
         assert!(
-            serde_json::from_value::<Appearance>(serde_json::json!({"fontSize":32,"color":"red"}))
-                .is_err()
+            serde_json::from_value::<Appearance>(
+                serde_json::json!({"fontSize":32,"color":"red","partialColor":"#B8B8B8"})
+            )
+            .is_err()
         );
+        assert!(
+            serde_json::from_value::<Appearance>(
+                serde_json::json!({"fontSize":32,"color":"#FFFFFF","partialColor":"#12GG00"})
+            )
+            .is_err()
+        );
+
+        let legacy = serde_json::from_value::<Appearance>(
+            serde_json::json!({"fontSize":32,"color":"yellow"}),
+        )
+        .unwrap();
+        assert_eq!(legacy.color, CaptionColor::YELLOW);
+        assert_eq!(legacy.partial_color, CaptionColor::DEFAULT_PARTIAL);
+        assert_eq!(serde_json::to_value(legacy).unwrap()["color"], "#FFE600");
     }
 }

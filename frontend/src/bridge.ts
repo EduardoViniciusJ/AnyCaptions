@@ -14,7 +14,8 @@ export const backend: Backend = {
   selectAudioOutput: (id) => invoke("select_audio_output", { request: { id } }),
   subscribe: (listener) => getCurrentWindow().listen<AppSnapshot>("app-state-changed", (event) => listener(event.payload)),
   subscribeCaptions: (listener) => getCurrentWindow().listen<CaptionUpdate>("caption-updated", (event) => listener(event.payload)),
-  resize: () => getCurrentWindow().startResizeDragging("SouthEast"),
+  resize: (direction) => getCurrentWindow().startResizeDragging(direction),
   fitSettings: () => invoke("fit_settings_window"),
+  fitCaption: () => invoke("fit_caption_window"),
   close: () => getCurrentWindow().close(),
 };

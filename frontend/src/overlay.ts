@@ -1,4 +1,17 @@
-import type { AppSnapshot, Appearance, Backend, CaptionColor, CaptionMode, OutputSelection } from "./contracts";
+import type {
+  AppSnapshot,
+  Appearance,
+  Backend,
+  CaptionMode,
+  HorizontalResizeDirection,
+  OutputSelection,
+} from "./contracts";
+import {
+  DEFAULT_APPEARANCE,
+  applyAppearance,
+  normalizeCaptionColor,
+  sameAppearance,
+} from "./appearance";
 import { CaptionPresenter } from "./captions";
 
 const icons = {
@@ -14,7 +27,7 @@ function errorMessage(error: unknown): string {
     case "capture-unavailable": return "A captura de áudio ainda está indisponível.";
     case "transcription-unavailable": return "O modelo de transcrição está indisponível.";
     case "translation-unavailable": return "O modelo de tradução está indisponível.";
-    case "invalid-font-size": return "Escolha um tamanho de texto entre 20 e 56 px.";
+    case "invalid-font-size": return "Escolha um tamanho de texto entre 16 e 80 px.";
     case "recovery-unavailable": return "O bloqueio precisa de um atalho ou da bandeja para recuperar os controles.";
     case "invalid-shortcut": return "Use um atalho no formato Ctrl+Alt+L (letra de A a Z).";
     case "shortcut-unavailable": return "Esse atalho está em uso. Escolha outra letra; a bandeja continua disponível.";
@@ -45,18 +58,32 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       </header>
       <div class="content">
         <div id="preview" class="preview">
-          <p id="caption-preview" class="caption" data-color="white">Suas legendas aparecem aqui</p>
-          <p id="caption-live" class="caption" data-color="white" aria-live="polite" hidden></p>
+          <p id="caption-preview" class="caption">Suas legendas aparecem aqui</p>
+          <p id="caption-live" class="caption" aria-live="polite" hidden></p>
         </div>
         <section id="settings" class="settings" aria-label="Configurações de legendas" hidden>
           <h2>Configurações</h2>
-          <div class="setting-row">
-            <label for="font-size">Tamanho <output id="font-value" for="font-size">32 px</output></label>
-            <input id="font-size" type="range" min="20" max="56" value="32" step="1" disabled />
+          <div class="appearance-preview" aria-label="Prévia da legenda">
+            <span class="appearance-preview-label">Prévia</span>
+            <p id="appearance-preview" class="caption appearance-example"><span>Texto </span><span class="caption-partial">fica claro</span></p>
           </div>
           <div class="setting-row">
-            <label for="font-color">Cor do texto</label>
-            <select id="font-color" disabled><option value="white">Branco</option><option value="yellow">Amarelo</option></select>
+            <label for="font-size">Tamanho <output id="font-value" for="font-size">32 px</output></label>
+            <input id="font-size" type="range" min="16" max="80" value="32" step="1" disabled />
+          </div>
+          <div class="setting-row">
+            <label for="font-color">Texto confirmado</label>
+            <div class="color-control">
+              <input id="font-color" type="color" value="#ffffff" aria-label="Escolher cor do texto confirmado" disabled />
+              <input id="font-color-value" type="text" value="#FFFFFF" maxlength="7" spellcheck="false" aria-label="Cor hexadecimal do texto confirmado" disabled />
+            </div>
+          </div>
+          <div class="setting-row">
+            <label for="partial-color">Palavras recentes</label>
+            <div class="color-control">
+              <input id="partial-color" type="color" value="#b8b8b8" aria-label="Escolher cor das palavras recentes" disabled />
+              <input id="partial-color-value" type="text" value="#B8B8B8" maxlength="7" spellcheck="false" aria-label="Cor hexadecimal das palavras recentes" disabled />
+            </div>
           </div>
           <div class="setting-row">
             <label for="audio-output">Saída de áudio</label>
@@ -70,12 +97,16 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             </div>
           </div>
           <p id="shortcut-status" class="muted" hidden></p>
-          <div class="settings-footer"><button id="save-settings" type="button">Salvar</button></div>
+          <div class="settings-footer">
+            <button id="reset-appearance" class="secondary-button" type="button">Restaurar padrão</button>
+            <button id="save-settings" type="button">Salvar</button>
+          </div>
         </section>
       </div>
       <p id="notice" class="notice" role="status" hidden></p>
       <p id="error" class="error" role="alert" hidden></p>
-      <div id="resize" class="resize-grip" title="Arraste para redimensionar" aria-hidden="true"></div>
+      <div id="resize-left" class="resize-grip resize-grip-left" title="Arraste para ajustar a largura" aria-hidden="true"></div>
+      <div id="resize-right" class="resize-grip resize-grip-right" title="Arraste para ajustar a largura" aria-hidden="true"></div>
     </section>`;
 
   function get<T extends HTMLElement>(selector: string): T {
@@ -98,7 +129,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     caption.hidden = !live.hidden || state?.capture !== "stopped";
   });
   const fontSize = get<HTMLInputElement>("#font-size");
-  const fontColor = get<HTMLSelectElement>("#font-color");
+  const fontColor = get<HTMLInputElement>("#font-color");
+  const fontColorValue = get<HTMLInputElement>("#font-color-value");
+  const partialColor = get<HTMLInputElement>("#partial-color");
+  const partialColorValue = get<HTMLInputElement>("#partial-color-value");
+  const appearancePreview = get<HTMLElement>("#appearance-preview");
+  const resetAppearance = get<HTMLButtonElement>("#reset-appearance");
+  const saveSettings = get<HTMLButtonElement>("#save-settings");
   const shortcut = get<HTMLInputElement>("#shortcut");
   const audioOutput = get<HTMLSelectElement>("#audio-output");
   const error = get<HTMLElement>("#error");
@@ -113,6 +150,61 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   let previousCapture: AppSnapshot["capture"] | undefined;
   let outputs: OutputSelection | undefined;
   let outputBusy = false;
+  let appearanceDraft: Appearance | undefined;
+  let appearanceValid = true;
+
+  function setAppearanceInputs(appearance: Appearance) {
+    appearanceDraft = { ...appearance };
+    fontSize.value = String(appearance.fontSize);
+    fontColor.value = appearance.color;
+    fontColorValue.value = appearance.color;
+    partialColor.value = appearance.partialColor;
+    partialColorValue.value = appearance.partialColor;
+    fontColorValue.removeAttribute("aria-invalid");
+    partialColorValue.removeAttribute("aria-invalid");
+    appearanceValid = true;
+    renderAppearancePreview();
+    updateSettingsAvailability();
+  }
+
+  function renderAppearancePreview() {
+    if (!appearanceDraft) return;
+    applyAppearance(appearancePreview, appearanceDraft);
+    get("#font-value").textContent = `${appearanceDraft.fontSize} px`;
+  }
+
+  function updateSettingsAvailability() {
+    const disabled = busy || outputBusy;
+    fontSize.disabled = disabled;
+    fontColor.disabled = disabled;
+    fontColorValue.disabled = disabled;
+    partialColor.disabled = disabled;
+    partialColorValue.disabled = disabled;
+    resetAppearance.disabled = disabled;
+    shortcut.disabled = disabled;
+    saveSettings.disabled = disabled || !appearanceValid;
+  }
+
+  function updateDraftColor(
+    value: string,
+    textInput: HTMLInputElement,
+    picker: HTMLInputElement,
+    key: "color" | "partialColor",
+  ) {
+    const normalized = normalizeCaptionColor(value);
+    if (normalized) textInput.removeAttribute("aria-invalid");
+    else textInput.setAttribute("aria-invalid", "true");
+    appearanceValid = Boolean(
+      normalizeCaptionColor(fontColorValue.value)
+      && normalizeCaptionColor(partialColorValue.value),
+    );
+    if (normalized && appearanceDraft) {
+      appearanceDraft[key] = normalized;
+      picker.value = normalized;
+      renderAppearancePreview();
+    }
+    updateSettingsAvailability();
+  }
 
   function renderOutputs() {
     audioOutput.replaceChildren();
@@ -134,7 +226,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       ? "A saída salva foi desconectada. Escolha outra saída."
       : outputs.devices.length ? "" : "Nenhuma saída de reprodução ativa.";
     outputStatus.hidden = !outputStatus.textContent;
-    get<HTMLButtonElement>("#save-settings").disabled = busy || outputBusy;
+    updateSettingsAvailability();
   }
 
   async function loadOutputs() {
@@ -156,15 +248,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (state.windowMode === "locked" && !settings.hidden) toggleSettings(false);
     language.value = state.mode;
     language.disabled = busy;
-    fontSize.value = String(state.appearance.fontSize);
-    fontColor.value = state.appearance.color;
-    fontSize.disabled = fontColor.disabled = busy;
-    caption.style.setProperty("--caption-base-size", `${state.appearance.fontSize}px`);
-    live.style.setProperty("--caption-base-size", `${state.appearance.fontSize}px`);
-    caption.dataset.color = state.appearance.color;
-    live.dataset.color = state.appearance.color;
+    if (settings.hidden || !appearanceDraft) setAppearanceInputs(state.appearance);
+    applyAppearance(caption, state.appearance);
+    applyAppearance(live, state.appearance);
     presenter.refreshLayout();
-    get("#font-value").textContent = `${state.appearance.fontSize} px`;
     const stopped = state.capture === "stopped";
     capture.disabled = busy || (stopped && !state.canStart);
     captureLabel.textContent = stopped ? "Iniciar" : "Parar";
@@ -172,7 +259,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     lock.disabled = busy || !state.canLock;
     lock.title = state.canLock ? "Bloquear janela" : "O bloqueio precisa de atalho ou bandeja disponíveis";
     if (document.activeElement !== shortcut) shortcut.value = state.shortcut;
-    shortcut.disabled = get<HTMLButtonElement>("#save-settings").disabled = busy;
+    updateSettingsAvailability();
     const shortcutStatus = get("#shortcut-status");
     shortcutStatus.textContent = state.shortcutAvailable
       ? "" : "Atalho indisponível; use a bandeja para recuperar os controles.";
@@ -213,6 +300,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   }
 
   function toggleSettings(open: boolean) {
+    if (open && state) setAppearanceInputs(state.appearance);
     settings.hidden = !open;
     preview.hidden = open;
     overlay.dataset.settings = open ? "open" : "closed";
@@ -220,6 +308,9 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (open) {
       void backend.fitSettings().catch(() => showError("Não foi possível ampliar as configurações."));
       void loadOutputs();
+    } else {
+      appearanceDraft = undefined;
+      void backend.fitCaption().catch(() => showError("Não foi possível restaurar a altura das legendas."));
     }
   }
 
@@ -230,9 +321,20 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     void perform(() => backend.setMode(mode));
   }, options);
   lock.addEventListener("click", () => void perform(() => backend.setWindowMode("locked")), options);
-  get("#save-settings").addEventListener("click", () => {
-    const requested = shortcut.value;
-    void perform(() => requested === state?.shortcut ? backend.getState() : backend.setShortcut(requested))
+  saveSettings.addEventListener("click", () => {
+    if (!state || !appearanceDraft || !appearanceValid) return;
+    const requestedAppearance = { ...appearanceDraft };
+    const requestedShortcut = shortcut.value;
+    void perform(async () => {
+      let saved = state!;
+      if (!sameAppearance(requestedAppearance, saved.appearance)) {
+        saved = await backend.setAppearance(requestedAppearance);
+      }
+      if (requestedShortcut !== saved.shortcut) {
+        saved = await backend.setShortcut(requestedShortcut);
+      }
+      return saved;
+    })
       .then((saved) => {
         if (saved && !disposed) { toggleSettings(false); settingsToggle.focus(); }
       });
@@ -254,18 +356,43 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !settings.hidden) { toggleSettings(false); settingsToggle.focus(); }
   }, options);
-  function saveAppearance() {
-    const appearance: Appearance = { fontSize: Number(fontSize.value), color: fontColor.value as CaptionColor };
-    void perform(() => backend.setAppearance(appearance));
-  }
-  fontSize.addEventListener("change", saveAppearance, options);
-  fontColor.addEventListener("change", saveAppearance, options);
-  window.addEventListener("resize", () => presenter.refreshLayout(), options);
-  get("#resize").addEventListener("mousedown", (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    void backend.resize().catch(() => showError("Não foi possível redimensionar a janela."));
+  fontSize.addEventListener("input", () => {
+    if (!appearanceDraft) return;
+    appearanceDraft.fontSize = Number(fontSize.value);
+    renderAppearancePreview();
   }, options);
+  fontColor.addEventListener("input", () => {
+    fontColorValue.value = fontColor.value.toUpperCase();
+    updateDraftColor(fontColor.value, fontColorValue, fontColor, "color");
+  }, options);
+  partialColor.addEventListener("input", () => {
+    partialColorValue.value = partialColor.value.toUpperCase();
+    updateDraftColor(partialColor.value, partialColorValue, partialColor, "partialColor");
+  }, options);
+  fontColorValue.addEventListener("input", () => {
+    updateDraftColor(fontColorValue.value, fontColorValue, fontColor, "color");
+  }, options);
+  partialColorValue.addEventListener("input", () => {
+    updateDraftColor(partialColorValue.value, partialColorValue, partialColor, "partialColor");
+  }, options);
+  for (const input of [fontColorValue, partialColorValue]) {
+    input.addEventListener("blur", () => {
+      const normalized = normalizeCaptionColor(input.value);
+      if (normalized) input.value = normalized;
+    }, options);
+  }
+  resetAppearance.addEventListener("click", () => setAppearanceInputs(DEFAULT_APPEARANCE), options);
+  window.addEventListener("resize", () => presenter.refreshLayout(), options);
+  for (const [selector, direction] of [
+    ["#resize-left", "West"],
+    ["#resize-right", "East"],
+  ] as const satisfies readonly [string, HorizontalResizeDirection][]) {
+    get(selector).addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      void backend.resize(direction).catch(() => showError("Não foi possível ajustar a largura da janela."));
+    }, options);
+  }
   get("#close").addEventListener("click", () => {
     if (!hasExplainedClose) {
       hasExplainedClose = true;

@@ -4,7 +4,7 @@ import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return { revision: 0, sessionId: 0, mode: "en-en", capture: "stopped", windowMode: "edit",
-    appearance: { fontSize: 32, color: "white" }, resources: { audioCapture: false, transcription: false, translation: false },
+    appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
 
@@ -30,7 +30,7 @@ function setup(initial = snapshot()) {
     getAudioOutputs: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     selectAudioOutput: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
-    fitSettings: vi.fn().mockResolvedValue(undefined),
+    fitSettings: vi.fn().mockResolvedValue(undefined), fitCaption: vi.fn().mockResolvedValue(undefined),
   };
   const overlay = createOverlay(root, backend);
   disposers.push(overlay.dispose);
@@ -104,16 +104,56 @@ describe("overlay controls", () => {
     app.get("#settings").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(app.get("#settings").hidden).toBe(true);
     expect(document.activeElement).toBe(toggle);
+    expect(app.backend.fitCaption).toHaveBeenCalledOnce();
   });
 
-  it("applies only the appearance confirmed by the backend", async () => {
+  it("previews appearance changes and applies them only after saving", async () => {
     const app = setup();
     await app.overlay.ready;
-    const color = app.get<HTMLSelectElement>("#font-color");
-    color.value = "yellow";
-    color.dispatchEvent(new Event("change"));
-    await vi.waitFor(() => expect(app.get("#caption-preview").dataset.color).toBe("yellow"));
-    expect(app.backend.setAppearance).toHaveBeenCalledWith({ fontSize: 32, color: "yellow" });
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    const size = app.get<HTMLInputElement>("#font-size");
+    const color = app.get<HTMLInputElement>("#font-color");
+    const partialColor = app.get<HTMLInputElement>("#partial-color");
+    size.value = "72";
+    size.dispatchEvent(new Event("input"));
+    color.value = "#33ccff";
+    color.dispatchEvent(new Event("input"));
+    partialColor.value = "#ff77aa";
+    partialColor.dispatchEvent(new Event("input"));
+
+    const preview = app.get<HTMLElement>("#appearance-preview");
+    expect(preview.style.getPropertyValue("--caption-base-size")).toBe("72px");
+    expect(preview.style.getPropertyValue("--caption-color")).toBe("#33CCFF");
+    expect(preview.style.getPropertyValue("--caption-partial-color")).toBe("#FF77AA");
+    expect(app.backend.setAppearance).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false));
+    app.get<HTMLButtonElement>("#save-settings").click();
+    await vi.waitFor(() => expect(app.backend.setAppearance).toHaveBeenCalledWith({
+      fontSize: 72,
+      color: "#33CCFF",
+      partialColor: "#FF77AA",
+    }));
+    await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
+    expect(app.get<HTMLElement>("#caption-preview").style.getPropertyValue("--caption-color")).toBe("#33CCFF");
+  });
+
+  it("validates hexadecimal colors and restores the visual defaults", async () => {
+    const app = setup(snapshot({ appearance: { fontSize: 48, color: "#00FF00", partialColor: "#0088FF" } }));
+    await app.overlay.ready;
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    const value = app.get<HTMLInputElement>("#font-color-value");
+    value.value = "blue";
+    value.dispatchEvent(new Event("input"));
+    expect(value.getAttribute("aria-invalid")).toBe("true");
+    expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(true);
+
+    await vi.waitFor(() => expect(app.get<HTMLButtonElement>("#reset-appearance").disabled).toBe(false));
+    app.get<HTMLButtonElement>("#reset-appearance").click();
+    expect(app.get<HTMLInputElement>("#font-size").value).toBe("32");
+    expect(value.value).toBe("#FFFFFF");
+    expect(app.get<HTMLInputElement>("#partial-color-value").value).toBe("#B8B8B8");
+    expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false);
   });
 
   it("sends the edited shortcut and reflects a locked state from Rust", async () => {
@@ -226,12 +266,14 @@ describe("overlay controls", () => {
     expect(app.backend.close).not.toHaveBeenCalled();
   });
 
-  it("starts native resizing only for the primary mouse button", async () => {
+  it("starts horizontal resizing from either side only with the primary mouse button", async () => {
     const app = setup();
     await app.overlay.ready;
-    app.get("#resize").dispatchEvent(new MouseEvent("mousedown", { button: 2 }));
+    app.get("#resize-right").dispatchEvent(new MouseEvent("mousedown", { button: 2 }));
     expect(app.backend.resize).not.toHaveBeenCalled();
-    app.get("#resize").dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
-    expect(app.backend.resize).toHaveBeenCalledOnce();
+    app.get("#resize-left").dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
+    app.get("#resize-right").dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
+    expect(app.backend.resize).toHaveBeenNthCalledWith(1, "West");
+    expect(app.backend.resize).toHaveBeenNthCalledWith(2, "East");
   });
 });
