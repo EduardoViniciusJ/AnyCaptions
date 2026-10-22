@@ -1,55 +1,29 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import CaptionPreview from '../components/CaptionPreview.astro';
 import { getLatestRelease } from '../lib/api/releases';
-
 const release = await getLatestRelease();
-const demoVideo = process.env.DEMO_VIDEO_URL;
-const installerUrl = release && URL.canParse(release.windowsInstallerUrl)
-  && new URL(release.windowsInstallerUrl).protocol === 'https:'
-  ? release.windowsInstallerUrl : null;
+const secureUrl = (url?: string | null) => url && URL.canParse(url) && new URL(url).protocol === 'https:' ? url : null;
+const installerUrl = secureUrl(release?.windowsInstallerUrl);
 ---
-<Layout title="Legendas ao vivo" description="Legendas locais em tempo real para o áudio do Windows.">
+<Layout title="Legendas em tempo real" description="Transcreva o áudio de jogos, vídeos e chamadas no Windows com IA local e um overlay que acompanha você.">
   <section class="hero container">
-    <div class="eyebrow"><span class="live-dot"></span> Áudio local. Texto na sua tela.</div>
-    <h1>Legendas ao vivo para qualquer áudio do Windows.<br /><span>100% locais e privadas.</span></h1>
-    <p class="hero-copy">Legendas ao vivo para qualquer áudio do Windows, processadas no seu computador. Assista, jogue e converse com mais clareza.</p>
-    <div class="hero-actions">
+    <h1>legendas em tempo real<br /><span>de qualquer áudio.</span></h1>
+    <p class="hero-copy">transcreva e traduza o áudio de jogos, vídeos e conversas.<br class="desktop-break" /> direto na sua tela, com o áudio no seu computador.</p>
+    <div class="hero-actions" id="download">
       {installerUrl
-        ? <a class="button primary" href={installerUrl} rel="noopener noreferrer">Baixar para Windows <span aria-hidden="true">↗</span></a>
-        : <span class="button disabled">Download em breve</span>}
-      <a class="button secondary" href="#como-funciona">Ver como funciona</a>
-    </div>
-    {release && <p class="release-meta">Versão {release.version} · Download público, sem conta</p>}
-  </section>
-
-  <section id="como-funciona" class="container showcase" aria-label="Demonstração">
-    <div class="showcase-bar"><span class="window-dots">● ● ●</span><span>AnyCaptions — ao vivo</span><span class="showcase-status">LOCAL</span></div>
-    {demoVideo
-      ? <video class="demo-video" autoplay loop muted playsinline controls aria-label="Demonstração do AnyCaptions"><source src={demoVideo} type="video/mp4" /></video>
-      : <div class="demo-placeholder"><div class="demo-subtitle"><span>A legenda acompanha</span> o que está sendo dito agora.</div><p>Prévia da experiência · vídeo em preparação</p></div>}
-  </section>
-
-  <section id="recursos" class="container section-space">
-    <div class="section-intro"><p class="kicker">FEITO PARA O SEU DIA A DIA</p><h2>Acompanhe o áudio sem interromper o que importa.</h2></div>
-    <div class="feature-grid">
-      <article class="feature-card"><span class="feature-symbol">◌</span><h3>Privado por padrão</h3><p>O áudio é transcrito localmente. Sua fala não é enviada ao site.</p></article>
-      <article class="feature-card"><span class="feature-symbol">≈</span><h3>Nemotron Streaming</h3><p>As legendas são atualizadas enquanto o áudio continua, sem esperar o fim da frase.</p></article>
-      <article class="feature-card"><span class="feature-symbol">▣</span><h3>Sobre qualquer janela</h3><p>Overlay ajustável com modo de clique através para jogos, vídeos e chamadas.</p></article>
-      <article class="feature-card"><span class="feature-symbol">⌘</span><h3>Controle imediato</h3><p>Recupere os controles pelo atalho global padrão Ctrl+Alt+L.</p></article>
+        ? <a class="button primary" href={installerUrl} download rel="noreferrer">baixar <span aria-hidden="true">↓</span></a>
+        : <button class="button disabled" type="button" disabled title="O instalador estará disponível após a publicação da versão.">baixar <span aria-hidden="true">↓</span></button>}
     </div>
   </section>
+  <CaptionPreview />
 
-  <section class="container download-section">
-    <div><p class="kicker">COMECE QUANDO QUISER</p><h2>Uma instalação. Suas legendas.</h2><p>Disponível para Windows x64. O pacote com tradução chegará quando essa função estiver pronta.</p></div>
-    <div class="download-card">
-      <span class="platform-tag">WINDOWS · X64</span>
-      <strong>{release ? `AnyCaptions ${release.version}` : 'AnyCaptions'}</strong>
-      {installerUrl
-        ? <a class="button primary" href={installerUrl} rel="noopener noreferrer">Baixar instalador <span aria-hidden="true">↗</span></a>
-        : <span class="button disabled">Ainda não publicado</span>}
-      {release?.windowsZipUrl && URL.canParse(release.windowsZipUrl) && new URL(release.windowsZipUrl).protocol === 'https:'
-        && <a class="text-link" href={release.windowsZipUrl} rel="noopener noreferrer">Baixar arquivo ZIP</a>}
-      {release?.sha256 && <details class="checksum"><summary>Verificar integridade (SHA-256)</summary><code>{release.sha256}</code></details>}
-    </div>
-  </section>
+  <section class="section-block"><div class="container faq-container">
+    <div class="section-label">algumas respostas, antes de começar</div>
+    <details class="faq-item"><summary>preciso de uma conta?</summary><p>o download e o uso das legendas são públicos. a conta do site é opcional.</p></details>
+    <details class="faq-item"><summary>meu áudio vai para a nuvem?</summary><p>o reconhecimento de voz roda no computador. o site não recebe o áudio nem o texto das suas legendas.</p></details>
+    <details class="faq-item"><summary>funciona durante um jogo?</summary><p>o overlay acompanha outras janelas e permite clicar através dele. use modo janela ou janela sem bordas; tela cheia exclusiva pode impedir a exibição.</p></details>
+    <details class="faq-item"><summary>posso traduzir para todos esses idiomas?</summary><p>o seletor mostra traduções de frases de exemplo para explorar a interface. a tradução no aplicativo será disponibilizada conforme a integração do modelo local estiver pronta.</p></details>
+    <details class="faq-item"><summary>como volto aos controles?</summary><p>use o atalho padrão Ctrl+Alt+L ou o ícone na bandeja do Windows para mostrar e editar a janela.</p></details>
+  </div></section>
 </Layout>

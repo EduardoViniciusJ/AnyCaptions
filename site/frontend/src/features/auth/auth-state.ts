@@ -13,6 +13,6 @@ export async function showAccount(element: HTMLElement) {
     image.referrerPolicy = 'no-referrer';
     link.append(image);
   }
-  link.append(document.createTextNode(account?.name ?? 'Entrar'));
+  link.append(document.createTextNode(account?.name ?? 'entrar'));
   element.append(link);
 }
