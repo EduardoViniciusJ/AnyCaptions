@@ -1,0 +1,15 @@
+<header class="site-header">
+  <div class="container nav-row">
+    <a class="brand" href="/" aria-label="AnyCaptions, início"><span class="brand-icon">CC</span> AnyCaptions</a>
+    <nav aria-label="Principal">
+      <a href="/#recursos">Recursos</a>
+      <a href="/changelog">Atualizações</a>
+      <span id="header-account"><a class="nav-account" href="/account">Entrar</a></span>
+    </nav>
+  </div>
+</header>
+<script>
+  import { showAccount } from '../features/auth/auth-state';
+  const account = document.getElementById('header-account');
+  if (account) void showAccount(account);
+</script>

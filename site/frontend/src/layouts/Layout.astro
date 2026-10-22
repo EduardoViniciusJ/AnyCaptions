@@ -1,0 +1,23 @@
+---
+import Header from '../components/Header.astro';
+import '../styles/global.css';
+interface Props { title: string; description: string; }
+const { title, description } = Astro.props;
+---
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{title} · AnyCaptions</title>
+  </head>
+  <body>
+    <Header />
+    <main><slot /></main>
+    <footer class="site-footer container">
+      <span>AnyCaptions · Legendas locais para Windows</span>
+      <a href="/changelog">Histórico de versões</a>
+    </footer>
+  </body>
+</html>
