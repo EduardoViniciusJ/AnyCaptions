@@ -59,6 +59,15 @@ describe("overlay controls", () => {
     expect(app.backend.setWindowMode).not.toHaveBeenCalled();
   });
 
+  it("disables the translate option until the translation model is available", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    const option = app.get<HTMLOptionElement>('option[value="translate-pt"]');
+    expect(option.disabled).toBe(true);
+    app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
+    expect(option.disabled).toBe(false);
+  });
+
   it("changes modes through Rust and ignores stale event revisions", async () => {
     const app = setup();
     await app.overlay.ready;

@@ -49,6 +49,54 @@ fn riva_translates_english_captions_to_portuguese() {
 }
 
 #[test]
+#[ignore = "requires both GGUFs; exercises ASR + NMT loaded together (VRAM check)"]
+fn recognizer_and_translator_work_loaded_together() {
+    use anycaptions_lib::transcription::{
+        nemotron::{NativeNemotron, NemotronPaths},
+        streaming::StreamingRecognizer,
+    };
+
+    let mut recognizer =
+        NativeNemotron::load(&NemotronPaths::resolve(), None).expect("ASR library and model");
+    let mut translator =
+        NativeRivaTranslator::load(&anycaptions_lib::translation::riva::RivaPaths::resolve())
+            .expect("NMT library and model");
+
+    let jfk = {
+        let path =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benchmarks/local/jfk.wav");
+        let mut reader = hound::WavReader::open(path).expect("fixture wav should exist");
+        reader
+            .samples::<i16>()
+            .map(|sample| f32::from(sample.unwrap()) / 32_768.0)
+            .collect::<Vec<f32>>()
+    };
+    let mut finals = Vec::new();
+    for block in jfk.chunks(2_048) {
+        finals.extend(recognizer.push(block).unwrap());
+    }
+    finals.extend(recognizer.finish().unwrap());
+    let english = finals
+        .iter()
+        .filter(|result| result.is_final)
+        .map(|result| result.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(english.to_lowercase().contains("ask not"));
+
+    let start = Instant::now();
+    let portuguese = translator
+        .translate(&english, "en-US", "pt-BR")
+        .expect("translation with both models resident");
+    eprintln!(
+        "[riva+asr] translate_ms={} -> {portuguese}",
+        start.elapsed().as_millis()
+    );
+    assert!(!portuguese.trim().is_empty());
+    assert_ne!(portuguese.trim(), english.trim());
+}
+
+#[test]
 #[ignore = "requires the NeMo-Speech.cpp NMT build and the Riva GGUF"]
 fn riva_pivots_non_english_pairs_through_english() {
     let paths = anycaptions_lib::translation::riva::RivaPaths::resolve();

@@ -248,6 +248,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (state.windowMode === "locked" && !settings.hidden) toggleSettings(false);
     language.value = state.mode;
     language.disabled = busy;
+    const translateOption = language.querySelector<HTMLOptionElement>('option[value="translate-pt"]');
+    if (translateOption) {
+      translateOption.disabled = !state.resources.translation;
+      translateOption.title = state.resources.translation
+        ? "Transcreve qualquer idioma e traduz para português"
+        : "Tradução indisponível: instale o modelo de tradução";
+    }
     if (settings.hidden || !appearanceDraft) setAppearanceInputs(state.appearance);
     applyAppearance(caption, state.appearance);
     applyAppearance(live, state.appearance);

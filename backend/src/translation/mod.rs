@@ -2,6 +2,7 @@
 //! (`riva`) is one implementation; captions never leave the machine.
 
 pub mod riva;
+pub mod stage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranslatorError {
