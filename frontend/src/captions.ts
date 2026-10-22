@@ -10,59 +10,40 @@ const browserClock: CaptionClock = {
   clear: (handle) => clearTimeout(handle),
 };
 
-export const LIVE_PHRASE_MAX_WORDS = 9;
-export const LIVE_PHRASE_MAX_CHARS = 64;
-const MIN_ROLLING_WINDOW_WORDS = 5;
+// Live captions roll up like Windows Live Captions: a fixed box shows the last lines of the
+// transcript; when the bottom line fills, the text moves up one line.
+export const LIVE_LINES = 1;
+// The text stays through pauses so the next phrase keeps writing after it; after this much
+// silence it fades out and the next speech starts on an empty box.
+export const LIVE_IDLE_CLEAR_MS = 3000;
+// Long-running speech keeps only recent words; older ones are already off screen.
+const LIVE_TRANSCRIPT_COMPACT_WORDS = 120;
+// Visible fade when a caption leaves the screen; matches the CSS opacity transition.
+export const CAPTION_FADE_MS = 300;
 
 export function readingTime(text: string): number {
   return Math.max(2000, Math.min(7000, Math.ceil((text.length / 15) * 1000)));
 }
 
-export function liveCaptionTime(text: string): number {
-  return Math.max(2000, Math.min(5000, Math.ceil((text.length / 18) * 1000)));
-}
-
-export function splitTrailingWord(text: string): { leading: string; trailing: string } {
-  const words = text.trim().split(/\s+/u).filter(Boolean);
-  if (words.length === 0) return { leading: "", trailing: "" };
-  if (words.length === 1) return { leading: "", trailing: words[0]! };
-  return {
-    leading: words.slice(0, -1).join(" "),
-    trailing: words.at(-1)!,
-  };
-}
-
-export function splitPhraseChunks(
-  text: string,
-  maxChars = LIVE_PHRASE_MAX_CHARS,
-  maxWords = LIVE_PHRASE_MAX_WORDS,
-): string[] {
-  const words = text.trim().split(/\s+/u).filter(Boolean);
-  const chunks: string[] = [];
-  let current: string[] = [];
-  let currentLen = 0;
+/**
+ * Greedy word wrap. Wrapping a longer transcript never changes the earlier lines, so the
+ * visible text only grows at the end or moves up a whole line.
+ */
+export function wrapLines(words: string[], charsPerLine: number): string[][] {
+  const lines: string[][] = [];
+  let line: string[] = [];
+  let length = 0;
   for (const word of words) {
-    const nextLen = currentLen ? currentLen + 1 + word.length : word.length;
-    if (current.length > 0 && (nextLen > maxChars || current.length >= maxWords)) {
-      chunks.push(current.join(" "));
-      current = [word];
-      currentLen = word.length;
-    } else {
-      current.push(word);
-      currentLen = nextLen;
+    if (line.length && length + 1 + word.length > charsPerLine) {
+      lines.push(line);
+      line = [];
+      length = 0;
     }
+    length += (line.length ? 1 : 0) + word.length;
+    line.push(word);
   }
-  if (current.length > 0) {
-    // Prevent 1-2 word orphans (like a lone "the") when a phrase rolls over:
-    // borrow trailing words from the previous chunk so the visible line always has context.
-    if (chunks.length > 0 && current.length < 4 && words.length >= MIN_ROLLING_WINDOW_WORDS) {
-      const windowWords = words.slice(-MIN_ROLLING_WINDOW_WORDS);
-      chunks.push(windowWords.join(" "));
-    } else {
-      chunks.push(current.join(" "));
-    }
-  }
-  return chunks;
+  if (line.length) lines.push(line);
+  return lines;
 }
 
 // Long translations keep every word in ordered blocks; live English follows the newest cue.
@@ -89,9 +70,12 @@ export function splitCaption(text: string, charsPerLine = 42, maxLines = 2): str
 
 interface Block {
   text: string;
-  committedText?: string;
-  livePartialText?: string;
   segmentId: number;
+  // Live roll-up only: visible lines, transcript index of their first word, and the first
+  // transcript index added by the latest update (those words fade in).
+  lines?: string[][];
+  firstIndex?: number;
+  newFrom?: number;
 }
 
 export class CaptionPresenter {
@@ -104,6 +88,10 @@ export class CaptionPresenter {
   private activeSegmentId = 0;
   private activeRevision = -1;
   private activeFinal = false;
+  // Live words: finished phrases followed by the latest revision of the active one.
+  private transcript: string[] = [];
+  private activeStart = 0; // transcript index where the active phrase begins
+  private firstVisible = 0; // transcript index of the first word on the top visible line
   private current: Block | undefined;
   private queue: Block[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -113,7 +101,10 @@ export class CaptionPresenter {
     private readonly element: HTMLElement,
     private readonly clock: CaptionClock = browserClock,
     private readonly onChange: () => void = () => {},
-  ) {}
+  ) {
+    // The live box height follows LIVE_LINES (see #caption-live in styles.css).
+    element.style.setProperty("--caption-lines", String(LIVE_LINES));
+  }
 
   setContext(sessionId: number, mode: CaptionMode): void {
     if (sessionId === this.sessionId && mode === this.mode) return;
@@ -153,12 +144,6 @@ export class CaptionPresenter {
     return true;
   }
 
-  private phraseCharLimit(): number {
-    const width = this.element.clientWidth || this.element.parentElement?.clientWidth || 0;
-    if (!width) return LIVE_PHRASE_MAX_CHARS;
-    return Math.max(52, Math.min(LIVE_PHRASE_MAX_CHARS, this.charsPerLine() * this.maxLines()));
-  }
-
   private acceptLive(update: CaptionUpdate): boolean {
     if (
       update.segmentId < this.activeSegmentId ||
@@ -166,35 +151,59 @@ export class CaptionPresenter {
     )
       return false;
 
+    const words = update.text.trim().split(/\s+/u).filter(Boolean);
+    if (update.segmentId !== this.activeSegmentId) this.activeStart = this.transcript.length;
+    const previousLength = this.transcript.length;
+    // Every revision is shown at once; the next one replaces the words it corrects.
+    this.transcript.splice(this.activeStart, previousLength - this.activeStart, ...words);
     this.activeSegmentId = update.segmentId;
     this.activeRevision = update.revision;
     this.activeFinal = update.isFinal;
 
-    const maxChars = this.phraseCharLimit();
-    const chunks = splitPhraseChunks(update.text, maxChars, LIVE_PHRASE_MAX_WORDS);
-    const phrase = chunks.at(-1) ?? "";
-    if (!phrase) return true;
-
-    let committedText = "";
-    let livePartialText = "";
-    if (update.isFinal) {
-      committedText = phrase;
-      livePartialText = "";
-    } else {
-      const { leading, trailing } = splitTrailingWord(phrase);
-      committedText = leading;
-      livePartialText = trailing;
+    this.firstVisible = Math.min(this.firstVisible, this.transcript.length);
+    let lines = wrapLines(this.transcript.slice(this.firstVisible), this.charsPerLine());
+    if (!lines.length) return true;
+    if (lines.length > LIVE_LINES) {
+      // Roll up: whole lines leave the top, so the remaining text keeps its position.
+      for (const line of lines.slice(0, lines.length - LIVE_LINES)) this.firstVisible += line.length;
+      lines = lines.slice(-LIVE_LINES);
     }
+    const removed = this.compactTranscript();
 
     this.cancelTimer();
     this.current = {
-      text: phrase,
-      committedText,
-      livePartialText,
+      text: lines.map((line) => line.join(" ")).join("\n"),
       segmentId: update.segmentId,
+      lines,
+      firstIndex: this.firstVisible,
+      // Words appended by this update fade in; corrections of shown words swap in place.
+      newFrom: previousLength - removed,
     };
     this.render(false);
+    this.timer = this.clock.set(() => {
+      this.timer = undefined;
+      this.resetTranscript();
+      this.current = undefined;
+      this.render(false);
+    }, LIVE_IDLE_CLEAR_MS);
     return true;
+  }
+
+  /** Drops off-screen words; returns how many indices shifted. */
+  private compactTranscript(): number {
+    // The active phrase must stay addressable, since a final may still replace it.
+    const removable = Math.min(this.firstVisible, this.activeStart);
+    if (removable < LIVE_TRANSCRIPT_COMPACT_WORDS) return 0;
+    this.transcript.splice(0, removable);
+    this.firstVisible -= removable;
+    this.activeStart -= removable;
+    return removable;
+  }
+
+  private resetTranscript(): void {
+    this.transcript = [];
+    this.activeStart = 0;
+    this.firstVisible = 0;
   }
 
   private flushOrdered(): void {
@@ -251,7 +260,7 @@ export class CaptionPresenter {
       this.fadeTimer = this.clock.set(() => {
         this.fadeTimer = undefined;
         this.render(false, true);
-      }, 120);
+      }, CAPTION_FADE_MS);
       return;
     }
     if (this.fadeTimer !== undefined) this.clock.clear(this.fadeTimer);
@@ -260,25 +269,26 @@ export class CaptionPresenter {
     this.element.style.transition = "none";
     this.element.style.opacity = animate && !reducedMotion ? "0" : "1";
 
-    if (this.current && this.current.livePartialText) {
-      const committedSpan = document.createElement("span");
-      committedSpan.className = "caption-final";
-      committedSpan.textContent = this.current.committedText ? `${this.current.committedText} ` : "";
-
-      const partialSpan = document.createElement("span");
-      partialSpan.className = "caption-partial";
-      partialSpan.textContent = this.current.livePartialText;
-
-      if (committedSpan.textContent) {
-        this.element.replaceChildren(committedSpan, partialSpan);
-      } else {
-        this.element.replaceChildren(partialSpan);
-      }
+    if (this.current?.lines) {
+      const nodes: Node[] = [];
+      let index = this.current.firstIndex ?? 0;
+      const newFrom = this.current.newFrom ?? Number.POSITIVE_INFINITY;
+      this.current.lines.forEach((line, lineIndex) => {
+        if (lineIndex) nodes.push(document.createTextNode("\n"));
+        line.forEach((word, wordIndex) => {
+          if (wordIndex) nodes.push(document.createTextNode(" "));
+          const span = document.createElement("span");
+          span.textContent = word;
+          if (index >= newFrom) span.className = "caption-word-new";
+          nodes.push(span);
+          index++;
+        });
+      });
+      this.element.replaceChildren(...nodes);
     } else {
       this.element.textContent = this.current?.text ?? "";
     }
 
-    this.element.dataset.state = this.mode === "en-en" && !this.activeFinal ? "partial" : "final";
     this.element.hidden = !this.element.textContent;
     // Commit the starting opacity before enabling the CSS transition.
     void this.element.offsetWidth;
@@ -296,6 +306,7 @@ export class CaptionPresenter {
     this.activeSegmentId = 0;
     this.activeRevision = -1;
     this.activeFinal = false;
+    this.resetTranscript();
     this.current = undefined;
     this.queue = [];
     this.render(false, immediate);

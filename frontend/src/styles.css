@@ -44,33 +44,45 @@ select { padding: 0 6px; }
 .capture-button { min-width: 75px; }
 .capture-button svg { fill: currentColor; stroke-width: 0; width: 12px; }
 .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.preview { display: flex; flex: 1; min-height: 0; flex-direction: column; justify-content: center; overflow: hidden; }
+.preview { display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+/* Film-style subtitle: one line of fixed-size text on a dark rounded box, so the caption does
+   not change size as words arrive. The box keeps contrast on bright scenes. */
 .caption {
   --caption-base-size: 32px;
+  box-sizing: border-box;
+  max-width: calc(100% - 16px);
   margin: 0;
-  padding: 8px 16px;
+  padding: 6px 18px;
+  border-radius: 8px;
+  background: rgba(10, 10, 10, 0.72);
   color: #fff;
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: var(--caption-base-size);
   font-weight: 700;
   line-height: 1.25;
   text-align: center;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   white-space: pre-line;
   overflow-wrap: break-word;
-  max-height: calc(var(--caption-base-size) * 2.5 + 16px);
+  max-height: calc(var(--caption-base-size) * 2.5 + 12px);
   overflow: hidden;
-  -webkit-text-stroke: 1.5px #000;
-  paint-order: stroke fill;
-  text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 2px 4px rgba(0, 0, 0, 0.95);
-  transition: opacity 220ms ease-in-out;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  transition: opacity 300ms ease-out;
 }
 .caption[data-color="yellow"] { color: #ffe600; }
-.caption-partial {
-  color: #ffffff;
-  font-style: normal;
-  font-weight: 700;
-  opacity: 0.92;
+/* Live roll-up box (like Windows Live Captions): always LIVE_LINES tall and as wide as the
+   window, left-aligned so words already written never shift while a line is being typed. */
+#caption-live {
+  width: calc(100% - 16px);
+  max-width: 1100px;
+  height: calc(var(--caption-base-size) * 1.25 * var(--caption-lines, 2) + 12px);
+  text-align: left;
+  white-space: pre;
+}
+.caption-word-new { animation: caption-word-in 160ms ease-out; }
+@keyframes caption-word-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .overlay[data-mode="locked"] { background: transparent; border-color: transparent; }
 .overlay[data-mode="locked"] .toolbar,
