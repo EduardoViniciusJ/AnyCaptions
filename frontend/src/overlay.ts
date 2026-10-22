@@ -163,6 +163,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     live.style.setProperty("--caption-base-size", `${state.appearance.fontSize}px`);
     caption.dataset.color = state.appearance.color;
     live.dataset.color = state.appearance.color;
+    presenter.refreshLayout();
     get("#font-value").textContent = `${state.appearance.fontSize} px`;
     const stopped = state.capture === "stopped";
     capture.disabled = busy || (stopped && !state.canStart);
@@ -259,6 +260,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   }
   fontSize.addEventListener("change", saveAppearance, options);
   fontColor.addEventListener("change", saveAppearance, options);
+  window.addEventListener("resize", () => presenter.refreshLayout(), options);
   get("#resize").addEventListener("mousedown", (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
