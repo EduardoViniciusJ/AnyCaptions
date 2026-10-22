@@ -38,9 +38,11 @@ pub struct WhisperModelProfile {
 
 impl WhisperModelProfile {
     pub const fn active() -> Self {
-        Self::base_en()
+        Self::small_en()
     }
 
+    // More accurate than base.en and slower; the encoder window follows the phrase length to
+    // keep it fast on the CPU (see `audio_ctx_for` in whisper.rs).
     pub const fn small_en() -> Self {
         Self {
             id: "whisper-small.en",
@@ -66,22 +68,7 @@ impl WhisperModelProfile {
             license: "MIT",
             sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
             threads: 10,
-            // GPU (Vulkan) is preferred; whisper.cpp falls back to CPU when no device is usable.
-            use_gpu: true,
-            use_flash_attn: false,
-        }
-    }
-
-    pub const fn tiny_en() -> Self {
-        Self {
-            id: "whisper-tiny.en",
-            filename: "ggml-tiny.en.bin",
-            revision: "5359861c739e955e79d9a303bcbc70fb988958b1",
-            runtime: "whisper.cpp-cpu",
-            source: "https://huggingface.co/ggerganov/whisper.cpp",
-            license: "MIT",
-            sha256: "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
-            threads: 10,
+            // The default build compiles no GPU backend, so inference runs on the CPU.
             use_gpu: false,
             use_flash_attn: false,
         }
@@ -137,7 +124,7 @@ mod tests {
 
     #[test]
     fn detects_missing_and_corrupted_whisper_model_files() {
-        let profile = WhisperModelProfile::tiny_en();
+        let profile = WhisperModelProfile::base_en();
         let missing = std::env::temp_dir().join("anycaptions-missing-whisper.bin");
         assert_eq!(profile.verify(&missing), Err(ModelProfileError::Missing));
 

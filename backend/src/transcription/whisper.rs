@@ -1,14 +1,38 @@
+#[cfg(feature = "whisper")]
 use std::path::Path;
 
-use super::{
-    consolidator::sanitize_whisper_text,
-    profile::{ModelProfileError, WhisperModelProfile},
-};
+#[cfg(feature = "whisper")]
+use super::profile::WhisperModelProfile;
+use super::{consolidator::sanitize_whisper_text, profile::ModelProfileError};
 
 pub const MIN_TRANSCRIBE_SAMPLES: usize = 1_600; // 100 ms at 16 kHz
 pub const MAX_TRANSCRIBE_SAMPLES: usize = 30 * 16_000; // 30 s at 16 kHz
 pub const MAX_TRANSCRIPT_CHARS: usize = 4_000;
 const SILENCE_RMS_FLOOR: f32 = 0.0005;
+// Beam width; 1 decodes like greedy search (fastest), 5 is whisper.cpp's default.
+const BEAM_SIZE: i32 = 5;
+// Speech rarely exceeds ~4 tokens/s. Without a cap, a repetition loop decodes until the model
+// limit and stalls captions for seconds; the cap leaves room for real speech.
+const TOKENS_PER_SECOND_CAP: usize = 8;
+const MIN_TOKENS: usize = 12;
+const MAX_TOKENS: usize = 224;
+// The encoder emits one position per 320 samples (20 ms); its full window is 1500 (30 s).
+const SAMPLES_PER_AUDIO_CTX: usize = 320;
+const MAX_AUDIO_CTX: usize = 1_500;
+// Margin for the trailing pad and mel framing; rounding keeps few distinct graph sizes.
+const AUDIO_CTX_MARGIN: usize = 64;
+const AUDIO_CTX_STEP: usize = 64;
+
+fn max_tokens_for(samples: usize) -> usize {
+    (samples / 16_000 * TOKENS_PER_SECOND_CAP + MIN_TOKENS).min(MAX_TOKENS)
+}
+
+/// Encoder window sized to the phrase. Whisper otherwise always encodes 30 s, so a 2 s phrase
+/// cost as much as a full window; this is what keeps small.en fast on the CPU.
+fn audio_ctx_for(samples: usize) -> usize {
+    let needed = samples.div_ceil(SAMPLES_PER_AUDIO_CTX) + AUDIO_CTX_MARGIN;
+    (needed.div_ceil(AUDIO_CTX_STEP) * AUDIO_CTX_STEP).min(MAX_AUDIO_CTX)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranscriptionError {
@@ -113,9 +137,7 @@ impl SpeechTranscriber for NativeWhisperTranscriber {
         use whisper_rs::{FullParams, SamplingStrategy};
 
         // 1. Automatic peak normalization for quiet desktop/game/Discord audio + 200 ms trailing pad
-        let peak = samples
-            .iter()
-            .fold(0.0_f32, |max, &s| max.max(s.abs()));
+        let peak = samples.iter().fold(0.0_f32, |max, &s| max.max(s.abs()));
         let gain = if peak > 0.002 && peak < 0.80 {
             (0.85 / peak).min(8.0)
         } else {
@@ -129,8 +151,13 @@ impl SpeechTranscriber for NativeWhisperTranscriber {
         // 200 ms trailing zero-pad prevents Whisper from clipping the final word of live partials
         self.audio_buf.resize(samples.len() + 3_200, 0.0);
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_max_tokens(0);
+        let mut params = FullParams::new(SamplingStrategy::BeamSearch {
+            beam_size: BEAM_SIZE,
+            patience: -1.0,
+        });
+        // Both values are bounded (MAX_TOKENS, MAX_AUDIO_CTX), so the conversions cannot overflow.
+        params.set_max_tokens(max_tokens_for(samples.len()) as i32);
+        params.set_audio_ctx(audio_ctx_for(self.audio_buf.len()) as i32);
         params.set_n_threads(self.threads);
         params.set_language(Some("en"));
         params.set_detect_language(false);
@@ -171,13 +198,6 @@ impl SpeechTranscriber for NativeWhisperTranscriber {
         }
         Ok(output)
     }
-}
-
-pub fn verify_whisper_profile(
-    path: &Path,
-    profile: &WhisperModelProfile,
-) -> Result<(), TranscriptionError> {
-    profile.verify(path).map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -224,6 +244,24 @@ mod tests {
             adapter.transcribe(&voiced_samples(3_200)),
             Ok(Some("Hello from AnyCaptions!".into()))
         );
+    }
+
+    #[test]
+    fn token_budget_grows_with_audio_and_stays_bounded() {
+        assert_eq!(max_tokens_for(8_000), MIN_TOKENS);
+        assert_eq!(
+            max_tokens_for(16_000 * 4),
+            4 * TOKENS_PER_SECOND_CAP + MIN_TOKENS
+        );
+        assert_eq!(max_tokens_for(16_000 * 30), MAX_TOKENS);
+    }
+
+    #[test]
+    fn encoder_window_follows_the_phrase_length() {
+        // 0.5 s of audio needs 25 positions; with margin and rounding, 128 instead of 1500.
+        assert_eq!(audio_ctx_for(8_000), 128);
+        assert_eq!(audio_ctx_for(16_000 * 6 + 3_200), 384);
+        assert_eq!(audio_ctx_for(30 * 16_000), MAX_AUDIO_CTX);
     }
 
     #[test]

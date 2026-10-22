@@ -93,17 +93,17 @@ fn silero_vad_distinguishes_real_speech_from_silence_and_synthetic_noise() {
 }
 
 #[test]
-#[ignore = "requires local silero_vad.onnx, ggml-tiny.en.bin, and wav fixtures"]
+#[ignore = "requires local silero_vad.onnx, ggml-base.en.bin, and wav fixtures"]
 fn whisper_and_pipeline_transcribe_real_english_speech_and_suppress_silence() {
     let root = backend_dir();
     let vad_path = root.join("models/silero_vad.onnx");
-    let whisper_path = root.join("models/ggml-tiny.en.bin");
+    let whisper_path = root.join("models/ggml-base.en.bin");
     let jfk_path = root.join("benchmarks/local/jfk.wav");
     let silence_path = root.join("benchmarks/local/silence.wav");
 
     let vad = SileroVad::load(&vad_path, &VadModelProfile::silero_v5()).unwrap();
     let transcriber =
-        NativeWhisperTranscriber::load(&whisper_path, &WhisperModelProfile::tiny_en()).unwrap();
+        NativeWhisperTranscriber::load(&whisper_path, &WhisperModelProfile::base_en()).unwrap();
     let segmenter = SpeechSegmenter::new(SegmenterConfig::default()).unwrap();
     let processor = TranscriptionProcessor::new(1, CaptionMode::EnEn, vad, segmenter, transcriber);
 
