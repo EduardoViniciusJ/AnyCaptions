@@ -131,3 +131,13 @@ select { padding: 0 6px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Seletor de idioma com bandeiras (flag-icons/MIT); o menu rola dentro da janela. */
+.language-picker { position: relative; }
+.language-picker > button { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; white-space: nowrap; }
+.language-picker .flag { width: 18px; height: 13.5px; border-radius: 2px; flex: none; }
+#language-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; margin: 0; padding: 4px; list-style: none; min-width: 230px; max-height: min(280px, 60vh); overflow-y: auto; background: #1d1d1d; border: 1px solid #ffffff24; border-radius: 8px; box-shadow: 0 8px 24px #000000a0; }
+#language-menu li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+#language-menu li:hover { background: #383838; }
+#language-menu li[aria-selected="true"] { background: #2b3f5c; }
+#language-menu li[aria-disabled="true"] { opacity: 0.48; cursor: not-allowed; }

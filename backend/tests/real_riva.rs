@@ -46,6 +46,14 @@ fn riva_translates_english_captions_to_portuguese() {
 
     // Empty captions never reach the model.
     assert_eq!(translator.translate("   ", "en-US", "pt-BR").unwrap(), "");
+
+    // A non-Portuguese target chosen in the UI reaches the model (variant tag).
+    let spanish = translator
+        .translate("Thanks for watching, see you tomorrow.", "en-US", "es-us")
+        .expect("Spanish target should translate");
+    eprintln!("[riva] en->es-us -> {spanish}");
+    assert!(!spanish.trim().is_empty());
+    assert_ne!(spanish.trim(), "Thanks for watching, see you tomorrow.");
 }
 
 #[test]

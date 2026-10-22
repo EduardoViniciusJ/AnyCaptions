@@ -543,11 +543,16 @@ mod tests {
         let controller = Controller::default();
         let events = Events::default();
         let response = controller
-            .update(&events, |state| state.set_mode(CaptionMode::TranslatePt))
+            .update(&events, |state| {
+                state.set_mode(CaptionMode::Translate(crate::domain::PT_BR))
+            })
             .unwrap();
         let recorded = events.0.borrow();
         assert_eq!(recorded.len(), 1);
-        assert_eq!(recorded[0].mode, CaptionMode::TranslatePt);
+        assert_eq!(
+            recorded[0].mode,
+            CaptionMode::Translate(crate::domain::PT_BR)
+        );
         assert_eq!(recorded[0].session_id, response.session_id);
         assert_eq!(
             recorded[0].revision,
@@ -584,12 +589,12 @@ mod tests {
         }
         let controller = Controller::default();
         let result = controller.update(&BrokenEvents, |state| {
-            state.set_mode(CaptionMode::TranslatePt)
+            state.set_mode(CaptionMode::Translate(crate::domain::PT_BR))
         });
         assert_eq!(result.unwrap_err(), CommandError::EventUnavailable);
         assert_eq!(
             controller.snapshot().unwrap().mode,
-            CaptionMode::TranslatePt
+            CaptionMode::Translate(crate::domain::PT_BR)
         );
     }
 
@@ -614,7 +619,7 @@ mod tests {
             session_id: 1,
             segment_id: 2,
             revision: 3,
-            mode: CaptionMode::TranslatePt,
+            mode: CaptionMode::Translate(crate::domain::PT_BR),
             text: "<b>texto</b>".into(),
             is_final: true,
             language: Some("en-US".into()),
@@ -622,7 +627,7 @@ mod tests {
         let json = serde_json::to_value(update).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt","text":"<b>texto</b>","isFinal":true,"language":"en-US"})
+            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt-br","text":"<b>texto</b>","isFinal":true,"language":"en-US"})
         );
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");

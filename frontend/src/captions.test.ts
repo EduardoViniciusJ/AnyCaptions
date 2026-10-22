@@ -51,7 +51,7 @@ describe("caption presenter", () => {
   });
 
   it("shows translated segments immediately, without pacing or queues", () => {
-    const { element, presenter, update } = setup("translate-pt");
+    const { element, presenter, update } = setup("translate-pt-br");
     // A primeira sentença traduzida aparece na hora, como revisão parcial.
     expect(presenter.accept(update(1, 1, "Primeira frase.", false))).toBe(true);
     expect(element.textContent).toBe("Primeira frase.");
