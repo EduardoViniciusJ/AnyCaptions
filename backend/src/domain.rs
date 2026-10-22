@@ -6,10 +6,6 @@ pub enum CaptionMode {
     /// Transcribe whatever language is spoken.
     #[default]
     Auto,
-    /// Transcribe only English; other languages are filtered out by the model.
-    OnlyEn,
-    /// Transcribe only Portuguese; other languages are filtered out by the model.
-    OnlyPt,
     /// Transcribe any language and translate the captions to Portuguese.
     TranslatePt,
 }
@@ -17,16 +13,6 @@ pub enum CaptionMode {
 impl CaptionMode {
     pub fn requires_translation(self) -> bool {
         matches!(self, Self::TranslatePt)
-    }
-
-    /// Language code forced on the recognizer; `None` keeps model auto-detection.
-    /// Codes come from the model's prompt dictionary (BCP-47, e.g. `en-US`).
-    pub fn forced_language(self) -> Option<&'static str> {
-        match self {
-            Self::Auto | Self::TranslatePt => None,
-            Self::OnlyEn => Some("en-US"),
-            Self::OnlyPt => Some("pt-BR"),
-        }
     }
 }
 
@@ -414,13 +400,7 @@ mod tests {
         let mut state = ready();
         state.resources.translation = false;
         assert!(!CaptionMode::Auto.requires_translation());
-        assert!(!CaptionMode::OnlyEn.requires_translation());
-        assert!(!CaptionMode::OnlyPt.requires_translation());
         assert!(CaptionMode::TranslatePt.requires_translation());
-        assert_eq!(CaptionMode::Auto.forced_language(), None);
-        assert_eq!(CaptionMode::TranslatePt.forced_language(), None);
-        assert_eq!(CaptionMode::OnlyEn.forced_language(), Some("en-US"));
-        assert_eq!(CaptionMode::OnlyPt.forced_language(), Some("pt-BR"));
         assert!(state.start().is_ok());
         state.set_mode(CaptionMode::TranslatePt).unwrap();
         assert_eq!(state.start(), Err(DomainError::TranslationUnavailable));
@@ -553,7 +533,7 @@ mod tests {
 
     #[test]
     fn unsupported_modes_and_unexpected_fields_are_rejected() {
-        for value in ["en-en", "en-pt", "pt-pt", "AUTO", "Only-En"] {
+        for value in ["en-en", "en-pt", "only-en", "only-pt", "AUTO"] {
             assert!(serde_json::from_value::<CaptionMode>(serde_json::json!(value)).is_err());
         }
         assert!(
