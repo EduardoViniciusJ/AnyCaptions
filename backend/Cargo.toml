@@ -20,8 +20,8 @@ wasapi = "0.26.0"
 rubato = "5.0.1"
 audioadapter-buffers = "5.2.0"
 sha2 = "0.11.1"
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-native"] }
-whisper-rs = { version = "=0.16.0", optional = true }
+# Loads the NeMo-Speech C library at runtime, so the app still builds and starts without it.
+libloading = "0.8.9"
 
 [dev-dependencies]
 mockall = "0.15.0"
@@ -29,19 +29,8 @@ hound = "3.5.1"
 tauri = { version = "2.12.4", default-features = false, features = ["test"] }
 
 [features]
-default = ["whisper"]
 custom-protocol = ["tauri/custom-protocol"]
-whisper = ["dep:whisper-rs"]
-whisper-benchmark = ["whisper"]
-whisper-vulkan = ["whisper-benchmark", "whisper-rs/vulkan"]
 
-[[example]]
-name = "whisper_benchmark"
-path = "examples/whisper_benchmark/main.rs"
-required-features = ["whisper-benchmark"]
-
-[profile.dev.package.whisper-rs-sys]
-opt-level = 3
-
+# Hashing the ~740 MB model on every debug start is slow without optimization.
 [profile.dev.package.sha2]
 opt-level = 3

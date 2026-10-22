@@ -15,7 +15,7 @@ use crate::transcription::session::{CaptionSessionManager, SessionSink};
 pub const STATE_EVENT: &str = "app-state-changed";
 pub const CAPTION_EVENT: &str = "caption-updated";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptionUpdate {
     pub session_id: u32,
