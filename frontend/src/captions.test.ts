@@ -11,7 +11,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function setup(mode: CaptionUpdate["mode"] = "en-en", wordsPerPage = 20) {
+function setup(mode: CaptionUpdate["mode"] = "auto", wordsPerPage = 20) {
   vi.useFakeTimers();
   const element = document.createElement("p");
   document.body.append(element);
@@ -28,6 +28,7 @@ function setup(mode: CaptionUpdate["mode"] = "en-en", wordsPerPage = 20) {
     segmentId,
     revision,
     text,
+    language: isFinal ? "en-US" : null,
     isFinal,
   });
   return { element, presenter, update };
@@ -47,13 +48,13 @@ describe("caption presenter", () => {
     expect(element.textContent).toBe("what we have you're launching like the");
 
     expect(presenter.accept(update(1, 1, "Old words", false))).toBe(false);
-    presenter.setContext(8, "en-en");
+    presenter.setContext(8, "auto");
     expect(element.textContent).toBe("");
     expect(presenter.accept(update(1, 3, "Late", true))).toBe(false);
   });
 
   it("shows only final Portuguese segments in order and keeps the last block visible", () => {
-    const { element, presenter, update } = setup("en-pt");
+    const { element, presenter, update } = setup("translate-pt");
     expect(presenter.accept(update(1, 1, "English partial", false))).toBe(false);
     expect(element.textContent).toBe("");
     expect(presenter.accept(update(2, 1, "Segunda frase", true))).toBe(true);
@@ -68,7 +69,7 @@ describe("caption presenter", () => {
   });
 
   it("fills the measured width before starting a new block without repeating old words", () => {
-    const { element, presenter, update } = setup("en-en", 5);
+    const { element, presenter, update } = setup("auto", 5);
     presenter.accept(update(1, 1, "One two three four five", false));
     expect(element.textContent).toBe("One two three four five");
 
@@ -84,7 +85,7 @@ describe("caption presenter", () => {
   });
 
   it("replaces a full block directly without keeping transition layers", () => {
-    const { element, presenter, update } = setup("en-en", 3);
+    const { element, presenter, update } = setup("auto", 3);
     presenter.accept(update(1, 1, "One two three", false));
     presenter.accept(update(1, 2, "One two three four", false));
 
@@ -120,7 +121,7 @@ describe("caption presenter", () => {
   });
 
   it("keeps a final caption through silence and appends the next segment while it fits", () => {
-    const { element, presenter, update } = setup("en-en", 8);
+    const { element, presenter, update } = setup("auto", 8);
     presenter.accept(update(1, 1, "Vou pra casa", true));
     vi.advanceTimersByTime(60_000);
     expect(element.textContent).toBe("Vou pra casa");
@@ -150,14 +151,15 @@ describe("caption presenter", () => {
       undefined,
       (text) => captionWords(text).length <= wordsPerPage,
     );
-    presenter.setContext(7, "en-en");
+    presenter.setContext(7, "auto");
     presenter.accept({
       sessionId: 7,
-      mode: "en-en",
+      mode: "auto",
       segmentId: 1,
       revision: 1,
       text: "One two three four five",
       isFinal: false,
+      language: null,
     });
 
     wordsPerPage = 3;

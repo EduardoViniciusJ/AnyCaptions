@@ -3,7 +3,7 @@ import { createOverlay } from "./overlay";
 import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  return { revision: 0, sessionId: 0, mode: "en-en", capture: "stopped", windowMode: "edit",
+  return { revision: 0, sessionId: 0, mode: "auto", capture: "stopped", windowMode: "edit",
     appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
@@ -63,12 +63,12 @@ describe("overlay controls", () => {
     const app = setup();
     await app.overlay.ready;
     const select = app.get<HTMLSelectElement>("#language");
-    select.value = "en-pt";
+    select.value = "translate-pt";
     select.dispatchEvent(new Event("change"));
     await vi.waitFor(() => expect(select.disabled).toBe(false));
-    expect(app.backend.setMode).toHaveBeenCalledWith("en-pt");
+    expect(app.backend.setMode).toHaveBeenCalledWith("translate-pt");
     app.emit(snapshot({ revision: 0 }));
-    expect(select.value).toBe("en-pt");
+    expect(select.value).toBe("translate-pt");
   });
 
   it("waits for backend confirmation and prevents concurrent control requests", async () => {
@@ -175,7 +175,7 @@ describe("overlay controls", () => {
   it("keeps the caption visible when leaving edit mode", async () => {
     const app = setup(snapshot({ capture: "listening", canLock: true }));
     await app.overlay.ready;
-    app.emitCaption({ sessionId: 0, segmentId: 1, revision: 1, mode: "en-en", text: "Still visible", isFinal: true });
+    app.emitCaption({ sessionId: 0, segmentId: 1, revision: 1, mode: "auto", text: "Still visible", isFinal: true, language: "en-US" });
     app.emit(snapshot({ revision: 1, capture: "listening", windowMode: "locked", canLock: true }));
     expect(app.get(".overlay").dataset.mode).toBe("locked");
     expect(app.get<HTMLElement>("#caption-live").hidden).toBe(false);
@@ -247,20 +247,20 @@ describe("overlay controls", () => {
     await app.overlay.ready;
     vi.mocked(app.backend.setMode).mockRejectedValue("<img src=x onerror=alert(1)>");
     const select = app.get<HTMLSelectElement>("#language");
-    select.value = "en-pt";
+    select.value = "translate-pt";
     select.dispatchEvent(new Event("change"));
     await vi.waitFor(() => expect(app.get("#error").hidden).toBe(false));
     expect(app.root.querySelector("img")).toBeNull();
     expect(app.get("#error").textContent).toBe("Não foi possível concluir a ação. Tente novamente.");
-    expect(select.value).toBe("en-en");
+    expect(select.value).toBe("auto");
   });
 
   it("releases listeners and ignores events after disposal", async () => {
     const app = setup();
     await app.overlay.ready;
     app.overlay.dispose();
-    app.emit(snapshot({ revision: 2, mode: "en-pt" }));
-    expect(app.get<HTMLSelectElement>("#language").value).toBe("en-en");
+    app.emit(snapshot({ revision: 2, mode: "translate-pt" }));
+    expect(app.get<HTMLSelectElement>("#language").value).toBe("auto");
     expect(app.release).toHaveBeenCalledOnce();
     app.get<HTMLButtonElement>("#close").click();
     expect(app.backend.close).not.toHaveBeenCalled();

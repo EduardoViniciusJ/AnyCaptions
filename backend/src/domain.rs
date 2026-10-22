@@ -3,16 +3,29 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CaptionMode {
+    /// Transcribe whatever language is spoken.
     #[default]
-    EnEn,
-    EnPt,
+    Auto,
+    /// Transcribe only English; other languages are filtered out by the model.
+    OnlyEn,
+    /// Transcribe only Portuguese; other languages are filtered out by the model.
+    OnlyPt,
+    /// Transcribe any language and translate the captions to Portuguese.
+    TranslatePt,
 }
 
 impl CaptionMode {
     pub fn requires_translation(self) -> bool {
+        matches!(self, Self::TranslatePt)
+    }
+
+    /// Language code forced on the recognizer; `None` keeps model auto-detection.
+    /// Codes come from the model's prompt dictionary (BCP-47, e.g. `en-US`).
+    pub fn forced_language(self) -> Option<&'static str> {
         match self {
-            Self::EnEn => false,
-            Self::EnPt => true,
+            Self::Auto | Self::TranslatePt => None,
+            Self::OnlyEn => Some("en-US"),
+            Self::OnlyPt => Some("pt-BR"),
         }
     }
 }
@@ -389,7 +402,7 @@ mod tests {
     #[test]
     fn starts_stopped_in_edit_mode_without_available_resources() {
         let state = AppState::default().snapshot();
-        assert_eq!(state.mode, CaptionMode::EnEn);
+        assert_eq!(state.mode, CaptionMode::Auto);
         assert_eq!(state.capture, CaptureState::Stopped);
         assert_eq!(state.window_mode, WindowMode::Edit);
         assert!(!state.can_start && !state.can_lock);
@@ -400,10 +413,16 @@ mod tests {
     fn portuguese_output_requires_an_additional_translator() {
         let mut state = ready();
         state.resources.translation = false;
-        assert!(!CaptionMode::EnEn.requires_translation());
-        assert!(CaptionMode::EnPt.requires_translation());
+        assert!(!CaptionMode::Auto.requires_translation());
+        assert!(!CaptionMode::OnlyEn.requires_translation());
+        assert!(!CaptionMode::OnlyPt.requires_translation());
+        assert!(CaptionMode::TranslatePt.requires_translation());
+        assert_eq!(CaptionMode::Auto.forced_language(), None);
+        assert_eq!(CaptionMode::TranslatePt.forced_language(), None);
+        assert_eq!(CaptionMode::OnlyEn.forced_language(), Some("en-US"));
+        assert_eq!(CaptionMode::OnlyPt.forced_language(), Some("pt-BR"));
         assert!(state.start().is_ok());
-        state.set_mode(CaptionMode::EnPt).unwrap();
+        state.set_mode(CaptionMode::TranslatePt).unwrap();
         assert_eq!(state.start(), Err(DomainError::TranslationUnavailable));
         assert_eq!(state.snapshot().capture, CaptureState::Stopped);
     }
@@ -450,7 +469,7 @@ mod tests {
             .fail(session, DomainError::TranscriptionUnavailable)
             .unwrap();
         assert_eq!(state.snapshot().capture, CaptureState::Error);
-        state.set_mode(CaptionMode::EnPt).unwrap();
+        state.set_mode(CaptionMode::TranslatePt).unwrap();
         assert!(state.snapshot().error.is_none());
         assert_eq!(state.snapshot().capture, CaptureState::Stopped);
         assert_ne!(state.snapshot().session_id, session);
@@ -534,7 +553,7 @@ mod tests {
 
     #[test]
     fn unsupported_modes_and_unexpected_fields_are_rejected() {
-        for value in ["pt-pt", "pt-en", "auto", "EN-EN"] {
+        for value in ["en-en", "en-pt", "pt-pt", "AUTO", "Only-En"] {
             assert!(serde_json::from_value::<CaptionMode>(serde_json::json!(value)).is_err());
         }
         assert!(

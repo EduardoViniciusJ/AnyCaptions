@@ -1,4 +1,4 @@
-export type CaptionMode = "en-en" | "en-pt";
+export type CaptionMode = "auto" | "only-en" | "only-pt" | "translate-pt";
 export type CaptureState = "stopped" | "preparing" | "listening" | "processing" | "error";
 export type WindowMode = "edit" | "locked";
 export type HorizontalResizeDirection = "East" | "West";
@@ -32,6 +32,8 @@ export interface CaptionUpdate {
   mode: CaptionMode;
   text: string;
   isFinal: boolean;
+  /** Idioma detectado pelo modelo (BCP-47); presente apenas em legendas finais. */
+  language: string | null;
 }
 
 export interface OutputSelection {

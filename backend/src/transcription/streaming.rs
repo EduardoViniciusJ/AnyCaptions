@@ -20,6 +20,8 @@ pub enum RecognizerError {
 pub struct SpeechResult {
     pub text: String,
     pub is_final: bool,
+    /// Language detected by the model (BCP-47); only final results carry it.
+    pub language: Option<String>,
 }
 
 /// A streaming speech recognizer fed with 16 kHz mono audio. It detects speech and the end of
@@ -78,6 +80,7 @@ impl<R: StreamingRecognizer> StreamingProcessor<R> {
                     mode: self.mode,
                     text: text.to_owned(),
                     is_final: result.is_final,
+                    language: result.language.clone(),
                 });
                 self.last_text = text.to_owned();
             }
@@ -138,6 +141,7 @@ mod tests {
         SpeechResult {
             text: text.into(),
             is_final,
+            language: is_final.then(|| "en-US".to_owned()),
         }
     }
 
@@ -153,7 +157,7 @@ mod tests {
     fn processor(
         recognizer: MockStreamingRecognizer,
     ) -> StreamingProcessor<MockStreamingRecognizer> {
-        StreamingProcessor::new(7, CaptionMode::EnEn, recognizer)
+        StreamingProcessor::new(7, CaptionMode::Auto, recognizer)
     }
 
     #[test]
@@ -195,6 +199,9 @@ mod tests {
             .unwrap();
         assert!(last[0].is_final);
         assert_eq!((last[0].segment_id, last[0].revision), (1, 3));
+        // The detected language reaches the UI only when the model commits the utterance.
+        assert_eq!(first[0].language, None);
+        assert_eq!(last[0].language.as_deref(), Some("en-US"));
 
         let next = processor
             .process(&message(2_048), &cancel)
