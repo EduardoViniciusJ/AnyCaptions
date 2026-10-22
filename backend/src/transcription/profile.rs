@@ -8,7 +8,6 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-const MAX_WHISPER_MODEL_BYTES: u64 = 512 * 1024 * 1024;
 // A few model files may be checked per run; each entry avoids rehashing an unchanged file.
 const VERIFIED_CACHE_ENTRIES: usize = 4;
 
@@ -69,79 +68,6 @@ pub fn verify_model_file(
 pub enum ModelProfileError {
     Missing,
     Corrupted,
-    Incompatible,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WhisperModelProfile {
-    pub id: &'static str,
-    pub filename: &'static str,
-    pub revision: &'static str,
-    pub runtime: &'static str,
-    pub source: &'static str,
-    pub license: &'static str,
-    pub sha256: &'static str,
-    pub threads: i32,
-    /// Use GPU if available (Vulkan / DirectML)
-    pub use_gpu: bool,
-    /// Enable flash‑attention (requires GPU backend)
-    pub use_flash_attn: bool,
-}
-
-impl WhisperModelProfile {
-    pub const fn active() -> Self {
-        Self::base_en()
-    }
-
-    pub const fn small_en() -> Self {
-        Self {
-            id: "whisper-small.en",
-            filename: "ggml-small.en.bin",
-            revision: "5359861c739e955e79d9a303bcbc70fb988958b1",
-            runtime: "whisper.cpp-cpu",
-            source: "https://huggingface.co/ggerganov/whisper.cpp",
-            license: "MIT",
-            sha256: "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
-            threads: 10,
-            use_gpu: false,
-            use_flash_attn: false,
-        }
-    }
-
-    pub const fn base_en() -> Self {
-        Self {
-            id: "whisper-base.en",
-            filename: "ggml-base.en.bin",
-            revision: "5359861c739e955e79d9a303bcbc70fb988958b1",
-            runtime: "whisper.cpp-cpu",
-            source: "https://huggingface.co/ggerganov/whisper.cpp",
-            license: "MIT",
-            sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
-            threads: 10,
-            // GPU (Vulkan) is preferred; whisper.cpp falls back to CPU when no device is usable.
-            use_gpu: true,
-            use_flash_attn: false,
-        }
-    }
-
-    pub const fn tiny_en() -> Self {
-        Self {
-            id: "whisper-tiny.en",
-            filename: "ggml-tiny.en.bin",
-            revision: "5359861c739e955e79d9a303bcbc70fb988958b1",
-            runtime: "whisper.cpp-cpu",
-            source: "https://huggingface.co/ggerganov/whisper.cpp",
-            license: "MIT",
-            sha256: "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
-            threads: 10,
-            use_gpu: false,
-            use_flash_attn: false,
-        }
-    }
-
-    pub fn verify(&self, path: &Path) -> Result<(), ModelProfileError> {
-        verify_model_file(path, self.sha256, MAX_WHISPER_MODEL_BYTES)
-    }
 }
 
 #[cfg(test)]
