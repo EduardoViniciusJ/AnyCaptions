@@ -59,27 +59,33 @@ describe("overlay controls", () => {
     expect(app.backend.setWindowMode).not.toHaveBeenCalled();
   });
 
-  it("disables the translate option until the translation model is available", async () => {
+  it("lists every translation target with a flag and disables them until the model is available", async () => {
     const app = setup();
     await app.overlay.ready;
-    expect(app.get<HTMLSelectElement>("#language").options.length).toBe(38);
-    expect(app.get<HTMLOptionElement>('option[value="translate-ja"]').textContent).toContain("Traduzir para JA");
-    const option = app.get<HTMLOptionElement>('option[value="translate-pt-br"]');
-    expect(option.disabled).toBe(true);
+    const items = app.root.querySelectorAll("#language-menu li");
+    expect(items.length).toBe(38);
+    const japanese = app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]');
+    expect(japanese.textContent).toContain("Traduzir para JA");
+    expect(japanese.querySelector("img.flag")).not.toBeNull();
+    const portuguese = app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]');
+    expect(portuguese.getAttribute("aria-disabled")).toBe("true");
     app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
-    expect(option.disabled).toBe(false);
+    expect(portuguese.getAttribute("aria-disabled")).toBe("false");
   });
 
   it("changes modes through Rust and ignores stale event revisions", async () => {
-    const app = setup();
+    const app = setup(snapshot({ resources: { audioCapture: true, transcription: true, translation: true } }));
     await app.overlay.ready;
-    const select = app.get<HTMLSelectElement>("#language");
-    select.value = "translate-pt-br";
-    select.dispatchEvent(new Event("change"));
-    await vi.waitFor(() => expect(select.disabled).toBe(false));
+    const button = app.get<HTMLButtonElement>("#language");
+    const menu = app.get<HTMLUListElement>("#language-menu");
+    button.click();
+    expect(menu.hidden).toBe(false);
+    app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]').click();
+    expect(menu.hidden).toBe(true);
+    await vi.waitFor(() => expect(button.disabled).toBe(false));
     expect(app.backend.setMode).toHaveBeenCalledWith("translate-pt-br");
     app.emit(snapshot({ revision: 0 }));
-    expect(select.value).toBe("translate-pt-br");
+    expect(app.get("#language-label").textContent).toBe("Traduzir para PT");
   });
 
   it("waits for backend confirmation and prevents concurrent control requests", async () => {
@@ -254,16 +260,15 @@ describe("overlay controls", () => {
   });
 
   it("displays sanitized errors and restores confirmed values after rejection", async () => {
-    const app = setup();
+    const app = setup(snapshot({ resources: { audioCapture: true, transcription: true, translation: true } }));
     await app.overlay.ready;
     vi.mocked(app.backend.setMode).mockRejectedValue("<img src=x onerror=alert(1)>");
-    const select = app.get<HTMLSelectElement>("#language");
-    select.value = "translate-pt-br";
-    select.dispatchEvent(new Event("change"));
+    app.get<HTMLButtonElement>("#language").click();
+    app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]').click();
     await vi.waitFor(() => expect(app.get("#error").hidden).toBe(false));
-    expect(app.root.querySelector("img")).toBeNull();
+    expect(app.get("#error").querySelector("img")).toBeNull();
     expect(app.get("#error").textContent).toBe("Não foi possível concluir a ação. Tente novamente.");
-    expect(select.value).toBe("auto");
+    expect(app.get("#language-label").textContent).toBe("Auto");
   });
 
   it("releases listeners and ignores events after disposal", async () => {
@@ -271,7 +276,7 @@ describe("overlay controls", () => {
     await app.overlay.ready;
     app.overlay.dispose();
     app.emit(snapshot({ revision: 2, mode: "translate-pt-br" }));
-    expect(app.get<HTMLSelectElement>("#language").value).toBe("auto");
+    expect(app.get("#language-label").textContent).toBe("Auto");
     expect(app.release).toHaveBeenCalledOnce();
     app.get<HTMLButtonElement>("#close").click();
     expect(app.backend.close).not.toHaveBeenCalled();

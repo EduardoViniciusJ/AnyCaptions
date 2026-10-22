@@ -1,4 +1,4 @@
-import { TRANSLATION_TARGETS } from "./languages";
+import { TRANSLATION_TARGETS, flagUrl } from "./languages";
 import type {
   AppSnapshot,
   Appearance,
@@ -50,8 +50,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
         <div class="drag-region" data-tauri-drag-region title="Arraste para mover a janela"></div>
         <div class="controls" aria-label="Controles de legendas">
           <button id="capture" class="capture-button" disabled>${icons.play}<span id="capture-label">Iniciar</span></button>
-          <label class="sr-only" for="language">Idioma das legendas</label>
-          <select id="language" disabled><option value="auto" title="Detecta o idioma e transcreve no idioma falado">Auto</option></select>
+          <div class="language-picker">
+            <button id="language" type="button" disabled aria-haspopup="listbox" aria-expanded="false" aria-label="Idioma das legendas" title="Detecta o idioma e transcreve no idioma falado"><span id="language-label">Auto</span></button>
+            <ul id="language-menu" role="listbox" aria-label="Idioma das legendas" hidden></ul>
+          </div>
           <button id="settings-toggle" class="icon-button" aria-label="Configurações" title="Configurações" aria-expanded="false" aria-controls="settings">${icons.settings}</button>
           <button id="lock" class="icon-button" aria-label="Bloquear janela" title="O bloqueio precisa de atalho ou bandeja disponíveis" disabled>${icons.lock}</button>
         </div>
@@ -119,15 +121,56 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   const overlay = get<HTMLElement>(".overlay");
   const capture = get<HTMLButtonElement>("#capture");
   const captureLabel = get<HTMLElement>("#capture-label");
-  const language = get<HTMLSelectElement>("#language");
+  const language = get<HTMLButtonElement>("#language");
+  const languageLabel = get<HTMLElement>("#language-label");
+  const languageMenu = get<HTMLUListElement>("#language-menu");
+  const languageItem = (mode: CaptionMode, label: string, name: string, country?: string) => {
+    const item = document.createElement("li");
+    item.role = "option";
+    item.dataset.value = mode;
+    item.dataset.name = name;
+    item.title = name;
+    const flag = country && flagUrl(country);
+    if (flag) {
+      const image = document.createElement("img");
+      image.className = "flag";
+      image.src = flag;
+      image.alt = "";
+      item.append(image);
+    }
+    const text = document.createElement("span");
+    text.textContent = label;
+    item.append(text);
+    languageMenu.append(item);
+    return item;
+  };
+  languageItem("auto", "Auto", "Detecta o idioma e transcreve no idioma falado");
   for (const target of TRANSLATION_TARGETS) {
-    const option = document.createElement("option");
-    option.value = target.mode;
-    option.textContent = `Traduzir para ${target.short} ${target.flag}`;
-    option.title = target.name;
-    option.dataset.name = target.name;
-    language.append(option);
+    languageItem(target.mode, `Traduzir para ${target.short}`, target.name, target.country);
   }
+  const languageItems = [...languageMenu.querySelectorAll<HTMLLIElement>("li")];
+  const toggleLanguageMenu = (open: boolean) => {
+    languageMenu.hidden = !open;
+    language.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const selected = languageItems.find((item) => item.dataset.value === state?.mode);
+      selected?.scrollIntoView({ block: "nearest" });
+    }
+  };
+  const renderLanguageButton = (mode: CaptionMode) => {
+    const item = languageItems.find((entry) => entry.dataset.value === mode);
+    languageLabel.textContent = item?.querySelector("span")?.textContent ?? "Auto";
+    language.title = item?.dataset.name ?? "";
+    const flag = item?.querySelector<HTMLImageElement>("img.flag")?.src;
+    language.querySelector("img.flag")?.remove();
+    if (flag) {
+      const image = document.createElement("img");
+      image.className = "flag";
+      image.src = flag;
+      image.alt = "";
+      language.prepend(image);
+    }
+  };
   const lock = get<HTMLButtonElement>("#lock");
   const settingsToggle = get<HTMLButtonElement>("#settings-toggle");
   const settings = get<HTMLElement>("#settings");
@@ -255,14 +298,17 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     previousCapture = state.capture;
     caption.hidden = !live.hidden || state.capture !== "stopped";
     if (state.windowMode === "locked" && !settings.hidden) toggleSettings(false);
-    language.value = state.mode;
+    renderLanguageButton(state.mode);
     language.disabled = busy;
-    for (const option of language.options) {
-      if (!option.value.startsWith("translate-")) continue;
-      option.disabled = !state.resources.translation;
-      option.title = state.resources.translation
-        ? (option.dataset.name ?? "")
-        : `${option.dataset.name ?? ""} — instale o modelo de tradução`;
+    if (busy || state.windowMode === "locked") toggleLanguageMenu(false);
+    for (const item of languageItems) {
+      const translate = item.dataset.value?.startsWith("translate-") ?? false;
+      const unavailable = translate && !state.resources.translation;
+      item.setAttribute("aria-disabled", String(unavailable));
+      item.setAttribute("aria-selected", String(item.dataset.value === state.mode));
+      item.title = unavailable
+        ? `${item.dataset.name ?? ""} — instale o modelo de tradução`
+        : (item.dataset.name ?? "");
     }
     if (settings.hidden || !appearanceDraft) setAppearanceInputs(state.appearance);
     applyAppearance(caption, state.appearance);
@@ -332,9 +378,22 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
 
   const options = { signal: listeners.signal };
   capture.addEventListener("click", () => void perform(() => state?.capture === "stopped" ? backend.start() : backend.stop()), options);
-  language.addEventListener("change", () => {
-    const mode = language.value as CaptionMode;
+  language.addEventListener("click", () => toggleLanguageMenu(Boolean(languageMenu.hidden)), options);
+  languageMenu.addEventListener("click", (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLLIElement>("li[data-value]");
+    if (!item || item.getAttribute("aria-disabled") === "true") return;
+    toggleLanguageMenu(false);
+    const mode = item.dataset.value as CaptionMode;
+    if (mode === state?.mode) return;
     void perform(() => backend.setMode(mode));
+  }, options);
+  document.addEventListener("pointerdown", (event) => {
+    if (!languageMenu.hidden && !(event.target as HTMLElement).closest(".language-picker")) {
+      toggleLanguageMenu(false);
+    }
+  }, options);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !languageMenu.hidden) toggleLanguageMenu(false);
   }, options);
   lock.addEventListener("click", () => void perform(() => backend.setWindowMode("locked")), options);
   saveSettings.addEventListener("click", () => {
