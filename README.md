@@ -13,6 +13,15 @@ O reconhecimento usa dois itens locais, ignorados pelo Git:
 
 O modelo roda na GPU pelo Vulkan e volta para a CPU se nenhum dispositivo puder ser usado. Ele mesmo detecta voz, fim de frase, pontuação e idioma, sem VAD ou segmentador externo.
 
+### Tradução local
+
+A tradução usa os mesmos mecanismos, também ignorados pelo Git:
+
+- Modelo `riva-translate-4b-instruct-v2.q8_0.gguf` (4.449.443.040 bytes, SHA-256 `fb820b6e092e0dde67c53d8d5cface294c47fd67d0462df6a58f6e2bda9f2772`), convertido localmente com o `convert_model.py` do NeMo-Speech.cpp (`--outtype q8_0`) a partir da revisão `040d958b128018ff0bed2542a7b51005e9ea563c` de [nvidia/Riva-Translate-4B-Instruct-v2](https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2), licença [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/). Fica em `backend/models/translation/riva-translate-4b-instruct-v2/` e é verificado por SHA-256 antes de carregar. Distribuições do modelo devem incluir a licença e o aviso "Licensed by NVIDIA Corporation under the NVIDIA Open Model License".
+- A mesma biblioteca NeMo-Speech.cpp, compilada com `scripts\windows\build.ps1 -Backend vulkan -Profile asr -Nmt`, fornece `nemo_speech_nmt_c.dll` (com `nemo_speech_nmt.dll` e `llama.dll`) na mesma pasta do ASR. Sem ela o app informa que a tradução está indisponível.
+
+Todo par de idiomas do modelo inclui o inglês; pares sem inglês (por exemplo, espanhol → português) são traduzidos em duas etapas passando por ele. O teste real roda com `cargo test --manifest-path backend/Cargo.toml --test real_riva -- --ignored`.
+
 ## Executar
 
 Pré-requisitos: Rust estável com target `x86_64-pc-windows-msvc` (mínimo 1.90), ferramentas C++ do Visual Studio com Windows SDK, WebView2 e Node 24.15+ da linha 24 (ou 26+).

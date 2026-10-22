@@ -1,5 +1,4 @@
 use std::{
-    path::{Path, PathBuf},
     sync::{Arc, Mutex, mpsc},
     thread::{self, JoinHandle},
     time::Duration,
@@ -25,8 +24,6 @@ use super::{
     streaming::StreamingProcessor,
 };
 
-// Development build of NeMo-Speech.cpp (see backend/local-data/nemo-speech).
-const DEV_NEMO_LIBRARY_DIR: &str = "local-data/nemo-speech/build-vulkan-asr/bin";
 // Audio is submitted in 128 ms blocks at 16 kHz.
 const SUBMIT_BLOCK_SAMPLES: usize = 2_048;
 // 32 ms of silence, matching the capture receive timeout, keeps the stream paced in real time.
@@ -34,23 +31,10 @@ const IDLE_SILENCE_SAMPLES: usize = 512;
 
 impl NemotronPaths {
     /// Model: the catalog layout under the models root (see `crate::models::models_root`).
-    /// Library: `ANYCAPTIONS_NEMO_DIR`, the local development build, or the executable folder.
+    /// Library: the shared NeMo-Speech folder (see `crate::native::nemo_library_dir`).
     pub fn resolve() -> Self {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        let library_dir = [
-            std::env::var_os("ANYCAPTIONS_NEMO_DIR").map(PathBuf::from),
-            Some(manifest.join(DEV_NEMO_LIBRARY_DIR)),
-            exe_dir,
-        ]
-        .into_iter()
-        .flatten()
-        .find(|dir| dir.is_dir())
-        .unwrap_or_else(|| manifest.join(DEV_NEMO_LIBRARY_DIR));
         Self {
-            library_dir,
+            library_dir: crate::native::nemo_library_dir(),
             model: NEMOTRON_STREAMING_Q8.path_in(&models_root()),
         }
     }

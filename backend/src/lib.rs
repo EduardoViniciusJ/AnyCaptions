@@ -2,10 +2,12 @@ pub mod audio;
 pub mod domain;
 pub mod ipc;
 pub mod models;
+pub(crate) mod native;
 pub mod pipeline;
 mod preferences;
 mod recovery;
 pub mod transcription;
+pub mod translation;
 mod window;
 
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {

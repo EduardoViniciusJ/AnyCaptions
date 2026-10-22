@@ -10,7 +10,7 @@ use std::{
 use libloading::Library;
 
 use super::streaming::{RecognizerError, SpeechResult, StreamingRecognizer};
-use crate::models::catalog::NEMOTRON_STREAMING_Q8;
+use crate::{models::catalog::NEMOTRON_STREAMING_Q8, native::open_library};
 
 #[cfg(windows)]
 pub const LIBRARY_FILENAME: &str = "nemo_speech_asr_c.dll";
@@ -157,21 +157,6 @@ impl Api {
             })
         }
     }
-}
-
-#[cfg(windows)]
-fn open_library(path: &Path) -> Result<Library, libloading::Error> {
-    use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WindowsLibrary};
-    // The library's dependencies (ggml*.dll, nemo_speech_asr.dll) live next to it, not next to
-    // the executable; this flag makes Windows resolve them from the library's own folder.
-    // SAFETY: loading runs the library's initializers; it is the pinned NeMo-Speech.cpp build.
-    unsafe { WindowsLibrary::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH).map(Into::into) }
-}
-
-#[cfg(not(windows))]
-fn open_library(path: &Path) -> Result<Library, libloading::Error> {
-    // SAFETY: loading runs the library's initializers; it is the pinned NeMo-Speech.cpp build.
-    unsafe { Library::new(path) }
 }
 
 /// Where the NeMo-Speech library and model are found.
