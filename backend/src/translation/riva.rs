@@ -207,7 +207,13 @@ impl NativeRivaTranslator {
             "[nmt] device={device} load_ms={}",
             load_start.elapsed().as_millis()
         );
-        Ok(Self { translator, api })
+        let mut loaded = Self { translator, api };
+        // One tiny fixed warmup call compiles the GPU pipelines now, so the first
+        // real caption is not ~1 s slower than the rest.
+        let warmup = std::time::Instant::now();
+        let _ = loaded.translate_tag("Ok.", ENGLISH, "pt-br");
+        eprintln!("[nmt] warmup_ms={}", warmup.elapsed().as_millis());
+        Ok(loaded)
     }
 
     fn translate_tag(

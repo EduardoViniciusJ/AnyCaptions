@@ -14,9 +14,10 @@ pub const TRANSCRIPTION: RecognizerTuning = RecognizerTuning {
     stop_history_eou_ms: 0,
 };
 
-/// Translate mode: finals close after 300 ms of silence instead of 800 ms, so
-/// translation starts ~0.5 s sooner. Much lower would split sentences at
-/// micro-pauses and hurt translation quality.
+/// Translate mode: finals close after 150 ms of silence instead of 800 ms, so
+/// translation starts ~0.65 s sooner. The user chose minimum latency knowing
+/// sentences may split at micro-pauses; raise towards 300-500 ms if fragments
+/// start hurting translation quality.
 pub const TRANSLATION: RecognizerTuning = RecognizerTuning {
-    stop_history_eou_ms: 300,
+    stop_history_eou_ms: 150,
 };
