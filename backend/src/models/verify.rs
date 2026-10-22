@@ -1,3 +1,5 @@
+//! Integrity checks shared by every model in the catalog.
+
 use std::{
     fs::File,
     io::Read,

@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod domain;
 pub mod ipc;
+pub mod models;
 pub mod pipeline;
 mod preferences;
 mod recovery;

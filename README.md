@@ -8,7 +8,7 @@ O overlay abre em modo edição, sem captura. A bandeja oferece mostrar/editar, 
 
 O reconhecimento usa dois itens locais, ignorados pelo Git:
 
-- Modelo `nemotron-3.5-asr-streaming-0.6b.q8_0.gguf` (742.090.464 bytes, SHA-256 `3fc991d3badad7277c11030a7519832cddaf2057aafed6d4b25147e953a070b1`, revisão `ea30d66debe3740a08b573244286791d423d6b3e` de [nvidia/nemotron-3.5-asr-streaming-0.6b](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b), licença [OpenMDW-1.1](https://openmdw.ai/license/1-1/)) em `backend/models/` ou na pasta de `ANYCAPTIONS_MODELS_DIR`. O arquivo é verificado por SHA-256 antes de carregar.
+- Modelo `nemotron-3.5-asr-streaming-0.6b.q8_0.gguf` (742.090.464 bytes, SHA-256 `3fc991d3badad7277c11030a7519832cddaf2057aafed6d4b25147e953a070b1`, revisão `ea30d66debe3740a08b573244286791d423d6b3e` de [nvidia/nemotron-3.5-asr-streaming-0.6b](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b), licença [OpenMDW-1.1](https://openmdw.ai/license/1-1/)) em `backend/models/asr/nemotron-3.5-asr-streaming-0.6b/` ou na mesma estrutura dentro da pasta de `ANYCAPTIONS_MODELS_DIR` (veja `backend/models/README.md`). O arquivo é verificado por SHA-256 antes de carregar.
 - Biblioteca [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) v0.2.0 (Apache-2.0), compilada com Vulkan em `backend/local-data/nemo-speech/build-vulkan-asr/bin`, na pasta de `ANYCAPTIONS_NEMO_DIR` ou ao lado do executável. Ela é carregada em tempo de execução (`nemo_speech_asr_c.dll` e dependências); sem ela o app abre normalmente e informa que a transcrição está indisponível.
 
 O modelo roda na GPU pelo Vulkan e volta para a CPU se nenhum dispositivo puder ser usado. Ele mesmo detecta voz, fim de frase, pontuação e idioma, sem VAD ou segmentador externo.
