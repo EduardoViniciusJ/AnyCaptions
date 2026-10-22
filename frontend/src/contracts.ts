@@ -1,4 +1,4 @@
-export type CaptionMode = "auto" | "translate-pt";
+export type CaptionMode = "auto" | `translate-${string}`;
 export type CaptureState = "stopped" | "preparing" | "listening" | "processing" | "error";
 export type WindowMode = "edit" | "locked";
 export type HorizontalResizeDirection = "East" | "West";

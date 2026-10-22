@@ -11,15 +11,13 @@ use std::{
 };
 
 use super::Translator;
-use crate::ipc::CaptionUpdate;
+use crate::{domain::TargetLanguage, ipc::CaptionUpdate};
 
 /// Pending finals awaiting translation. Beyond this the translator is too far
 /// behind the audio, and the session fails visibly instead of lagging silently.
 const QUEUE_CAPACITY: usize = 8;
 /// Captions without a detected language assume English, the dominant case.
 const DEFAULT_SOURCE: &str = "en-US";
-/// Fixed target of the translate mode; more targets become configuration later.
-pub const TARGET_LANGUAGE: &str = "pt-BR";
 
 /// Splits a final caption into sentences. The recognizer punctuates, so sentence
 /// marks are reliable boundaries; decimals and abbreviations may split early,
@@ -66,9 +64,11 @@ pub struct TranslationStage {
 
 impl TranslationStage {
     /// `emit` runs on the worker thread for every event and returns `false` to
-    /// stop early (stale session or failed delivery).
+    /// stop early (stale session or failed delivery). `target` is the language
+    /// every caption is translated into.
     pub fn spawn(
         mut translator: Box<dyn Translator>,
+        target: TargetLanguage,
         mut emit: impl FnMut(StageEvent) -> bool + Send + 'static,
     ) -> Result<Self, StageError> {
         let (sender, receiver) = sync_channel::<CaptionUpdate>(QUEUE_CAPACITY);
@@ -90,7 +90,7 @@ impl TranslationStage {
                             return;
                         }
                         let start = std::time::Instant::now();
-                        match translator.translate(&sentence, source, TARGET_LANGUAGE) {
+                        match translator.translate(&sentence, source, target.tag()) {
                             Ok(text) => {
                                 // Timing only; caption text never reaches logs.
                                 eprintln!(
@@ -110,7 +110,7 @@ impl TranslationStage {
                                 }
                                 let translated = CaptionUpdate {
                                     text: accumulated.clone(),
-                                    language: Some(TARGET_LANGUAGE.to_owned()),
+                                    language: Some(target.tag().to_owned()),
                                     revision: (index + 1) as u32,
                                     is_final: index + 1 == total,
                                     ..update.clone()
@@ -183,7 +183,7 @@ mod tests {
             session_id: 1,
             segment_id,
             revision: 1,
-            mode: CaptionMode::TranslatePt,
+            mode: CaptionMode::Translate(crate::domain::PT_BR),
             text: text.into(),
             is_final: true,
             language: language.map(str::to_owned),
@@ -203,7 +203,7 @@ mod tests {
         translator
             .expect_translate()
             .withf(|text, source, target| {
-                target == TARGET_LANGUAGE
+                target == "pt-br"
                     && match text {
                         "First" => source == "es-ES",
                         "Second" => source == DEFAULT_SOURCE,
@@ -215,14 +215,17 @@ mod tests {
 
         let emitted = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&emitted);
-        let stage = TranslationStage::spawn(Box::new(translator), move |event| match event {
-            StageEvent::Translated(update) => {
-                sink.lock().unwrap().push(update);
-                true
-            }
-            StageEvent::Failed => false,
-        })
-        .unwrap();
+        let stage =
+            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
+                match event {
+                    StageEvent::Translated(update) => {
+                        sink.lock().unwrap().push(update);
+                        true
+                    }
+                    StageEvent::Failed => false,
+                }
+            })
+            .unwrap();
 
         stage
             .submit(final_update(1, "First", Some("es-ES")))
@@ -233,7 +236,7 @@ mod tests {
         let emitted = emitted.lock().unwrap();
         assert_eq!(emitted.len(), 2);
         assert_eq!(emitted[0].text, "PT First");
-        assert_eq!(emitted[0].language.as_deref(), Some(TARGET_LANGUAGE));
+        assert_eq!(emitted[0].language.as_deref(), Some("pt-br"));
         assert!(emitted[0].is_final);
         assert_eq!(emitted[1].text, "PT Second");
         assert_eq!(
@@ -254,14 +257,17 @@ mod tests {
 
         let emitted = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&emitted);
-        let stage = TranslationStage::spawn(Box::new(translator), move |event| match event {
-            StageEvent::Translated(update) => {
-                sink.lock().unwrap().push(update);
-                true
-            }
-            StageEvent::Failed => false,
-        })
-        .unwrap();
+        let stage =
+            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
+                match event {
+                    StageEvent::Translated(update) => {
+                        sink.lock().unwrap().push(update);
+                        true
+                    }
+                    StageEvent::Failed => false,
+                }
+            })
+            .unwrap();
         stage
             .submit(final_update(3, "One. Two.", Some("en-US")))
             .unwrap();
@@ -293,13 +299,14 @@ mod tests {
 
         let failed = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&failed);
-        let stage = TranslationStage::spawn(Box::new(translator), move |event| {
-            if matches!(event, StageEvent::Failed) {
-                flag.store(true, Ordering::Release);
-            }
-            false
-        })
-        .unwrap();
+        let stage =
+            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
+                if matches!(event, StageEvent::Failed) {
+                    flag.store(true, Ordering::Release);
+                }
+                false
+            })
+            .unwrap();
 
         stage.submit(final_update(1, "Boom", None)).unwrap();
         wait_until(|| failed.load(Ordering::Acquire));
@@ -315,7 +322,8 @@ mod tests {
             thread::sleep(Duration::from_millis(300));
             Ok(text.to_owned())
         });
-        let stage = TranslationStage::spawn(Box::new(translator), |_| true).unwrap();
+        let stage =
+            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, |_| true).unwrap();
 
         let mut overloaded = false;
         // One caption may be in flight; the queue holds QUEUE_CAPACITY more.
@@ -339,11 +347,12 @@ mod tests {
             .returning(|_, _, _| Ok(String::new()));
         let emitted = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&emitted);
-        let stage = TranslationStage::spawn(Box::new(translator), move |_| {
-            flag.store(true, Ordering::Release);
-            true
-        })
-        .unwrap();
+        let stage =
+            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |_| {
+                flag.store(true, Ordering::Release);
+                true
+            })
+            .unwrap();
         stage.submit(final_update(1, "   ", None)).unwrap();
         stage.finish();
         assert!(!emitted.load(Ordering::Acquire));

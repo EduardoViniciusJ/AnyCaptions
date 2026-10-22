@@ -21,10 +21,18 @@ pub const LIBRARY_FILENAME: &str = "libnemo_speech_nmt_c.so";
 /// Every supported pair includes English, so other pairs hop through it.
 const ENGLISH: &str = "en";
 
-/// Maps a recognizer language (BCP-47, e.g. `en-US`) to the model's tag (e.g. `en`).
-/// Portuguese targets the Brazilian variant the model translates into.
+/// Regional tags the model distinguishes; every other code falls back to its
+/// primary subtag (`langpairs.cc` of the pinned build).
+const VARIANT_TAGS: &[&str] = &["pt-br", "pt-pt", "es-es", "es-us", "zh-cn", "zh-tw"];
+
+/// Maps a language code (BCP-47, e.g. `en-US`, or a model tag) to the model's
+/// tag (e.g. `en`). Bare Portuguese means the Brazilian variant.
 fn model_tag(code: &str) -> Option<String> {
-    let primary = code.split(['-', '_']).next()?.to_ascii_lowercase();
+    let lower = code.replace('_', "-").to_ascii_lowercase();
+    if VARIANT_TAGS.contains(&lower.as_str()) {
+        return Some(lower);
+    }
+    let primary = lower.split('-').next()?.to_owned();
     if primary.len() != 2 || !primary.bytes().all(|b| b.is_ascii_lowercase()) {
         return None;
     }
@@ -306,9 +314,11 @@ mod tests {
         assert_eq!(model_tag("en-US").as_deref(), Some("en"));
         assert_eq!(model_tag("en-GB").as_deref(), Some("en"));
         assert_eq!(model_tag("pt-BR").as_deref(), Some("pt-br"));
-        assert_eq!(model_tag("pt-PT").as_deref(), Some("pt-br"));
-        assert_eq!(model_tag("es-ES").as_deref(), Some("es"));
+        assert_eq!(model_tag("pt-PT").as_deref(), Some("pt-pt"));
+        assert_eq!(model_tag("es-ES").as_deref(), Some("es-es"));
         assert_eq!(model_tag("ru-RU").as_deref(), Some("ru"));
+        assert_eq!(model_tag("zh-TW").as_deref(), Some("zh-tw"));
+        assert_eq!(model_tag("es-US").as_deref(), Some("es-us"));
         assert_eq!(model_tag(""), None);
         assert_eq!(model_tag("latin"), None);
         assert_eq!(model_tag("1a"), None);

@@ -304,6 +304,7 @@ fn deliver(
 
 fn spawn_translation_route(
     session_id: u32,
+    target: crate::domain::TargetLanguage,
     factory: &Arc<dyn ProcessorFactory>,
     controller: &Controller,
     sink: &Arc<dyn SessionSink>,
@@ -311,7 +312,7 @@ fn spawn_translation_route(
     let translator = factory.create_translator()?;
     let stage_controller = controller.clone();
     let stage_sink = Arc::clone(sink);
-    TranslationStage::spawn(translator, move |event| match event {
+    TranslationStage::spawn(translator, target, move |event| match event {
         StageEvent::Translated(update) => {
             if !stage_controller.is_session_active(update.session_id) {
                 return false;
@@ -360,8 +361,8 @@ fn run_coordinator(
         }
     };
 
-    let route = if mode.requires_translation() {
-        match spawn_translation_route(session_id, &factory, &controller, &sink) {
+    let route = if let Some(target) = mode.translation_target() {
+        match spawn_translation_route(session_id, target, &factory, &controller, &sink) {
             Ok(route) => route,
             Err(error) => {
                 let _ = controller.fail_session(session_id, error, sink.as_ref());
@@ -731,7 +732,7 @@ mod tests {
             translator
                 .expect_translate()
                 .withf(|text, source, target| {
-                    text == "Live English caption" && source == "en-US" && target == "pt-BR"
+                    text == "Live English caption" && source == "en-US" && target == "pt-br"
                 })
                 .returning(|_, _, _| Ok("Legenda em português".to_owned()));
             Ok(Box::new(translator))
@@ -768,12 +769,12 @@ mod tests {
         let sink = Arc::new(RecordedSink::default());
         let controller = controller_with_translation(&sink, true);
         let preferences = crate::preferences::Preferences {
-            mode: CaptionMode::TranslatePt,
+            mode: CaptionMode::Translate(crate::domain::PT_BR),
             ..Default::default()
         };
         controller.restore_preferences(&preferences).unwrap();
         let started = controller.start_session(sink.as_ref()).unwrap();
-        assert_eq!(started.mode, CaptionMode::TranslatePt);
+        assert_eq!(started.mode, CaptionMode::Translate(crate::domain::PT_BR));
 
         let manager =
             CaptionSessionManager::new(Arc::new(backend), Arc::new(TranslatingFakeFactory));
@@ -806,7 +807,7 @@ mod tests {
         assert!(
             captions
                 .iter()
-                .all(|update| update.language.as_deref() == Some("pt-BR"))
+                .all(|update| update.language.as_deref() == Some("pt-br"))
         );
         assert_eq!(captions[0].session_id, started.session_id);
     }

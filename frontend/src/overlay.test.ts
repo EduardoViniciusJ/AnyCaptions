@@ -62,7 +62,9 @@ describe("overlay controls", () => {
   it("disables the translate option until the translation model is available", async () => {
     const app = setup();
     await app.overlay.ready;
-    const option = app.get<HTMLOptionElement>('option[value="translate-pt"]');
+    expect(app.get<HTMLSelectElement>("#language").options.length).toBe(38);
+    expect(app.get<HTMLOptionElement>('option[value="translate-ja"]').textContent).toContain("Traduzir para JA");
+    const option = app.get<HTMLOptionElement>('option[value="translate-pt-br"]');
     expect(option.disabled).toBe(true);
     app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
     expect(option.disabled).toBe(false);
@@ -72,12 +74,12 @@ describe("overlay controls", () => {
     const app = setup();
     await app.overlay.ready;
     const select = app.get<HTMLSelectElement>("#language");
-    select.value = "translate-pt";
+    select.value = "translate-pt-br";
     select.dispatchEvent(new Event("change"));
     await vi.waitFor(() => expect(select.disabled).toBe(false));
-    expect(app.backend.setMode).toHaveBeenCalledWith("translate-pt");
+    expect(app.backend.setMode).toHaveBeenCalledWith("translate-pt-br");
     app.emit(snapshot({ revision: 0 }));
-    expect(select.value).toBe("translate-pt");
+    expect(select.value).toBe("translate-pt-br");
   });
 
   it("waits for backend confirmation and prevents concurrent control requests", async () => {
@@ -256,7 +258,7 @@ describe("overlay controls", () => {
     await app.overlay.ready;
     vi.mocked(app.backend.setMode).mockRejectedValue("<img src=x onerror=alert(1)>");
     const select = app.get<HTMLSelectElement>("#language");
-    select.value = "translate-pt";
+    select.value = "translate-pt-br";
     select.dispatchEvent(new Event("change"));
     await vi.waitFor(() => expect(app.get("#error").hidden).toBe(false));
     expect(app.root.querySelector("img")).toBeNull();
@@ -268,7 +270,7 @@ describe("overlay controls", () => {
     const app = setup();
     await app.overlay.ready;
     app.overlay.dispose();
-    app.emit(snapshot({ revision: 2, mode: "translate-pt" }));
+    app.emit(snapshot({ revision: 2, mode: "translate-pt-br" }));
     expect(app.get<HTMLSelectElement>("#language").value).toBe("auto");
     expect(app.release).toHaveBeenCalledOnce();
     app.get<HTMLButtonElement>("#close").click();
