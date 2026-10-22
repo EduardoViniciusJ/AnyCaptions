@@ -1,7 +1,7 @@
 export type CaptionMode = "auto" | `translate-${string}`;
 export type CaptureState = "stopped" | "preparing" | "listening" | "processing" | "error";
 export type WindowMode = "edit" | "locked";
-export type HorizontalResizeDirection = "East" | "West";
+export type ResizeDirection = "East" | "West" | "South";
 export type CaptionColor = `#${string}`;
 
 export interface Appearance {
@@ -12,6 +12,7 @@ export interface Appearance {
 
 export interface AppSnapshot {
   revision: number;
+  uiLanguage: string;
   sessionId: number;
   mode: CaptionMode;
   capture: CaptureState;
@@ -45,6 +46,7 @@ export interface OutputSelection {
 export interface Backend {
   getState(): Promise<AppSnapshot>;
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
+  setUiLanguage(language: string): Promise<AppSnapshot>;
   start(): Promise<AppSnapshot>;
   stop(): Promise<AppSnapshot>;
   setAppearance(appearance: Appearance): Promise<AppSnapshot>;
@@ -54,8 +56,6 @@ export interface Backend {
   selectAudioOutput(id: string): Promise<OutputSelection>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
-  resize(direction: HorizontalResizeDirection): Promise<void>;
-  fitSettings(): Promise<void>;
-  fitCaption(): Promise<void>;
+  resize(direction: ResizeDirection): Promise<void>;
   close(): Promise<void>;
 }
