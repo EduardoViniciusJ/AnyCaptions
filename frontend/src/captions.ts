@@ -1,4 +1,10 @@
 import type { CaptionMode, CaptionUpdate } from "./contracts";
+import {
+  CaptionMeasurer,
+  captionWords,
+  paginateCaption,
+  type CaptionFits,
+} from "./caption-layout";
 
 export interface CaptionClock {
   set(callback: () => void, delay: number): ReturnType<typeof setTimeout>;
@@ -10,81 +16,20 @@ const browserClock: CaptionClock = {
   clear: (handle) => clearTimeout(handle),
 };
 
-export const LIVE_PHRASE_MAX_WORDS = 9;
-export const LIVE_PHRASE_MAX_CHARS = 64;
-const MIN_ROLLING_WINDOW_WORDS = 5;
+const CLEAR_FADE_MS = 120;
 
 export function readingTime(text: string): number {
   return Math.max(2000, Math.min(7000, Math.ceil((text.length / 15) * 1000)));
 }
 
-export function liveCaptionTime(text: string): number {
-  return Math.max(2000, Math.min(5000, Math.ceil((text.length / 18) * 1000)));
-}
-
-export function splitTrailingWord(text: string): { leading: string; trailing: string } {
+export function splitTrailingWords(text: string, trailingWords = 1): { leading: string; trailing: string } {
   const words = text.trim().split(/\s+/u).filter(Boolean);
   if (words.length === 0) return { leading: "", trailing: "" };
-  if (words.length === 1) return { leading: "", trailing: words[0]! };
+  const splitAt = Math.max(0, words.length - trailingWords);
   return {
-    leading: words.slice(0, -1).join(" "),
-    trailing: words.at(-1)!,
+    leading: words.slice(0, splitAt).join(" "),
+    trailing: words.slice(splitAt).join(" "),
   };
-}
-
-export function splitPhraseChunks(
-  text: string,
-  maxChars = LIVE_PHRASE_MAX_CHARS,
-  maxWords = LIVE_PHRASE_MAX_WORDS,
-): string[] {
-  const words = text.trim().split(/\s+/u).filter(Boolean);
-  const chunks: string[] = [];
-  let current: string[] = [];
-  let currentLen = 0;
-  for (const word of words) {
-    const nextLen = currentLen ? currentLen + 1 + word.length : word.length;
-    if (current.length > 0 && (nextLen > maxChars || current.length >= maxWords)) {
-      chunks.push(current.join(" "));
-      current = [word];
-      currentLen = word.length;
-    } else {
-      current.push(word);
-      currentLen = nextLen;
-    }
-  }
-  if (current.length > 0) {
-    // Prevent 1-2 word orphans (like a lone "the") when a phrase rolls over:
-    // borrow trailing words from the previous chunk so the visible line always has context.
-    if (chunks.length > 0 && current.length < 4 && words.length >= MIN_ROLLING_WINDOW_WORDS) {
-      const windowWords = words.slice(-MIN_ROLLING_WINDOW_WORDS);
-      chunks.push(windowWords.join(" "));
-    } else {
-      chunks.push(current.join(" "));
-    }
-  }
-  return chunks;
-}
-
-// Long translations keep every word in ordered blocks; live English follows the newest cue.
-export function splitCaption(text: string, charsPerLine = 42, maxLines = 2): string[] {
-  const words = text.trim().split(/\s+/u).filter(Boolean);
-  const blocks: string[] = [];
-  let lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    if (line && line.length + 1 + word.length > charsPerLine) {
-      lines.push(line);
-      line = "";
-      if (lines.length === maxLines) {
-        blocks.push(lines.join("\n"));
-        lines = [];
-      }
-    }
-    line = line ? `${line} ${word}` : word;
-  }
-  if (line) lines.push(line);
-  if (lines.length) blocks.push(lines.join("\n"));
-  return blocks;
 }
 
 interface Block {
@@ -92,6 +37,11 @@ interface Block {
   committedText?: string;
   livePartialText?: string;
   segmentId: number;
+}
+
+interface ActiveLiveSegment {
+  words: string[];
+  consumedWords: number;
 }
 
 export class CaptionPresenter {
@@ -104,16 +54,24 @@ export class CaptionPresenter {
   private activeSegmentId = 0;
   private activeRevision = -1;
   private activeFinal = false;
+  private finalizedLiveWords: string[] = [];
+  private activeLiveSegment: ActiveLiveSegment | undefined;
   private current: Block | undefined;
   private queue: Block[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private fadeTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly measurer: CaptionMeasurer | undefined;
+  private readonly fitsCaption: CaptionFits;
 
   constructor(
     private readonly element: HTMLElement,
     private readonly clock: CaptionClock = browserClock,
     private readonly onChange: () => void = () => {},
-  ) {}
+    fitsCaption?: CaptionFits,
+  ) {
+    this.measurer = fitsCaption ? undefined : new CaptionMeasurer(element);
+    this.fitsCaption = fitsCaption ?? this.measurer!.fits;
+  }
 
   setContext(sessionId: number, mode: CaptionMode): void {
     if (sessionId === this.sessionId && mode === this.mode) return;
@@ -136,9 +94,9 @@ export class CaptionPresenter {
     if (update.revision <= prior || this.finished.has(update.segmentId) || update.segmentId < this.nextSegmentId)
       return false;
     if (this.mode === "en-pt" && !update.isFinal) return false;
-    const blocks = update.isFinal ? splitCaption(update.text, this.charsPerLine(), this.maxLines()) : [];
+    const blocks = update.isFinal ? paginateCaption(update.text, this.fitsCaption) : [];
     const pendingBlocks = [...this.pending.values()].reduce(
-      (sum, item) => sum + splitCaption(item.text, this.charsPerLine(), this.maxLines()).length,
+      (sum, item) => sum + paginateCaption(item.text, this.fitsCaption).length,
       0,
     );
     if (
@@ -153,12 +111,6 @@ export class CaptionPresenter {
     return true;
   }
 
-  private phraseCharLimit(): number {
-    const width = this.element.clientWidth || this.element.parentElement?.clientWidth || 0;
-    if (!width) return LIVE_PHRASE_MAX_CHARS;
-    return Math.max(52, Math.min(LIVE_PHRASE_MAX_CHARS, this.charsPerLine() * this.maxLines()));
-  }
-
   private acceptLive(update: CaptionUpdate): boolean {
     if (
       update.segmentId < this.activeSegmentId ||
@@ -166,42 +118,95 @@ export class CaptionPresenter {
     )
       return false;
 
+    const newSegment = update.segmentId !== this.activeSegmentId;
+    if (newSegment) this.commitActiveLiveSegment();
+
     this.activeSegmentId = update.segmentId;
     this.activeRevision = update.revision;
     this.activeFinal = update.isFinal;
 
-    const maxChars = this.phraseCharLimit();
-    const chunks = splitPhraseChunks(update.text, maxChars, LIVE_PHRASE_MAX_WORDS);
-    const phrase = chunks.at(-1) ?? "";
-    if (!phrase) return true;
+    const incomingWords = captionWords(update.text);
+    const previous = this.activeLiveSegment;
+    const previousWords = previous?.words ?? [];
+    const regressivePartial =
+      !update.isFinal &&
+      incomingWords.length < previousWords.length &&
+      incomingWords.every((word, index) => word === previousWords[index]);
 
-    let committedText = "";
-    let livePartialText = "";
-    if (update.isFinal) {
-      committedText = phrase;
-      livePartialText = "";
-    } else {
-      const { leading, trailing } = splitTrailingWord(phrase);
-      committedText = leading;
-      livePartialText = trailing;
-    }
-
-    this.cancelTimer();
-    this.current = {
-      text: phrase,
-      committedText,
-      livePartialText,
-      segmentId: update.segmentId,
+    this.activeLiveSegment = {
+      words: regressivePartial ? previousWords : incomingWords,
+      consumedWords: newSegment ? 0 : (previous?.consumedWords ?? 0),
     };
-    this.render(false);
+
+    this.layoutLiveCaption();
+    if (update.isFinal) this.commitActiveLiveSegment();
+    this.render();
     return true;
+  }
+
+  private liveWords(): string[] {
+    const activeWords = this.activeLiveSegment
+      ? this.activeLiveSegment.words.slice(this.activeLiveSegment.consumedWords)
+      : [];
+    return [...this.finalizedLiveWords, ...activeWords];
+  }
+
+  private commitActiveLiveSegment(): void {
+    if (!this.activeLiveSegment) return;
+    this.finalizedLiveWords.push(
+      ...this.activeLiveSegment.words.slice(this.activeLiveSegment.consumedWords),
+    );
+    this.activeLiveSegment = undefined;
+  }
+
+  private consumeLiveWords(count: number): void {
+    const finalized = Math.min(count, this.finalizedLiveWords.length);
+    this.finalizedLiveWords.splice(0, finalized);
+    const active = count - finalized;
+    if (active > 0 && this.activeLiveSegment) {
+      this.activeLiveSegment.consumedWords = Math.min(
+        this.activeLiveSegment.words.length,
+        this.activeLiveSegment.consumedWords + active,
+      );
+    }
+  }
+
+  private layoutLiveCaption(): void {
+    const pages = paginateCaption(this.liveWords().join(" "), this.fitsCaption);
+    const visible = pages.at(-1) ?? "";
+    const discardedWords = pages
+      .slice(0, -1)
+      .reduce((total, page) => total + captionWords(page).length, 0);
+    if (discardedWords > 0) this.consumeLiveWords(discardedWords);
+
+    const activeVisibleWords = this.activeLiveSegment
+      ? this.activeLiveSegment.words.length - this.activeLiveSegment.consumedWords
+      : 0;
+    const { leading, trailing } = this.activeFinal
+      ? { leading: visible, trailing: "" }
+      : splitTrailingWords(visible, Math.min(2, activeVisibleWords));
+    this.cancelTimer();
+    this.current = visible
+      ? {
+          text: visible,
+          committedText: leading,
+          livePartialText: trailing,
+          segmentId: this.activeSegmentId,
+        }
+      : undefined;
+  }
+
+  refreshLayout(): void {
+    if (this.mode !== "en-en" || this.liveWords().length === 0) return;
+    this.layoutLiveCaption();
+    this.render();
   }
 
   private flushOrdered(): void {
     while (this.pending.has(this.nextSegmentId)) {
       const update = this.pending.get(this.nextSegmentId)!;
       this.pending.delete(this.nextSegmentId);
-      const blocks = splitCaption(update.text, this.charsPerLine(), this.maxLines()).map((text) => ({
+      const blocks = paginateCaption(update.text, this.fitsCaption).map((text) => ({
         text,
         segmentId: update.segmentId,
       }));
@@ -215,26 +220,10 @@ export class CaptionPresenter {
     }
   }
 
-  private charsPerLine(): number {
-    const width = this.element.clientWidth || this.element.parentElement?.clientWidth || 0;
-    const fontSize =
-      Number.parseFloat(getComputedStyle(this.element).fontSize) ||
-      Number.parseFloat(this.element.style.getPropertyValue("--caption-base-size")) ||
-      32;
-    return width > 0 ? Math.max(10, Math.min(42, Math.floor((width - 32) / (fontSize * 0.7)))) : 42;
-  }
-
-  private maxLines(): number {
-    const height = this.element.parentElement?.clientHeight ?? 0;
-    if (!height) return 2;
-    const fontSize = Number.parseFloat(this.element.style.getPropertyValue("--caption-base-size")) || 32;
-    return Math.max(1, Math.min(2, Math.floor((height - 16) / (fontSize * 1.25))));
-  }
-
   private advance(): void {
     this.cancelTimer();
     this.current = this.queue.shift();
-    this.render(true);
+    this.render();
     if (this.current && this.queue.length > 0) {
       this.timer = this.clock.set(() => {
         this.timer = undefined;
@@ -243,24 +232,35 @@ export class CaptionPresenter {
     }
   }
 
-  private render(animate = false, immediate = false): void {
+  private render(immediate = false): void {
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (!this.current && !immediate && !reducedMotion && this.element.textContent) {
       if (this.fadeTimer !== undefined) return;
       this.element.style.opacity = "0";
       this.fadeTimer = this.clock.set(() => {
         this.fadeTimer = undefined;
-        this.render(false, true);
-      }, 120);
+        this.render(true);
+      }, CLEAR_FADE_MS);
       return;
     }
     if (this.fadeTimer !== undefined) this.clock.clear(this.fadeTimer);
     this.fadeTimer = undefined;
-    // Partials stay immediate, including arrivals during an outgoing fade.
     this.element.style.transition = "none";
-    this.element.style.opacity = animate && !reducedMotion ? "0" : "1";
+    this.element.style.opacity = "1";
 
-    if (this.current && this.current.livePartialText) {
+    if (!this.current) {
+      this.element.replaceChildren();
+      this.element.hidden = true;
+      void this.element.offsetWidth;
+      this.element.style.transition = "";
+      this.onChange();
+      return;
+    }
+
+    const content = document.createElement("span");
+    content.className = "caption-content";
+
+    if (this.current.livePartialText) {
       const committedSpan = document.createElement("span");
       committedSpan.className = "caption-final";
       committedSpan.textContent = this.current.committedText ? `${this.current.committedText} ` : "";
@@ -270,20 +270,20 @@ export class CaptionPresenter {
       partialSpan.textContent = this.current.livePartialText;
 
       if (committedSpan.textContent) {
-        this.element.replaceChildren(committedSpan, partialSpan);
+        content.replaceChildren(committedSpan, partialSpan);
       } else {
-        this.element.replaceChildren(partialSpan);
+        content.replaceChildren(partialSpan);
       }
     } else {
-      this.element.textContent = this.current?.text ?? "";
+      content.textContent = this.current.text;
     }
+    this.element.replaceChildren(content);
 
     this.element.dataset.state = this.mode === "en-en" && !this.activeFinal ? "partial" : "final";
-    this.element.hidden = !this.element.textContent;
-    // Commit the starting opacity before enabling the CSS transition.
+    this.element.hidden = false;
     void this.element.offsetWidth;
     this.element.style.transition = "";
-    this.element.style.opacity = "1";
+
     this.onChange();
   }
 
@@ -296,9 +296,11 @@ export class CaptionPresenter {
     this.activeSegmentId = 0;
     this.activeRevision = -1;
     this.activeFinal = false;
+    this.finalizedLiveWords = [];
+    this.activeLiveSegment = undefined;
     this.current = undefined;
     this.queue = [];
-    this.render(false, immediate);
+    this.render(immediate);
   }
 
   private cancelTimer(): void {
@@ -308,5 +310,6 @@ export class CaptionPresenter {
 
   dispose(): void {
     this.clear(true);
+    this.measurer?.dispose();
   }
 }
