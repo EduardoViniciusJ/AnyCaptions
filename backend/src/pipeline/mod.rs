@@ -4,10 +4,8 @@
 //! Capture/normalization and IPC wiring remain separate from this worker boundary.
 
 mod queue;
-pub mod segmenter;
 #[cfg(test)]
 mod tests;
-pub mod vad;
 
 use std::{
     sync::{
