@@ -16,6 +16,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
         .invoke_handler(tauri::generate_handler![
             ipc::get_state,
             ipc::set_caption_mode,
+            ipc::set_ui_language,
             ipc::start_capture,
             ipc::stop_capture,
             ipc::set_appearance,
@@ -23,8 +24,6 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::set_shortcut,
             ipc::get_audio_outputs,
             ipc::select_audio_output,
-            ipc::fit_settings_window,
-            ipc::fit_caption_window,
         ])
 }
 

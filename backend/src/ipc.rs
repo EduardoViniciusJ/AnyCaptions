@@ -61,6 +61,12 @@ pub struct ModeRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct UiLanguageRequest {
+    pub language: crate::domain::UiLanguage,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WindowRequest {
     pub mode: WindowMode,
 }
@@ -145,6 +151,7 @@ impl Controller {
             .lock()
             .map_err(|_| CommandError::StateUnavailable)?;
         state.set_mode(preferences.mode)?;
+        state.set_ui_language(preferences.ui_language)?;
         state.set_appearance(preferences.appearance)?;
         state.set_shortcut(preferences.shortcut.clone(), false)?;
         Ok(())
@@ -379,24 +386,6 @@ pub fn get_state<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn fit_settings_window<R: Runtime>(
-    window: WebviewWindow<R>,
-    controller: State<'_, Controller>,
-) -> Result<(), CommandError> {
-    authorize(window.label())?;
-    if controller.snapshot()?.window_mode == WindowMode::Edit {
-        crate::window::fit_settings(&window).map_err(|_| CommandError::WindowUnavailable)?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn fit_caption_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), CommandError> {
-    authorize(window.label())?;
-    crate::window::fit_caption(&window).map_err(|_| CommandError::WindowUnavailable)
-}
-
-#[tauri::command]
 pub fn set_caption_mode<R: Runtime>(
     window: WebviewWindow<R>,
     app: AppHandle<R>,
@@ -408,6 +397,19 @@ pub fn set_caption_mode<R: Runtime>(
         sessions.stop_session();
     }
     let state = controller.update(&window, |state| state.set_mode(request.mode))?;
+    persist(&app, &state)?;
+    Ok(state)
+}
+
+#[tauri::command]
+pub fn set_ui_language<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    request: UiLanguageRequest,
+) -> Result<AppSnapshot, CommandError> {
+    authorize(window.label())?;
+    let state = controller.update(&window, |state| state.set_ui_language(request.language))?;
     persist(&app, &state)?;
     Ok(state)
 }
@@ -631,6 +633,7 @@ mod tests {
         );
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");
+        assert_eq!(snapshot["uiLanguage"], "pt-br");
         assert_eq!(snapshot["appearance"]["fontSize"], 32);
         assert_eq!(snapshot["appearance"]["color"], "#FFFFFF");
         assert_eq!(snapshot["appearance"]["partialColor"], "#B8B8B8");
