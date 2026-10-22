@@ -3,7 +3,7 @@ import { createOverlay } from "./overlay";
 import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  return { revision: 0, sessionId: 0, mode: "en-en", capture: "stopped", windowMode: "edit",
+  return { revision: 0, sessionId: 0, mode: "auto", capture: "stopped", windowMode: "edit",
     appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
@@ -59,16 +59,33 @@ describe("overlay controls", () => {
     expect(app.backend.setWindowMode).not.toHaveBeenCalled();
   });
 
-  it("changes modes through Rust and ignores stale event revisions", async () => {
+  it("lists every translation target with a flag and disables them until the model is available", async () => {
     const app = setup();
     await app.overlay.ready;
-    const select = app.get<HTMLSelectElement>("#language");
-    select.value = "en-pt";
-    select.dispatchEvent(new Event("change"));
-    await vi.waitFor(() => expect(select.disabled).toBe(false));
-    expect(app.backend.setMode).toHaveBeenCalledWith("en-pt");
+    const items = app.root.querySelectorAll("#language-menu li");
+    expect(items.length).toBe(38);
+    const japanese = app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]');
+    expect(japanese.textContent).toContain("Traduzir para JA");
+    expect(japanese.querySelector("img.flag")).not.toBeNull();
+    const portuguese = app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]');
+    expect(portuguese.getAttribute("aria-disabled")).toBe("true");
+    app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
+    expect(portuguese.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("changes modes through Rust and ignores stale event revisions", async () => {
+    const app = setup(snapshot({ resources: { audioCapture: true, transcription: true, translation: true } }));
+    await app.overlay.ready;
+    const button = app.get<HTMLButtonElement>("#language");
+    const menu = app.get<HTMLUListElement>("#language-menu");
+    button.click();
+    expect(menu.hidden).toBe(false);
+    app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]').click();
+    expect(menu.hidden).toBe(true);
+    await vi.waitFor(() => expect(button.disabled).toBe(false));
+    expect(app.backend.setMode).toHaveBeenCalledWith("translate-pt-br");
     app.emit(snapshot({ revision: 0 }));
-    expect(select.value).toBe("en-pt");
+    expect(app.get("#language-label").textContent).toBe("Traduzir para PT");
   });
 
   it("waits for backend confirmation and prevents concurrent control requests", async () => {
@@ -175,7 +192,7 @@ describe("overlay controls", () => {
   it("keeps the caption visible when leaving edit mode", async () => {
     const app = setup(snapshot({ capture: "listening", canLock: true }));
     await app.overlay.ready;
-    app.emitCaption({ sessionId: 0, segmentId: 1, revision: 1, mode: "en-en", text: "Still visible", isFinal: true });
+    app.emitCaption({ sessionId: 0, segmentId: 1, revision: 1, mode: "auto", text: "Still visible", isFinal: true, language: "en-US" });
     app.emit(snapshot({ revision: 1, capture: "listening", windowMode: "locked", canLock: true }));
     expect(app.get(".overlay").dataset.mode).toBe("locked");
     expect(app.get<HTMLElement>("#caption-live").hidden).toBe(false);
@@ -243,24 +260,23 @@ describe("overlay controls", () => {
   });
 
   it("displays sanitized errors and restores confirmed values after rejection", async () => {
-    const app = setup();
+    const app = setup(snapshot({ resources: { audioCapture: true, transcription: true, translation: true } }));
     await app.overlay.ready;
     vi.mocked(app.backend.setMode).mockRejectedValue("<img src=x onerror=alert(1)>");
-    const select = app.get<HTMLSelectElement>("#language");
-    select.value = "en-pt";
-    select.dispatchEvent(new Event("change"));
+    app.get<HTMLButtonElement>("#language").click();
+    app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]').click();
     await vi.waitFor(() => expect(app.get("#error").hidden).toBe(false));
-    expect(app.root.querySelector("img")).toBeNull();
+    expect(app.get("#error").querySelector("img")).toBeNull();
     expect(app.get("#error").textContent).toBe("Não foi possível concluir a ação. Tente novamente.");
-    expect(select.value).toBe("en-en");
+    expect(app.get("#language-label").textContent).toBe("Auto");
   });
 
   it("releases listeners and ignores events after disposal", async () => {
     const app = setup();
     await app.overlay.ready;
     app.overlay.dispose();
-    app.emit(snapshot({ revision: 2, mode: "en-pt" }));
-    expect(app.get<HTMLSelectElement>("#language").value).toBe("en-en");
+    app.emit(snapshot({ revision: 2, mode: "translate-pt-br" }));
+    expect(app.get("#language-label").textContent).toBe("Auto");
     expect(app.release).toHaveBeenCalledOnce();
     app.get<HTMLButtonElement>("#close").click();
     expect(app.backend.close).not.toHaveBeenCalled();

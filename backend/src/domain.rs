@@ -1,19 +1,113 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+/// A translation target the product offers, held as the model's language tag
+/// (e.g. `pt-br`). Only tags from [`TRANSLATION_TARGETS`] can be constructed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetLanguage(&'static str);
+
+impl TargetLanguage {
+    pub const fn tag(self) -> &'static str {
+        self.0
+    }
+
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        TRANSLATION_TARGETS
+            .iter()
+            .copied()
+            .find(|target| target.0.eq_ignore_ascii_case(tag))
+    }
+}
+
+/// Portuguese (Brazil), the default translation target.
+pub const PT_BR: TargetLanguage = TargetLanguage("pt-br");
+
+/// Every target the translation model accepts (`src/nmt/langpairs.cc` of the
+/// pinned NeMo-Speech.cpp build); regional variants use their canonical tag.
+pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
+    TargetLanguage("en"),
+    PT_BR,
+    TargetLanguage("pt-pt"),
+    TargetLanguage("es-es"),
+    TargetLanguage("es-us"),
+    TargetLanguage("fr"),
+    TargetLanguage("de"),
+    TargetLanguage("it"),
+    TargetLanguage("nl"),
+    TargetLanguage("pl"),
+    TargetLanguage("cs"),
+    TargetLanguage("sk"),
+    TargetLanguage("sl"),
+    TargetLanguage("hr"),
+    TargetLanguage("hu"),
+    TargetLanguage("ro"),
+    TargetLanguage("bg"),
+    TargetLanguage("el"),
+    TargetLanguage("et"),
+    TargetLanguage("lt"),
+    TargetLanguage("lv"),
+    TargetLanguage("fi"),
+    TargetLanguage("sv"),
+    TargetLanguage("da"),
+    TargetLanguage("no"),
+    TargetLanguage("ar"),
+    TargetLanguage("hi"),
+    TargetLanguage("id"),
+    TargetLanguage("ja"),
+    TargetLanguage("ko"),
+    TargetLanguage("ru"),
+    TargetLanguage("th"),
+    TargetLanguage("tr"),
+    TargetLanguage("uk"),
+    TargetLanguage("vi"),
+    TargetLanguage("zh-cn"),
+    TargetLanguage("zh-tw"),
+];
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CaptionMode {
+    /// Transcribe whatever language is spoken.
     #[default]
-    EnEn,
-    EnPt,
+    Auto,
+    /// Transcribe any language and translate the captions to the target.
+    Translate(TargetLanguage),
 }
 
 impl CaptionMode {
     pub fn requires_translation(self) -> bool {
+        matches!(self, Self::Translate(_))
+    }
+
+    pub fn translation_target(self) -> Option<TargetLanguage> {
         match self {
-            Self::EnEn => false,
-            Self::EnPt => true,
+            Self::Auto => None,
+            Self::Translate(target) => Some(target),
         }
+    }
+}
+
+// Wire format: `auto` or `translate-<target tag>`, e.g. `translate-pt-br`.
+impl Serialize for CaptionMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Auto => serializer.serialize_str("auto"),
+            Self::Translate(target) => {
+                serializer.collect_str(&format_args!("translate-{}", target.tag()))
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CaptionMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        if value == "auto" {
+            return Ok(Self::Auto);
+        }
+        value
+            .strip_prefix("translate-")
+            .and_then(TargetLanguage::from_tag)
+            .map(Self::Translate)
+            .ok_or_else(|| de::Error::custom("unsupported caption mode"))
     }
 }
 
@@ -389,7 +483,7 @@ mod tests {
     #[test]
     fn starts_stopped_in_edit_mode_without_available_resources() {
         let state = AppState::default().snapshot();
-        assert_eq!(state.mode, CaptionMode::EnEn);
+        assert_eq!(state.mode, CaptionMode::Auto);
         assert_eq!(state.capture, CaptureState::Stopped);
         assert_eq!(state.window_mode, WindowMode::Edit);
         assert!(!state.can_start && !state.can_lock);
@@ -400,10 +494,10 @@ mod tests {
     fn portuguese_output_requires_an_additional_translator() {
         let mut state = ready();
         state.resources.translation = false;
-        assert!(!CaptionMode::EnEn.requires_translation());
-        assert!(CaptionMode::EnPt.requires_translation());
+        assert!(!CaptionMode::Auto.requires_translation());
+        assert!(CaptionMode::Translate(PT_BR).requires_translation());
         assert!(state.start().is_ok());
-        state.set_mode(CaptionMode::EnPt).unwrap();
+        state.set_mode(CaptionMode::Translate(PT_BR)).unwrap();
         assert_eq!(state.start(), Err(DomainError::TranslationUnavailable));
         assert_eq!(state.snapshot().capture, CaptureState::Stopped);
     }
@@ -450,7 +544,7 @@ mod tests {
             .fail(session, DomainError::TranscriptionUnavailable)
             .unwrap();
         assert_eq!(state.snapshot().capture, CaptureState::Error);
-        state.set_mode(CaptionMode::EnPt).unwrap();
+        state.set_mode(CaptionMode::Translate(PT_BR)).unwrap();
         assert!(state.snapshot().error.is_none());
         assert_eq!(state.snapshot().capture, CaptureState::Stopped);
         assert_ne!(state.snapshot().session_id, session);
@@ -534,8 +628,24 @@ mod tests {
 
     #[test]
     fn unsupported_modes_and_unexpected_fields_are_rejected() {
-        for value in ["pt-pt", "pt-en", "auto", "EN-EN"] {
+        for value in [
+            "en-en",
+            "en-pt",
+            "only-en",
+            "only-pt",
+            "AUTO",
+            "translate-pt",
+            "translate-xx",
+            "translate-",
+        ] {
             assert!(serde_json::from_value::<CaptionMode>(serde_json::json!(value)).is_err());
+        }
+        // Every catalog target round-trips through the wire format.
+        for target in TRANSLATION_TARGETS {
+            let mode = CaptionMode::Translate(*target);
+            let wire = serde_json::to_value(mode).unwrap();
+            assert_eq!(wire, format!("translate-{}", target.tag()));
+            assert_eq!(serde_json::from_value::<CaptionMode>(wire).unwrap(), mode);
         }
         assert!(
             serde_json::from_value::<Appearance>(

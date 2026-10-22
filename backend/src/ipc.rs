@@ -24,6 +24,8 @@ pub struct CaptionUpdate {
     pub mode: CaptionMode,
     pub text: String,
     pub is_final: bool,
+    /// Language detected by the model (BCP-47); only final captions carry it.
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -541,11 +543,16 @@ mod tests {
         let controller = Controller::default();
         let events = Events::default();
         let response = controller
-            .update(&events, |state| state.set_mode(CaptionMode::EnPt))
+            .update(&events, |state| {
+                state.set_mode(CaptionMode::Translate(crate::domain::PT_BR))
+            })
             .unwrap();
         let recorded = events.0.borrow();
         assert_eq!(recorded.len(), 1);
-        assert_eq!(recorded[0].mode, CaptionMode::EnPt);
+        assert_eq!(
+            recorded[0].mode,
+            CaptionMode::Translate(crate::domain::PT_BR)
+        );
         assert_eq!(recorded[0].session_id, response.session_id);
         assert_eq!(
             recorded[0].revision,
@@ -581,9 +588,14 @@ mod tests {
             }
         }
         let controller = Controller::default();
-        let result = controller.update(&BrokenEvents, |state| state.set_mode(CaptionMode::EnPt));
+        let result = controller.update(&BrokenEvents, |state| {
+            state.set_mode(CaptionMode::Translate(crate::domain::PT_BR))
+        });
         assert_eq!(result.unwrap_err(), CommandError::EventUnavailable);
-        assert_eq!(controller.snapshot().unwrap().mode, CaptionMode::EnPt);
+        assert_eq!(
+            controller.snapshot().unwrap().mode,
+            CaptionMode::Translate(crate::domain::PT_BR)
+        );
     }
 
     #[test]
@@ -596,8 +608,8 @@ mod tests {
 
     #[test]
     fn ipc_requests_reject_unsupported_modes_and_extra_fields() {
-        assert!(serde_json::from_str::<ModeRequest>(r#"{"mode":"auto"}"#).is_err());
-        assert!(serde_json::from_str::<ModeRequest>(r#"{"mode":"en-en","audio":[1,2]}"#).is_err());
+        assert!(serde_json::from_str::<ModeRequest>(r#"{"mode":"en-en"}"#).is_err());
+        assert!(serde_json::from_str::<ModeRequest>(r#"{"mode":"auto","audio":[1,2]}"#).is_err());
         assert!(serde_json::from_str::<WindowRequest>(r#"{"mode":"hidden"}"#).is_err());
     }
 
@@ -607,14 +619,15 @@ mod tests {
             session_id: 1,
             segment_id: 2,
             revision: 3,
-            mode: CaptionMode::EnPt,
+            mode: CaptionMode::Translate(crate::domain::PT_BR),
             text: "<b>texto</b>".into(),
             is_final: true,
+            language: Some("en-US".into()),
         };
         let json = serde_json::to_value(update).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"en-pt","text":"<b>texto</b>","isFinal":true})
+            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt-br","text":"<b>texto</b>","isFinal":true,"language":"en-US"})
         );
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");

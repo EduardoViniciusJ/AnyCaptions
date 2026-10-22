@@ -2,7 +2,7 @@
 
 Aplicativo desktop para Windows 11 x64, desenvolvido com Rust, Tauri v2 e Vanilla TypeScript.
 
-O overlay abre em modo edição, sem captura. A bandeja oferece mostrar/editar, iniciar/parar, bloquear/desbloquear e sair. O atalho global inicial é `Ctrl+Alt+L` e pode ser alterado para outra letra no painel. O bloqueio torna a janela transparente e permite que os cliques atravessem a área da legenda; a bandeja permanece disponível para recuperar os controles. Fechar a janela a recolhe para a bandeja. O modo Auto captura a saída selecionada e transcreve localmente, no idioma falado, com o NVIDIA Nemotron 3.5 ASR Streaming executado pelo NeMo-Speech.cpp. EN → PT permanece desabilitado até a integração de um tradutor local.
+O overlay abre em modo edição, sem captura. A bandeja oferece mostrar/editar, iniciar/parar, bloquear/desbloquear e sair. O atalho global inicial é `Ctrl+Alt+L` e pode ser alterado para outra letra no painel. O bloqueio torna a janela transparente e permite que os cliques atravessem a área da legenda; a bandeja permanece disponível para recuperar os controles. Fechar a janela a recolhe para a bandeja. O modo Auto captura a saída selecionada e transcreve localmente, no idioma falado, com o NVIDIA Nemotron 3.5 ASR Streaming executado pelo NeMo-Speech.cpp. O modo Traduzir transcreve qualquer idioma e mostra somente o idioma-alvo escolhido (37 destinos, de português a japonês), traduzido localmente pelo Riva-Translate; as opções ficam desabilitadas enquanto o modelo de tradução não estiver instalado. As bandeiras do seletor vêm do [flag-icons](https://github.com/lipis/flag-icons) (MIT), empacotadas com o app.
 
 ## Transcrição local
 
@@ -12,6 +12,15 @@ O reconhecimento usa dois itens locais, ignorados pelo Git:
 - Biblioteca [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) v0.2.0 (Apache-2.0), compilada com Vulkan em `backend/local-data/nemo-speech/build-vulkan-asr/bin`, na pasta de `ANYCAPTIONS_NEMO_DIR` ou ao lado do executável. Ela é carregada em tempo de execução (`nemo_speech_asr_c.dll` e dependências); sem ela o app abre normalmente e informa que a transcrição está indisponível.
 
 O modelo roda na GPU pelo Vulkan e volta para a CPU se nenhum dispositivo puder ser usado. Ele mesmo detecta voz, fim de frase, pontuação e idioma, sem VAD ou segmentador externo.
+
+### Tradução local
+
+A tradução usa os mesmos mecanismos, também ignorados pelo Git:
+
+- Modelo `riva-translate-4b-instruct-v2.q4_k_m.gguf` (2.759.302.368 bytes, SHA-256 `decbb4d3b12f756cc384833fceeac10bf7699cd2286dc3e18a746af9c8df71af`), gerado localmente a partir da revisão `040d958b128018ff0bed2542a7b51005e9ea563c` de [nvidia/Riva-Translate-4B-Instruct-v2](https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2), licença [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/): conversão com o `convert_model.py` do NeMo-Speech.cpp (`--outtype q8_0`) seguida de `llama-quantize --allow-requantize ... Q4_K_M` (~2× mais rápido que q8_0 na GPU, mesmas traduções nos testes). Antes de distribuir, regenerar o Q4_K_M direto do checkpoint. Fica em `backend/models/translation/riva-translate-4b-instruct-v2/` e é verificado por SHA-256 antes de carregar. Distribuições do modelo devem incluir a licença e o aviso "Licensed by NVIDIA Corporation under the NVIDIA Open Model License".
+- A mesma biblioteca NeMo-Speech.cpp, compilada com `scripts\windows\build.ps1 -Backend vulkan -Profile asr -Nmt`, fornece `nemo_speech_nmt_c.dll` (com `nemo_speech_nmt.dll` e `llama.dll`) na mesma pasta do ASR. Sem ela o app informa que a tradução está indisponível.
+
+Todo par de idiomas do modelo inclui o inglês; pares sem inglês (por exemplo, espanhol → português) são traduzidos em duas etapas passando por ele. O teste real roda com `cargo test --manifest-path backend/Cargo.toml --test real_riva -- --ignored`.
 
 ## Executar
 

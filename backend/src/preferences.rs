@@ -46,7 +46,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
-            mode: CaptionMode::EnEn,
+            mode: CaptionMode::Auto,
             output_id: None,
             appearance: Appearance::default(),
             shortcut: "Ctrl+Alt+L".into(),
@@ -184,7 +184,7 @@ mod tests {
             fs::write(&path, data).unwrap();
             assert_eq!(
                 PreferenceStore::load(path.clone()).snapshot().unwrap().mode,
-                CaptionMode::EnEn
+                CaptionMode::Auto
             );
         }
         fs::write(&path, vec![b'x'; 16 * 1024 + 1]).unwrap();
@@ -205,7 +205,7 @@ mod tests {
         let path = config_path(&dir);
         let store = PreferenceStore::load(path.clone());
         let mut snapshot = crate::domain::AppState::default().snapshot();
-        snapshot.mode = CaptionMode::EnPt;
+        snapshot.mode = CaptionMode::Translate(crate::domain::PT_BR);
         snapshot.appearance = Appearance {
             font_size: 44,
             color: CaptionColor::YELLOW,
@@ -225,7 +225,7 @@ mod tests {
         let data = fs::read_to_string(&path).unwrap();
         assert!(!data.contains("caption") && !data.contains("audio") && !data.contains("session"));
         let restored = PreferenceStore::load(path.clone()).snapshot().unwrap();
-        assert_eq!(restored.mode, CaptionMode::EnPt);
+        assert_eq!(restored.mode, CaptionMode::Translate(crate::domain::PT_BR));
         assert_eq!(restored.appearance.font_size, 44);
         assert_eq!(restored.appearance.color, CaptionColor::YELLOW);
         assert_eq!(

@@ -1,5 +1,4 @@
 use std::{
-    path::{Path, PathBuf},
     sync::{Arc, Mutex, mpsc},
     thread::{self, JoinHandle},
     time::Duration,
@@ -24,9 +23,12 @@ use super::{
     nemotron::{LIBRARY_FILENAME, NativeNemotron, NemotronPaths},
     streaming::StreamingProcessor,
 };
+use crate::translation::{
+    Translator,
+    riva::{NativeRivaTranslator, RivaPaths},
+    stage::{StageEvent, TranslationStage},
+};
 
-// Development build of NeMo-Speech.cpp (see backend/local-data/nemo-speech).
-const DEV_NEMO_LIBRARY_DIR: &str = "local-data/nemo-speech/build-vulkan-asr/bin";
 // Audio is submitted in 128 ms blocks at 16 kHz.
 const SUBMIT_BLOCK_SAMPLES: usize = 2_048;
 // 32 ms of silence, matching the capture receive timeout, keeps the stream paced in real time.
@@ -34,23 +36,10 @@ const IDLE_SILENCE_SAMPLES: usize = 512;
 
 impl NemotronPaths {
     /// Model: the catalog layout under the models root (see `crate::models::models_root`).
-    /// Library: `ANYCAPTIONS_NEMO_DIR`, the local development build, or the executable folder.
+    /// Library: the shared NeMo-Speech folder (see `crate::native::nemo_library_dir`).
     pub fn resolve() -> Self {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        let library_dir = [
-            std::env::var_os("ANYCAPTIONS_NEMO_DIR").map(PathBuf::from),
-            Some(manifest.join(DEV_NEMO_LIBRARY_DIR)),
-            exe_dir,
-        ]
-        .into_iter()
-        .flatten()
-        .find(|dir| dir.is_dir())
-        .unwrap_or_else(|| manifest.join(DEV_NEMO_LIBRARY_DIR));
         Self {
-            library_dir,
+            library_dir: crate::native::nemo_library_dir(),
             model: NEMOTRON_STREAMING_Q8.path_in(&models_root()),
         }
     }
@@ -79,15 +68,22 @@ pub trait ProcessorFactory: Send + Sync {
         session_id: u32,
         mode: CaptionMode,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError>;
+    fn translation_available(&self) -> bool {
+        false
+    }
+    fn create_translator(&self) -> Result<Box<dyn Translator>, DomainError> {
+        Err(DomainError::TranslationUnavailable)
+    }
 }
 
 pub struct NativeProcessorFactory {
     paths: NemotronPaths,
+    riva: RivaPaths,
 }
 
 impl NativeProcessorFactory {
-    pub fn new(paths: NemotronPaths) -> Self {
-        Self { paths }
+    pub fn new(paths: NemotronPaths, riva: RivaPaths) -> Self {
+        Self { paths, riva }
     }
 }
 
@@ -101,14 +97,32 @@ impl ProcessorFactory for NativeProcessorFactory {
         session_id: u32,
         mode: CaptionMode,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        if mode.requires_translation() {
+        if mode.requires_translation() && !self.translation_available() {
             return Err(DomainError::TranslationUnavailable);
         }
-        let recognizer =
-            NativeNemotron::load(&self.paths).map_err(|_| DomainError::TranscriptionUnavailable)?;
+        // Both modes transcribe with model auto-detection; forcing one language on the
+        // recognizer stays available in `NativeNemotron::load` for future features.
+        // Auto keeps the recognizer untouched; translate mode closes finals sooner.
+        let tuning = if mode.requires_translation() {
+            super::tuning::TRANSLATION
+        } else {
+            super::tuning::TRANSCRIPTION
+        };
+        let recognizer = NativeNemotron::load(&self.paths, None, tuning)
+            .map_err(|_| DomainError::TranscriptionUnavailable)?;
         Ok(Box::new(StreamingProcessor::new(
             session_id, mode, recognizer,
         )))
+    }
+
+    fn translation_available(&self) -> bool {
+        self.riva.translation_available()
+    }
+
+    fn create_translator(&self) -> Result<Box<dyn Translator>, DomainError> {
+        let translator = NativeRivaTranslator::load(&self.riva)
+            .map_err(|_| DomainError::TranslationUnavailable)?;
+        Ok(Box::new(translator))
     }
 }
 
@@ -149,7 +163,10 @@ impl CaptionSessionManager {
     pub fn default_native() -> Self {
         Self::new(
             Arc::new(WasapiLoopback),
-            Arc::new(NativeProcessorFactory::new(NemotronPaths::resolve())),
+            Arc::new(NativeProcessorFactory::new(
+                NemotronPaths::resolve(),
+                RivaPaths::resolve(),
+            )),
         )
     }
 
@@ -161,7 +178,7 @@ impl CaptionSessionManager {
         Resources {
             audio_capture,
             transcription,
-            translation: false,
+            translation: self.factory.translation_available(),
         }
     }
 
@@ -251,6 +268,76 @@ impl Drop for CaptionSessionManager {
     }
 }
 
+/// Where finished captions go: straight to the UI, or through the translation
+/// stage first (translate mode shows only the translated text).
+enum CaptionRoute {
+    Direct,
+    Translate(TranslationStage),
+}
+
+/// Forwards one caption update along the route. Returns `false` when the
+/// translation stage is overloaded and the session must fail.
+fn deliver(
+    update: CaptionUpdate,
+    route: &CaptionRoute,
+    session_id: u32,
+    controller: &Controller,
+    sink: &dyn SessionSink,
+) -> bool {
+    if !update.is_final {
+        let _ = controller.transition_session(session_id, CaptureState::Processing, sink);
+        // Translate mode shows only Portuguese, so the original partials stay off screen.
+        if matches!(route, CaptionRoute::Direct) {
+            let _ = sink.caption_updated(&update);
+        }
+        return true;
+    }
+    match route {
+        CaptionRoute::Direct => {
+            let _ = sink.caption_updated(&update);
+            let _ = controller.transition_session(session_id, CaptureState::Listening, sink);
+            true
+        }
+        CaptionRoute::Translate(stage) => stage.submit(update).is_ok(),
+    }
+}
+
+fn spawn_translation_route(
+    session_id: u32,
+    target: crate::domain::TargetLanguage,
+    factory: &Arc<dyn ProcessorFactory>,
+    controller: &Controller,
+    sink: &Arc<dyn SessionSink>,
+) -> Result<CaptionRoute, DomainError> {
+    let translator = factory.create_translator()?;
+    let stage_controller = controller.clone();
+    let stage_sink = Arc::clone(sink);
+    TranslationStage::spawn(translator, target, move |event| match event {
+        StageEvent::Translated(update) => {
+            if !stage_controller.is_session_active(update.session_id) {
+                return false;
+            }
+            let _ = stage_sink.caption_updated(&update);
+            let _ = stage_controller.transition_session(
+                update.session_id,
+                CaptureState::Listening,
+                stage_sink.as_ref(),
+            );
+            true
+        }
+        StageEvent::Failed => {
+            let _ = stage_controller.fail_session(
+                session_id,
+                DomainError::TranslationUnavailable,
+                stage_sink.as_ref(),
+            );
+            false
+        }
+    })
+    .map(CaptionRoute::Translate)
+    .map_err(|_| DomainError::TranslationUnavailable)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_coordinator(
     session_id: u32,
@@ -272,6 +359,18 @@ fn run_coordinator(
             let _ = controller.fail_session(session_id, error, sink.as_ref());
             return;
         }
+    };
+
+    let route = if let Some(target) = mode.translation_target() {
+        match spawn_translation_route(session_id, target, &factory, &controller, &sink) {
+            Ok(route) => route,
+            Err(error) => {
+                let _ = controller.fail_session(session_id, error, sink.as_ref());
+                return;
+            }
+        }
+    } else {
+        CaptionRoute::Direct
     };
 
     if cancel.is_cancelled() || !controller.is_session_active(session_id) {
@@ -393,20 +492,16 @@ fn run_coordinator(
                         if cancel.is_cancelled() || !controller.is_session_active(session_id) {
                             break;
                         }
-                        if !update.is_final {
-                            let _ = controller.transition_session(
+                        if !deliver(update, &route, session_id, &controller, sink.as_ref()) {
+                            let _ = controller.fail_session(
                                 session_id,
-                                CaptureState::Processing,
+                                DomainError::TranslationUnavailable,
                                 sink.as_ref(),
                             );
-                        }
-                        let _ = sink.caption_updated(&update);
-                        if update.is_final {
-                            let _ = controller.transition_session(
-                                session_id,
-                                CaptureState::Listening,
-                                sink.as_ref(),
-                            );
+                            pipeline.request_stop();
+                            let _ = capture.stop();
+                            let _ = pipeline.stop();
+                            return;
                         }
                     }
                 }
@@ -433,25 +528,18 @@ fn run_coordinator(
         }
         match pipeline.finish() {
             Ok(messages) => {
-                for message in messages {
+                'flush: for message in messages {
                     for update in message.value {
                         if !controller.is_session_active(session_id) {
-                            break;
+                            break 'flush;
                         }
-                        if !update.is_final {
-                            let _ = controller.transition_session(
+                        if !deliver(update, &route, session_id, &controller, sink.as_ref()) {
+                            let _ = controller.fail_session(
                                 session_id,
-                                CaptureState::Processing,
+                                DomainError::TranslationUnavailable,
                                 sink.as_ref(),
                             );
-                        }
-                        let _ = sink.caption_updated(&update);
-                        if update.is_final {
-                            let _ = controller.transition_session(
-                                session_id,
-                                CaptureState::Listening,
-                                sink.as_ref(),
-                            );
+                            break 'flush;
                         }
                     }
                 }
@@ -463,6 +551,10 @@ fn run_coordinator(
                     sink.as_ref(),
                 );
             }
+        }
+        // Graceful end: wait for queued translations to reach the screen.
+        if let CaptionRoute::Translate(stage) = route {
+            stage.finish();
         }
     } else {
         pipeline.request_stop();
@@ -525,6 +617,7 @@ mod tests {
                     .then(|| SpeechResult {
                         text: "Live English caption".into(),
                         is_final: true,
+                        language: Some("en-US".into()),
                     })
                     .into_iter()
                     .collect())
@@ -537,13 +630,17 @@ mod tests {
     }
 
     fn ready_controller(sink: &RecordedSink) -> Controller {
+        controller_with_translation(sink, false)
+    }
+
+    fn controller_with_translation(sink: &RecordedSink, translation: bool) -> Controller {
         let controller = Controller::default();
         controller
             .set_resources(
                 Resources {
                     audio_capture: true,
                     transcription: true,
-                    translation: false,
+                    translation,
                 },
                 sink,
             )
@@ -609,6 +706,110 @@ mod tests {
             controller.snapshot().unwrap().capture,
             CaptureState::Stopped
         );
+    }
+
+    struct TranslatingFakeFactory;
+
+    impl ProcessorFactory for TranslatingFakeFactory {
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        fn translation_available(&self) -> bool {
+            true
+        }
+
+        fn create(
+            &self,
+            session_id: u32,
+            mode: CaptionMode,
+        ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
+            FakeFactory.create(session_id, mode)
+        }
+
+        fn create_translator(&self) -> Result<Box<dyn Translator>, DomainError> {
+            let mut translator = crate::translation::MockTranslator::new();
+            translator
+                .expect_translate()
+                .withf(|text, source, target| {
+                    text == "Live English caption" && source == "en-US" && target == "pt-br"
+                })
+                .returning(|_, _, _| Ok("Legenda em português".to_owned()));
+            Ok(Box::new(translator))
+        }
+    }
+
+    #[test]
+    fn translate_mode_shows_only_translated_finals() {
+        let mut backend = MockCaptureBackend::new();
+        backend
+            .expect_run()
+            .times(1)
+            .returning(|_, stop, ready, events| {
+                ready
+                    .send(Ok(PcmFormat {
+                        sample_rate: 16_000,
+                        channels: 1,
+                        encoding: PcmEncoding::Float32,
+                    }))
+                    .unwrap();
+                let mut bytes = Vec::with_capacity(SUBMIT_BLOCK_SAMPLES * 4);
+                for _ in 0..SUBMIT_BLOCK_SAMPLES {
+                    bytes.extend_from_slice(&0.25_f32.to_le_bytes());
+                }
+                let _ = events.try_send(CaptureEvent::Packet(AudioPacket {
+                    bytes,
+                    silent: false,
+                    discontinuity: false,
+                }));
+                let _ = stop.recv();
+                Ok(())
+            });
+
+        let sink = Arc::new(RecordedSink::default());
+        let controller = controller_with_translation(&sink, true);
+        let preferences = crate::preferences::Preferences {
+            mode: CaptionMode::Translate(crate::domain::PT_BR),
+            ..Default::default()
+        };
+        controller.restore_preferences(&preferences).unwrap();
+        let started = controller.start_session(sink.as_ref()).unwrap();
+        assert_eq!(started.mode, CaptionMode::Translate(crate::domain::PT_BR));
+
+        let manager =
+            CaptionSessionManager::new(Arc::new(backend), Arc::new(TranslatingFakeFactory));
+        manager
+            .start_session(
+                started.session_id,
+                started.mode,
+                "speaker-1".into(),
+                controller.clone(),
+                Arc::clone(&sink) as Arc<dyn SessionSink>,
+            )
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while sink.captions.lock().unwrap().is_empty() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        controller.stop_session(sink.as_ref()).unwrap();
+        manager.stop_and_join();
+
+        let captions = sink.captions.lock().unwrap();
+        assert!(!captions.is_empty());
+        // Only Portuguese reaches the screen; the original English text never does.
+        assert!(
+            captions
+                .iter()
+                .all(|update| update.text == "Legenda em português")
+        );
+        assert!(captions.iter().all(|update| update.is_final));
+        assert!(
+            captions
+                .iter()
+                .all(|update| update.language.as_deref() == Some("pt-br"))
+        );
+        assert_eq!(captions[0].session_id, started.session_id);
     }
 
     #[test]
