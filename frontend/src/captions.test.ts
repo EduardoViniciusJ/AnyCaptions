@@ -50,22 +50,6 @@ describe("caption presenter", () => {
     expect(presenter.accept(update(1, 3, "Late", true))).toBe(false);
   });
 
-  it("shows translated segments immediately, without pacing or queues", () => {
-    const { element, presenter, update } = setup("translate-pt-br");
-    // A primeira sentença traduzida aparece na hora, como revisão parcial.
-    expect(presenter.accept(update(1, 1, "Primeira frase.", false))).toBe(true);
-    expect(element.textContent).toBe("Primeira frase.");
-    expect(presenter.accept(update(1, 2, "Primeira frase. Segunda frase.", true))).toBe(true);
-    expect(element.textContent).toBe("Primeira frase. Segunda frase.");
-    // Um segmento novo entra imediatamente, sem esperar tempo de leitura.
-    expect(presenter.accept(update(2, 1, "Terceira frase.", true))).toBe(true);
-    expect(element.textContent).toBe("Primeira frase. Segunda frase. Terceira frase.");
-    // Revisões atrasadas de segmentos antigos são ignoradas.
-    expect(presenter.accept(update(1, 3, "Atrasada", true))).toBe(false);
-    vi.advanceTimersByTime(60_000);
-    expect(element.hidden).toBe(false);
-    expect(element.textContent).toBe("Primeira frase. Segunda frase. Terceira frase.");
-  });
 
   it("fills the measured width before starting a new block without repeating old words", () => {
     const { element, presenter, update } = setup("auto", 5);
@@ -81,6 +65,49 @@ describe("caption presenter", () => {
     expect(element.textContent).toBe("six seven After a pause");
     expect(element.querySelector(".caption-final")?.textContent).toBe("six seven After ");
     expect(element.querySelector(".caption-partial")?.textContent).toBe("a pause");
+  });
+
+  it("flows translated sentences across the width and restarts from zero on overflow", () => {
+    vi.useFakeTimers();
+    const element = document.createElement("p");
+    document.body.append(element);
+    // Simula quebra automática: cabem 2 palavras por linha.
+    const presenter = new CaptionPresenter(
+      element,
+      undefined,
+      undefined,
+      (text, maxLines = 1) => captionWords(text).length <= 2 * maxLines,
+    );
+    presenter.setContext(7, "translate-pt-br");
+    const update = (segmentId: number, text: string): CaptionUpdate => ({
+      sessionId: 7, mode: "translate-pt-br", segmentId, revision: 1, text, language: "pt-br", isFinal: true,
+    });
+    presenter.accept(update(1, "Primeira frase."));
+    expect(element.textContent).toBe("Primeira frase.");
+    expect(element.dataset.lines).toBe("multi");
+    expect(element.dataset.state).toBe("final");
+    expect(vi.getTimerCount()).toBe(0);
+    // As sentenças fluem emendadas, preenchendo a largura antes de descer de linha.
+    presenter.accept(update(2, "Segunda frase."));
+    expect(element.textContent).toBe("Primeira frase. Segunda frase.");
+    presenter.accept(update(3, "Terceira frase."));
+    expect(element.textContent).toBe("Primeira frase. Segunda frase. Terceira frase.");
+    // Só a sentença recém-chegada ganha o fade de entrada.
+    const spans = [...element.querySelectorAll(".caption-sentence")];
+    expect(spans.length).toBe(3);
+    expect(spans.at(-1)?.classList.contains("caption-sentence-in")).toBe(true);
+    expect(spans.slice(0, -1).every((span) => !span.classList.contains("caption-sentence-in"))).toBe(true);
+    // A quarta estoura as 3 linhas: a tela limpa e recomeça do zero.
+    presenter.accept(update(4, "Quarta frase."));
+    expect(element.textContent).toBe("Quarta frase.");
+    // E o acúmulo recomeça normalmente a partir dela.
+    presenter.accept(update(5, "Quinta frase."));
+    expect(element.textContent).toBe("Quarta frase. Quinta frase.");
+    // A legenda fica na tela até a próxima chegar; nada some sozinho.
+    vi.advanceTimersByTime(60_000);
+    expect(element.hidden).toBe(false);
+    expect(element.textContent).toBe("Quarta frase. Quinta frase.");
+    presenter.dispose();
   });
 
   it("replaces a full block directly without keeping transition layers", () => {

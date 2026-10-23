@@ -1,7 +1,7 @@
-export type CaptionFits = (text: string) => boolean;
+/** Cabe no espaço visível? `maxLines` linhas (1 por padrão) na largura atual. */
+export type CaptionFits = (text: string, maxLines?: number) => boolean;
 
 const FALLBACK_CAPTION_CHARS = 84;
-const MAX_VISIBLE_LINES = 1;
 
 export function captionWords(text: string): string[] {
   return text.trim().split(/\s+/u).filter(Boolean);
@@ -55,7 +55,7 @@ export class CaptionMeasurer {
     document.body.append(this.probe);
   }
 
-  fits = (text: string): boolean => {
+  fits = (text: string, maxLines = 1): boolean => {
     const width =
       this.source.clientWidth ||
       this.source.parentElement?.clientWidth ||
@@ -84,7 +84,7 @@ export class CaptionMeasurer {
     const padding =
       (Number.parseFloat(sourceStyle.paddingTop) || 0) +
       (Number.parseFloat(sourceStyle.paddingBottom) || 0);
-    return this.probe.scrollHeight <= lineHeight * MAX_VISIBLE_LINES + padding + 1;
+    return this.probe.scrollHeight <= lineHeight * maxLines + padding + 1;
   };
 
   dispose(): void {
