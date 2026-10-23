@@ -5,6 +5,7 @@ use std::{
     ffi::{CStr, CString, c_char, c_void},
     path::{Path, PathBuf},
     ptr,
+    sync::Arc,
 };
 
 use libloading::Library;
@@ -50,11 +51,20 @@ struct EndpointingConfig {
 }
 
 #[repr(C)]
+struct StreamingConfig {
+    size: usize,
+    chunk_size: f32,         // seconds; CTC only, 0 = default
+    ctc_left_padding: f32,   // CTC only
+    ctc_right_padding: f32,  // CTC only
+    rnnt_right_context: i32, // encoder frames; -1 = model maximum
+}
+
+#[repr(C)]
 struct RecognizerConfig {
     size: usize,
     backend: *const BackendConfig,
     model: *const ModelConfig,
-    streaming: *const c_void,
+    streaming: *const StreamingConfig,
     decoder: *const c_void,
     vad: *const c_void,
     endpointing: *const EndpointingConfig,
@@ -169,34 +179,33 @@ pub struct NemotronPaths {
     pub model: PathBuf,
 }
 
-/// A loaded recognizer with one open stream. NeMo detects speech and utterance ends itself.
-pub struct NativeNemotron {
+/// The loaded model and its recognizer. Loading takes seconds and holds the
+/// model in (V)RAM, so the app shares one instance across caption sessions
+/// instead of reloading per session (repeated native reloads also leaked GPU
+/// memory until allocation failed). Per-session choices — language and
+/// endpointing — travel in each stream's options.
+pub struct NemotronModel {
     recognizer: *mut Recognizer,
-    stream: *mut Stream,
     api: Api,
 }
 
-// SAFETY: the handles are owned exclusively by this value and only used through `&mut self`,
-// so they are never accessed from two threads at once; NeMo does not bind them to a thread.
-unsafe impl Send for NativeNemotron {}
+// SAFETY: asr.h supports submitting work to one recognizer from multiple
+// threads (its batching section); handles are not bound to a thread. Sessions
+// are serialized by the session manager anyway.
+unsafe impl Send for NemotronModel {}
+unsafe impl Sync for NemotronModel {}
 
-impl NativeNemotron {
+impl NemotronModel {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
-    /// `forced_language` restricts recognition to one language from the model's prompt
-    /// dictionary (e.g. `en-US`); `None` keeps auto-detection. `tuning` adjusts
-    /// endpointing per caption mode (see `super::tuning`).
+    /// `rnnt_right_context` picks the cache-aware lookahead at load time
+    /// (see [`super::tuning::RecognizerTuning::rnnt_right_context`]).
     pub fn load(
         paths: &NemotronPaths,
-        forced_language: Option<&str>,
-        tuning: RecognizerTuning,
-    ) -> Result<Self, RecognizerError> {
+        rnnt_right_context: Option<i32>,
+    ) -> Result<Arc<Self>, RecognizerError> {
         NEMOTRON_STREAMING_Q8
             .verify(&paths.model)
             .map_err(|_| RecognizerError::ModelUnavailable)?;
-        let language = match forced_language {
-            Some(code) => CString::new(code).map_err(|_| RecognizerError::RecognitionFailed)?,
-            None => LANGUAGE_AUTO.to_owned(),
-        };
         let api = Api::load(&paths.library_dir)?;
         let model_path = paths
             .model
@@ -206,7 +215,7 @@ impl NativeNemotron {
 
         let mut recognizer = ptr::null_mut();
         for gpu in [0, -1] {
-            recognizer = create_recognizer(&api, &model_path, gpu, tuning);
+            recognizer = create_recognizer(&api, &model_path, gpu, rnnt_right_context);
             if !recognizer.is_null() {
                 break;
             }
@@ -214,27 +223,74 @@ impl NativeNemotron {
         if recognizer.is_null() {
             return Err(RecognizerError::ModelUnavailable);
         }
+        Ok(Arc::new(Self { recognizer, api }))
+    }
+}
 
+impl Drop for NemotronModel {
+    fn drop(&mut self) {
+        // SAFETY: every stream keeps an `Arc` to this model, so all streams are
+        // closed before the recognizer is destroyed; `api` (and the library) is
+        // dropped only after this.
+        unsafe { (self.api.destroy)(self.recognizer) };
+    }
+}
+
+/// One open stream over the shared model. NeMo detects speech and utterance ends itself.
+pub struct NativeNemotron {
+    stream: *mut Stream,
+    model: Arc<NemotronModel>,
+}
+
+// SAFETY: the stream is owned exclusively by this value and only used through `&mut self`,
+// so it is never accessed from two threads at once; NeMo does not bind it to a thread.
+unsafe impl Send for NativeNemotron {}
+
+impl NativeNemotron {
+    /// Loads a dedicated model and opens one stream; prefer [`NativeNemotron::open`]
+    /// with a shared [`NemotronModel`] when more than one session may run.
+    pub fn load(
+        paths: &NemotronPaths,
+        forced_language: Option<&str>,
+        tuning: RecognizerTuning,
+    ) -> Result<Self, RecognizerError> {
+        Self::open(
+            NemotronModel::load(paths, tuning.rnnt_right_context)?,
+            forced_language,
+            tuning,
+        )
+    }
+
+    /// Opens a recognition stream over an already loaded model.
+    /// `forced_language` restricts recognition to one language from the model's prompt
+    /// dictionary (e.g. `en-US`); `None` keeps auto-detection. `tuning` adjusts
+    /// endpointing per caption mode (see `super::tuning`).
+    pub fn open(
+        model: Arc<NemotronModel>,
+        forced_language: Option<&str>,
+        tuning: RecognizerTuning,
+    ) -> Result<Self, RecognizerError> {
+        let language = match forced_language {
+            Some(code) => CString::new(code).map_err(|_| RecognizerError::RecognitionFailed)?,
+            None => LANGUAGE_AUTO.to_owned(),
+        };
         // SAFETY: the defaults come from the library and are fully initialized; only plain
         // fields are changed, and the strings outlive the call.
         let stream = unsafe {
-            let mut options = (api.options_default)();
+            let mut options = (model.api.options_default)();
             options.language_code = language.as_ptr();
             options.interim_results = true;
             options.enable_automatic_punctuation = true;
+            // Per-session endpointing; `<= 0` keeps the library default (asr.h).
+            options.stop_history_eou_ms = tuning.stop_history_eou_ms;
             let mut stream = ptr::null_mut();
-            let status = (api.streaming_recognize)(recognizer, &options, &mut stream);
+            let status = (model.api.streaming_recognize)(model.recognizer, &options, &mut stream);
             if status != STATUS_OK || stream.is_null() {
-                (api.destroy)(recognizer);
                 return Err(RecognizerError::RecognitionFailed);
             }
             stream
         };
-        Ok(Self {
-            recognizer,
-            stream,
-            api,
-        })
+        Ok(Self { stream, model })
     }
 
     fn drain(&mut self) -> Result<Vec<SpeechResult>, RecognizerError> {
@@ -242,7 +298,7 @@ impl NativeNemotron {
         loop {
             let mut result = ptr::null_mut();
             // SAFETY: `stream` is open; a non-null result is owned by us and destroyed below.
-            let status = unsafe { (self.api.next)(self.stream, &mut result) };
+            let status = unsafe { (self.model.api.next)(self.stream, &mut result) };
             if status != STATUS_OK {
                 return Err(RecognizerError::RecognitionFailed);
             }
@@ -251,19 +307,20 @@ impl NativeNemotron {
             }
             // SAFETY: `result` is valid until destroyed; transcript and language are copied first.
             unsafe {
-                let text = (self.api.transcript)(result, 0);
+                let api = &self.model.api;
+                let text = (api.transcript)(result, 0);
                 let text = if text.is_null() {
                     String::new()
                 } else {
                     CStr::from_ptr(text).to_string_lossy().into_owned()
                 };
-                let is_final = (self.api.is_final)(result);
-                let language = ((self.api.language_count)(result, 0) > 0)
-                    .then(|| (self.api.language_code)(result, 0, 0))
+                let is_final = (api.is_final)(result);
+                let language = ((api.language_count)(result, 0) > 0)
+                    .then(|| (api.language_code)(result, 0, 0))
                     .filter(|code| !code.is_null())
                     .map(|code| CStr::from_ptr(code).to_string_lossy().into_owned())
                     .filter(|code| !code.is_empty());
-                (self.api.result_destroy)(result);
+                (api.result_destroy)(result);
                 results.push(SpeechResult {
                     text,
                     is_final,
@@ -278,7 +335,7 @@ fn create_recognizer(
     api: &Api,
     model_path: &CStr,
     gpu: i32,
-    tuning: RecognizerTuning,
+    rnnt_right_context: Option<i32>,
 ) -> *mut Recognizer {
     let backend = BackendConfig {
         size: size_of::<BackendConfig>(),
@@ -289,18 +346,33 @@ fn create_recognizer(
         path: model_path.as_ptr(),
         name: ptr::null(),
     };
+    // Only built when a mode asks for a non-default lookahead; NULL keeps the
+    // library's low-latency preset (right context 1). The CTC fields are not
+    // used by this RNNT model but are validated at creation, so they carry the
+    // library defaults (runner.h of the pinned build).
+    let streaming = rnnt_right_context.map(|frames| StreamingConfig {
+        size: size_of::<StreamingConfig>(),
+        chunk_size: 0.16,
+        ctc_left_padding: 1.92,
+        ctc_right_padding: 1.92,
+        rnnt_right_context: frames,
+    });
     // Finalize each utterance on silence so captions are committed during pauses.
+    // The silence threshold stays at the library default here; each stream may
+    // shorten it through its recognition options (see `NativeNemotron::open`).
     let endpointing = EndpointingConfig {
         size: size_of::<EndpointingConfig>(),
         enable: true,
         vad_based: false,
-        stop_history_eou_ms: tuning.stop_history_eou_ms,
+        stop_history_eou_ms: 0,
     };
     let config = RecognizerConfig {
         size: size_of::<RecognizerConfig>(),
         backend: &backend,
         model: &model,
-        streaming: ptr::null(),
+        streaming: streaming
+            .as_ref()
+            .map_or(ptr::null(), |config| config as *const StreamingConfig),
         decoder: ptr::null(),
         vad: ptr::null(),
         endpointing: &endpointing,
@@ -324,8 +396,9 @@ impl StreamingRecognizer for NativeNemotron {
             return Err(RecognizerError::InvalidAudio);
         }
         // SAFETY: `stream` is open and the slice is valid for `samples.len()` floats.
-        let status =
-            unsafe { (self.api.push)(self.stream, samples.as_ptr(), samples.len(), MODEL_RATE) };
+        let status = unsafe {
+            (self.model.api.push)(self.stream, samples.as_ptr(), samples.len(), MODEL_RATE)
+        };
         if status != STATUS_OK {
             return Err(RecognizerError::RecognitionFailed);
         }
@@ -334,7 +407,7 @@ impl StreamingRecognizer for NativeNemotron {
 
     fn finish(&mut self) -> Result<Vec<SpeechResult>, RecognizerError> {
         // SAFETY: `stream` is open; finishing only flushes buffered audio.
-        if unsafe { (self.api.finish)(self.stream) } != STATUS_OK {
+        if unsafe { (self.model.api.finish)(self.stream) } != STATUS_OK {
             return Err(RecognizerError::RecognitionFailed);
         }
         self.drain()
@@ -343,12 +416,9 @@ impl StreamingRecognizer for NativeNemotron {
 
 impl Drop for NativeNemotron {
     fn drop(&mut self) {
-        // SAFETY: both handles were created by this library and are released once, stream
-        // first; `api` (and the library) is dropped only after this.
-        unsafe {
-            (self.api.close)(self.stream);
-            (self.api.destroy)(self.recognizer);
-        }
+        // SAFETY: the stream was created by this library and is closed once; the
+        // shared model (and the library) outlives it through the `Arc`.
+        unsafe { (self.model.api.close)(self.stream) };
     }
 }
 
@@ -362,6 +432,7 @@ mod tests {
         assert_eq!(size_of::<BackendConfig>(), 16);
         assert_eq!(size_of::<ModelConfig>(), 24);
         assert_eq!(size_of::<EndpointingConfig>(), 16);
+        assert_eq!(size_of::<StreamingConfig>(), 24);
         assert_eq!(size_of::<RecognizerConfig>(), 80);
         assert_eq!(size_of::<RecognitionOptions>(), 72);
     }

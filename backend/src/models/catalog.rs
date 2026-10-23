@@ -17,6 +17,37 @@ pub const RIVA_TRANSLATE_Q4: ModelProfile = ModelProfile {
     max_bytes: 5 * 1024 * 1024 * 1024,
 };
 
+// OPUS-MT models run through CTranslate2 (int8, CPU). Each profile anchors the
+// integrity check on the converted `model.bin`; the loader additionally expects
+// `config.json`, `shared_vocabulary.json`, `source.spm` and `target.spm` in the
+// same folder (see `translation::opus`). Converted locally with
+// `ct2-transformers-converter --quantization int8` from the revisions below;
+// regenerate straight from the checkpoints before distributing.
+
+pub const OPUS_MT_EN_PT: ModelProfile = ModelProfile {
+    kind: ModelKind::Translation,
+    id: "opus-mt-tc-big-en-pt-ct2-int8",
+    directory: "opus-mt-en-pt",
+    filename: "model.bin",
+    revision: "9f2863d807ecf91a374bdbecb8d01e402e90622e",
+    source: "https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt",
+    license: "CC-BY-4.0",
+    sha256: "5c2b607d9f0c00e935a00a497aa4c523225288697fbca57ddb7f9ee96fe80006",
+    max_bytes: 512 * 1024 * 1024,
+};
+
+pub const OPUS_MT_PT_EN: ModelProfile = ModelProfile {
+    kind: ModelKind::Translation,
+    id: "opus-mt-tc-bible-big-roa-en-ct2-int8",
+    directory: "opus-mt-pt-en",
+    filename: "model.bin",
+    revision: "4d4757865ab116b39daa3b4ca3cfe1e7daf43cbe",
+    source: "https://huggingface.co/Helsinki-NLP/opus-mt-tc-bible-big-roa-en",
+    license: "CC-BY-4.0",
+    sha256: "b52ae8251ae34d6c8fd7bcc3d5202d6810ec6a8c005b89d762420f89d2f55fb2",
+    max_bytes: 512 * 1024 * 1024,
+};
+
 pub const NEMOTRON_STREAMING_Q8: ModelProfile = ModelProfile {
     kind: ModelKind::Asr,
     id: "nemotron-3.5-asr-streaming-0.6b-q8_0",

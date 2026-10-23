@@ -4,6 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tauri_build::AppManifest::new().commands(&[
             "get_state",
             "set_caption_mode",
+            "set_translation_engine",
             "set_ui_language",
             "start_capture",
             "stop_capture",

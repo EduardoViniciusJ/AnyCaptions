@@ -1,9 +1,9 @@
 use std::{path::PathBuf, time::Instant};
 
 use anycaptions_lib::transcription::{
-    nemotron::{NativeNemotron, NemotronPaths},
+    nemotron::{NativeNemotron, NemotronModel, NemotronPaths},
     streaming::{SpeechResult, StreamingRecognizer},
-    tuning::TRANSCRIPTION,
+    tuning::{TRANSCRIPTION, TRANSLATION},
 };
 
 // Same block size the capture coordinator submits (128 ms at 16 kHz).
@@ -92,6 +92,49 @@ fn nemotron_streams_real_english_speech_and_ignores_silence() {
         NativeNemotron::load(&paths, None, TRANSCRIPTION).expect("NeMo library and model");
     let silence = stream(&mut quiet, &vec![0.0; 16_000 * 3]);
     assert!(silence.iter().all(|result| result.text.trim().is_empty()));
+}
+
+#[test]
+#[ignore = "requires the NeMo-Speech.cpp build, the Nemotron GGUF and jfk.wav"]
+fn one_loaded_model_serves_streams_with_different_endpointing() {
+    let paths = NemotronPaths::resolve();
+    let jfk = jfk_samples();
+
+    let load = Instant::now();
+    let model = NemotronModel::load(&paths, TRANSCRIPTION.rnnt_right_context)
+        .expect("NeMo library and model");
+    let load_ms = load.elapsed().as_millis();
+
+    // Two sequential streams over the same default model.
+    let mut auto = NativeNemotron::open(model.clone(), None, TRANSCRIPTION).expect("stream");
+    let auto_results = stream(&mut auto, &jfk);
+    drop(auto);
+    // The translate mode loads its own model (bigger right context chosen at
+    // load time), exactly like the factory does.
+    let translate_model = NemotronModel::load(&paths, TRANSLATION.rnnt_right_context)
+        .expect("NeMo library and model");
+    let mut translate = NativeNemotron::open(translate_model, None, TRANSLATION).expect("stream");
+    let translate_results = stream(&mut translate, &jfk);
+
+    let auto_finals = auto_results.iter().filter(|r| r.is_final).count();
+    let translate_finals = translate_results.iter().filter(|r| r.is_final).count();
+    eprintln!(
+        "[nemotron] shared model: load_ms={load_ms} finals_default={auto_finals} finals_150ms={translate_finals}"
+    );
+
+    for results in [&auto_results, &translate_results] {
+        let text = final_text(results);
+        assert!(
+            text.contains("ask not what your country can do for you"),
+            "{text}"
+        );
+    }
+    // The per-stream 150 ms endpointing must actually apply: shorter silences
+    // close utterances, so the same audio yields more finals than the default.
+    assert!(
+        translate_finals > auto_finals,
+        "expected the 150 ms stream to split more: default={auto_finals} 150ms={translate_finals}"
+    );
 }
 
 #[test]

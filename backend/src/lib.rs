@@ -16,6 +16,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
         .invoke_handler(tauri::generate_handler![
             ipc::get_state,
             ipc::set_caption_mode,
+            ipc::set_translation_engine,
             ipc::set_ui_language,
             ipc::start_capture,
             ipc::stop_capture,

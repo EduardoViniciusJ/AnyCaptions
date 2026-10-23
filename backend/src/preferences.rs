@@ -7,7 +7,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{AppSnapshot, Appearance, CaptionMode};
+use crate::domain::{AppSnapshot, Appearance, CaptionMode, TranslationEngine};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -38,6 +38,8 @@ impl SavedGeometry {
 pub struct Preferences {
     pub mode: CaptionMode,
     #[serde(default)]
+    pub translation_engine: TranslationEngine,
+    #[serde(default)]
     pub ui_language: crate::domain::UiLanguage,
     pub output_id: Option<String>,
     pub appearance: Appearance,
@@ -49,6 +51,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             mode: CaptionMode::Auto,
+            translation_engine: TranslationEngine::default(),
             ui_language: crate::domain::UiLanguage::default(),
             output_id: None,
             appearance: Appearance::default(),
@@ -60,7 +63,13 @@ impl Default for Preferences {
 
 impl Preferences {
     fn valid(&self) -> bool {
-        self.appearance.validate().is_ok()
+        // A saved target must belong to the saved engine, or the restore would fail.
+        let mode_supported = match self.mode {
+            CaptionMode::Auto => true,
+            CaptionMode::Translate(target) => self.translation_engine.supports(target),
+        };
+        mode_supported
+            && self.appearance.validate().is_ok()
             && crate::domain::AppState::normalize_shortcut(&self.shortcut).is_ok()
             && self
                 .output_id
@@ -102,6 +111,7 @@ impl PreferenceStore {
             .lock()
             .map_err(|_| io::Error::other("Preferences unavailable"))?;
         state.mode = snapshot.mode;
+        state.translation_engine = snapshot.translation_engine;
         state.ui_language = snapshot.ui_language;
         state.appearance = snapshot.appearance;
         state.shortcut = snapshot.shortcut.clone();
@@ -204,12 +214,26 @@ mod tests {
     }
 
     #[test]
+    fn a_target_outside_the_saved_engine_falls_back_to_defaults() {
+        let japanese = crate::domain::TargetLanguage::from_tag("ja").unwrap();
+        let mut preferences = Preferences {
+            mode: CaptionMode::Translate(japanese),
+            translation_engine: TranslationEngine::Opus,
+            ..Default::default()
+        };
+        assert!(!preferences.valid());
+        preferences.translation_engine = TranslationEngine::Riva;
+        assert!(preferences.valid());
+    }
+
+    #[test]
     fn saves_only_preferences_and_restores_them() {
         let dir = isolated();
         let path = config_path(&dir);
         let store = PreferenceStore::load(path.clone());
         let mut snapshot = crate::domain::AppState::default().snapshot();
         snapshot.mode = CaptionMode::Translate(crate::domain::PT_BR);
+        snapshot.translation_engine = TranslationEngine::Riva;
         snapshot.appearance = Appearance {
             font_size: 44,
             color: CaptionColor::YELLOW,
@@ -230,6 +254,7 @@ mod tests {
         assert!(!data.contains("caption") && !data.contains("audio") && !data.contains("session"));
         let restored = PreferenceStore::load(path.clone()).snapshot().unwrap();
         assert_eq!(restored.mode, CaptionMode::Translate(crate::domain::PT_BR));
+        assert_eq!(restored.translation_engine, TranslationEngine::Riva);
         assert_eq!(restored.appearance.font_size, 44);
         assert_eq!(restored.appearance.color, CaptionColor::YELLOW);
         assert_eq!(
