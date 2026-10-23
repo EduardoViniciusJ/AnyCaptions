@@ -13,18 +13,19 @@ use crate::{
         devices::OutputService,
         resample::MonoResampler,
     },
-    domain::{AppSnapshot, CaptionMode, CaptureState, DomainError, Resources},
+    domain::{AppSnapshot, CaptionMode, CaptureState, DomainError, Resources, TranslationEngine},
     ipc::{CAPTION_EVENT, CaptionUpdate, CommandError, Controller, StateEvents},
     models::{catalog::NEMOTRON_STREAMING_Q8, models_root},
     pipeline::{AudioProcessor, Cancellation, MAX_BLOCK_SAMPLES, Pipeline},
 };
 
 use super::{
-    nemotron::{LIBRARY_FILENAME, NativeNemotron, NemotronPaths},
+    nemotron::{LIBRARY_FILENAME, NativeNemotron, NemotronModel, NemotronPaths},
     streaming::StreamingProcessor,
 };
 use crate::translation::{
-    Translator,
+    Translator, TranslatorError,
+    opus::{NativeOpusTranslator, OpusPaths},
     riva::{NativeRivaTranslator, RivaPaths},
     stage::{StageEvent, TranslationStage},
 };
@@ -68,10 +69,13 @@ pub trait ProcessorFactory: Send + Sync {
         session_id: u32,
         mode: CaptionMode,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError>;
-    fn translation_available(&self) -> bool {
+    fn translation_available(&self, _engine: TranslationEngine) -> bool {
         false
     }
-    fn create_translator(&self) -> Result<Box<dyn Translator>, DomainError> {
+    fn create_translator(
+        &self,
+        _engine: TranslationEngine,
+    ) -> Result<Box<dyn Translator>, DomainError> {
         Err(DomainError::TranslationUnavailable)
     }
 }
@@ -79,11 +83,102 @@ pub trait ProcessorFactory: Send + Sync {
 pub struct NativeProcessorFactory {
     paths: NemotronPaths,
     riva: RivaPaths,
+    opus: OpusPaths,
+    // Loaded once on first use and reused by every later session: reloading per
+    // session cost seconds on each language switch and accumulated leaked GPU
+    // memory in the native library until allocations failed. The ASR cache is
+    // keyed by the right-context preset, because that is chosen at model load
+    // and the modes use different values.
+    asr_models: Mutex<Vec<(Option<i32>, Arc<NemotronModel>)>>,
+    opus_translator: Mutex<Option<Arc<Mutex<NativeOpusTranslator>>>>,
+    riva_translator: Mutex<Option<Arc<Mutex<NativeRivaTranslator>>>>,
 }
 
 impl NativeProcessorFactory {
-    pub fn new(paths: NemotronPaths, riva: RivaPaths) -> Self {
-        Self { paths, riva }
+    pub fn new(paths: NemotronPaths, riva: RivaPaths, opus: OpusPaths) -> Self {
+        Self {
+            paths,
+            riva,
+            opus,
+            asr_models: Mutex::new(Vec::new()),
+            opus_translator: Mutex::new(None),
+            riva_translator: Mutex::new(None),
+        }
+    }
+
+    fn asr_model(
+        &self,
+        rnnt_right_context: Option<i32>,
+    ) -> Result<Arc<NemotronModel>, DomainError> {
+        let mut cached = self
+            .asr_models
+            .lock()
+            .map_err(|_| DomainError::TranscriptionUnavailable)?;
+        if let Some((_, model)) = cached
+            .iter()
+            .find(|(context, _)| *context == rnnt_right_context)
+        {
+            return Ok(Arc::clone(model));
+        }
+        let model = NemotronModel::load(&self.paths, rnnt_right_context)
+            .map_err(|_| DomainError::TranscriptionUnavailable)?;
+        cached.push((rnnt_right_context, Arc::clone(&model)));
+        Ok(model)
+    }
+
+    /// The cached OPUS engine, loaded on first use; `None` when its files are
+    /// missing or it fails to load.
+    fn opus_translator(&self) -> Option<Arc<Mutex<NativeOpusTranslator>>> {
+        if !self.opus.translation_available() {
+            return None;
+        }
+        load_cached(&self.opus_translator, || {
+            NativeOpusTranslator::load(&self.opus).ok()
+        })
+    }
+
+    /// The cached Riva engine, loaded on first use so GPU memory is only taken
+    /// when a session actually chose it.
+    fn riva_translator(&self) -> Option<Arc<Mutex<NativeRivaTranslator>>> {
+        if !self.riva.translation_available() {
+            return None;
+        }
+        load_cached(&self.riva_translator, || {
+            NativeRivaTranslator::load(&self.riva).ok()
+        })
+    }
+}
+
+/// Returns the cached engine, loading it on first use. The factory outlives
+/// every session, so each engine is loaded at most once per app run.
+fn load_cached<T>(
+    cache: &Mutex<Option<Arc<Mutex<T>>>>,
+    load: impl FnOnce() -> Option<T>,
+) -> Option<Arc<Mutex<T>>> {
+    let mut cached = cache.lock().ok()?;
+    if let Some(loaded) = cached.as_ref() {
+        return Some(Arc::clone(loaded));
+    }
+    let loaded = Arc::new(Mutex::new(load()?));
+    *cached = Some(Arc::clone(&loaded));
+    Some(loaded)
+}
+
+/// A session's handle to one cached engine. Translation is stateless per call
+/// and sessions never overlap, so the lock is uncontended.
+struct SharedTranslator<T: Translator>(Arc<Mutex<T>>);
+
+impl<T: Translator> Translator for SharedTranslator<T> {
+    fn translate(
+        &mut self,
+        text: &str,
+        source: &str,
+        target: &str,
+    ) -> Result<String, TranslatorError> {
+        self.0
+            .lock()
+            .map_err(|_| TranslatorError::TranslationFailed)?
+            .translate(text, source, target)
     }
 }
 
@@ -97,32 +192,44 @@ impl ProcessorFactory for NativeProcessorFactory {
         session_id: u32,
         mode: CaptionMode,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        if mode.requires_translation() && !self.translation_available() {
-            return Err(DomainError::TranslationUnavailable);
-        }
         // Both modes transcribe with model auto-detection; forcing one language on the
-        // recognizer stays available in `NativeNemotron::load` for future features.
+        // recognizer stays available in `NativeNemotron::open` for future features.
         // Auto keeps the recognizer untouched; translate mode closes finals sooner.
         let tuning = if mode.requires_translation() {
             super::tuning::TRANSLATION
         } else {
             super::tuning::TRANSCRIPTION
         };
-        let recognizer = NativeNemotron::load(&self.paths, None, tuning)
-            .map_err(|_| DomainError::TranscriptionUnavailable)?;
+        let recognizer =
+            NativeNemotron::open(self.asr_model(tuning.rnnt_right_context)?, None, tuning)
+                .map_err(|_| DomainError::TranscriptionUnavailable)?;
         Ok(Box::new(StreamingProcessor::new(
             session_id, mode, recognizer,
         )))
     }
 
-    fn translation_available(&self) -> bool {
-        self.riva.translation_available()
+    fn translation_available(&self, engine: TranslationEngine) -> bool {
+        match engine {
+            TranslationEngine::Opus => self.opus.translation_available(),
+            TranslationEngine::Riva => self.riva.translation_available(),
+        }
     }
 
-    fn create_translator(&self) -> Result<Box<dyn Translator>, DomainError> {
-        let translator = NativeRivaTranslator::load(&self.riva)
-            .map_err(|_| DomainError::TranslationUnavailable)?;
-        Ok(Box::new(translator))
+    /// Only the chosen engine serves the session; an unsupported pair is an
+    /// error, never a silent switch to the other engine.
+    fn create_translator(
+        &self,
+        engine: TranslationEngine,
+    ) -> Result<Box<dyn Translator>, DomainError> {
+        match engine {
+            TranslationEngine::Opus => self
+                .opus_translator()
+                .map(|cached| Box::new(SharedTranslator(cached)) as Box<dyn Translator>),
+            TranslationEngine::Riva => self
+                .riva_translator()
+                .map(|cached| Box::new(SharedTranslator(cached)) as Box<dyn Translator>),
+        }
+        .ok_or(DomainError::TranslationUnavailable)
     }
 }
 
@@ -166,11 +273,16 @@ impl CaptionSessionManager {
             Arc::new(NativeProcessorFactory::new(
                 NemotronPaths::resolve(),
                 RivaPaths::resolve(),
+                OpusPaths::resolve(),
             )),
         )
     }
 
-    pub fn probe_resources(&self, output_service: &OutputService) -> Resources {
+    pub fn probe_resources(
+        &self,
+        output_service: &OutputService,
+        engine: TranslationEngine,
+    ) -> Resources {
         let audio_capture = output_service
             .selection()
             .is_ok_and(|selection| selection.selected_id.is_some() && selection.selected_available);
@@ -178,7 +290,7 @@ impl CaptionSessionManager {
         Resources {
             audio_capture,
             transcription,
-            translation: self.factory.translation_available(),
+            translation: self.factory.translation_available(engine),
         }
     }
 
@@ -188,7 +300,9 @@ impl CaptionSessionManager {
         output_service: &OutputService,
         events: &impl StateEvents,
     ) -> Result<AppSnapshot, CommandError> {
-        let resources = self.probe_resources(output_service);
+        // Availability follows the engine the user chose in the settings.
+        let engine = controller.snapshot()?.translation_engine;
+        let resources = self.probe_resources(output_service, engine);
         controller.set_resources(resources, events)
     }
 
@@ -220,6 +334,7 @@ impl CaptionSessionManager {
         &self,
         session_id: u32,
         mode: CaptionMode,
+        engine: TranslationEngine,
         device_id: String,
         controller: Controller,
         sink: Arc<dyn SessionSink>,
@@ -242,6 +357,7 @@ impl CaptionSessionManager {
                 run_coordinator(
                     session_id,
                     mode,
+                    engine,
                     device_id,
                     capture_backend,
                     factory,
@@ -276,7 +392,8 @@ enum CaptionRoute {
 }
 
 /// Forwards one caption update along the route. Returns `false` when the
-/// translation stage is overloaded and the session must fail.
+/// translation stage is gone (its worker already failed) and the session must
+/// end; a merely overloaded stage drops backlog and keeps going.
 fn deliver(
     update: CaptionUpdate,
     route: &CaptionRoute,
@@ -305,11 +422,12 @@ fn deliver(
 fn spawn_translation_route(
     session_id: u32,
     target: crate::domain::TargetLanguage,
+    engine: TranslationEngine,
     factory: &Arc<dyn ProcessorFactory>,
     controller: &Controller,
     sink: &Arc<dyn SessionSink>,
 ) -> Result<CaptionRoute, DomainError> {
-    let translator = factory.create_translator()?;
+    let translator = factory.create_translator(engine)?;
     let stage_controller = controller.clone();
     let stage_sink = Arc::clone(sink);
     TranslationStage::spawn(translator, target, move |event| match event {
@@ -342,6 +460,7 @@ fn spawn_translation_route(
 fn run_coordinator(
     session_id: u32,
     mode: CaptionMode,
+    engine: TranslationEngine,
     device_id: String,
     capture_backend: Arc<dyn CaptureBackend>,
     factory: Arc<dyn ProcessorFactory>,
@@ -350,6 +469,16 @@ fn run_coordinator(
     cancel: Cancellation,
 ) {
     if cancel.is_cancelled() || !controller.is_session_active(session_id) {
+        return;
+    }
+
+    // Checked before the ASR model loads, so a missing translator fails fast.
+    if mode.requires_translation() && !factory.translation_available(engine) {
+        let _ = controller.fail_session(
+            session_id,
+            DomainError::TranslationUnavailable,
+            sink.as_ref(),
+        );
         return;
     }
 
@@ -362,7 +491,7 @@ fn run_coordinator(
     };
 
     let route = if let Some(target) = mode.translation_target() {
-        match spawn_translation_route(session_id, target, &factory, &controller, &sink) {
+        match spawn_translation_route(session_id, target, engine, &factory, &controller, &sink) {
             Ok(route) => route,
             Err(error) => {
                 let _ = controller.fail_session(session_id, error, sink.as_ref());
@@ -684,6 +813,7 @@ mod tests {
             .start_session(
                 started.session_id,
                 started.mode,
+                started.translation_engine,
                 "speaker-1".into(),
                 controller.clone(),
                 Arc::clone(&sink) as Arc<dyn SessionSink>,
@@ -715,7 +845,7 @@ mod tests {
             true
         }
 
-        fn translation_available(&self) -> bool {
+        fn translation_available(&self, _engine: TranslationEngine) -> bool {
             true
         }
 
@@ -727,7 +857,10 @@ mod tests {
             FakeFactory.create(session_id, mode)
         }
 
-        fn create_translator(&self) -> Result<Box<dyn Translator>, DomainError> {
+        fn create_translator(
+            &self,
+            _engine: TranslationEngine,
+        ) -> Result<Box<dyn Translator>, DomainError> {
             let mut translator = crate::translation::MockTranslator::new();
             translator
                 .expect_translate()
@@ -782,6 +915,7 @@ mod tests {
             .start_session(
                 started.session_id,
                 started.mode,
+                started.translation_engine,
                 "speaker-1".into(),
                 controller.clone(),
                 Arc::clone(&sink) as Arc<dyn SessionSink>,
@@ -838,6 +972,7 @@ mod tests {
             .start_session(
                 started.session_id,
                 started.mode,
+                started.translation_engine,
                 "speaker-1".into(),
                 controller.clone(),
                 Arc::clone(&sink) as Arc<dyn SessionSink>,
@@ -897,6 +1032,7 @@ mod tests {
             .start_session(
                 started.session_id,
                 started.mode,
+                started.translation_engine,
                 "speaker-1".into(),
                 controller,
                 Arc::clone(&sink) as Arc<dyn SessionSink>,

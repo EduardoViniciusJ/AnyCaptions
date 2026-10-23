@@ -24,6 +24,15 @@ A tradução usa os mesmos mecanismos, também ignorados pelo Git:
 
 Todo par de idiomas do modelo inclui o inglês; pares sem inglês (por exemplo, espanhol → português) são traduzidos em duas etapas passando por ele. O teste real roda com `cargo test --manifest-path backend/Cargo.toml --test real_riva -- --ignored`.
 
+#### Caminho rápido inglês ↔ português (OPUS-MT)
+
+Para o par mais usado, um segundo tradutor local responde em ~90 ms por frase na CPU (contra ~330 ms do Riva na GPU) e é tentado primeiro; os demais pares seguem no Riva, carregado só quando necessário. Itens locais, ignorados pelo Git:
+
+- Modelos CTranslate2 int8 gerados localmente com `ct2-transformers-converter --quantization int8`: `backend/models/translation/opus-mt-en-pt/` a partir da revisão `9f2863d807ecf91a374bdbecb8d01e402e90622e` de [Helsinki-NLP/opus-mt-tc-big-en-pt](https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt) e `backend/models/translation/opus-mt-pt-en/` a partir da revisão `4d4757865ab116b39daa3b4ca3cfe1e7daf43cbe` de [Helsinki-NLP/opus-mt-tc-bible-big-roa-en](https://huggingface.co/Helsinki-NLP/opus-mt-tc-bible-big-roa-en), ambos [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (créditos: Helsinki-NLP/OPUS-MT, Jörg Tiedemann). Cada pasta contém `model.bin` (verificado por SHA-256 do catálogo), `config.json`, `shared_vocabulary.json` e os tokenizers `source.spm`/`target.spm` do checkpoint original. Antes de distribuir, regenerar direto dos checkpoints.
+- Biblioteca `opus_ct2_c.dll`, um wrapper C fino compilado localmente de `backend/local-data/tools/opus-build/` (CMake + MSVC), com [CTranslate2](https://github.com/OpenNMT/CTranslate2) (MIT) e [SentencePiece](https://github.com/google/sentencepiece) (Apache-2.0) estáticos, na mesma pasta das bibliotecas NeMo. Sem ela, todos os pares usam o Riva.
+
+O teste real roda com `cargo test --manifest-path backend/Cargo.toml --test real_opus -- --ignored`.
+
 ## Executar
 
 Pré-requisitos: Rust estável com target `x86_64-pc-windows-msvc` (mínimo 1.90), ferramentas C++ do Visual Studio com Windows SDK, WebView2 e Node 24.15+ da linha 24 (ou 26+).

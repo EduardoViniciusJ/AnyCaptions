@@ -18,7 +18,12 @@ const browserClock: CaptionClock = {
 
 const CLEAR_FADE_MS = 120;
 
-export function splitTrailingWords(text: string, trailingWords = 1): { leading: string; trailing: string } {
+// Modo frases (tradutor rápido): o texto flui preenchendo a largura, quebrando
+// em até este número de linhas; estourou, a sentença mais antiga sai inteira.
+// Espelhado no CSS de `.caption[data-lines="multi"]`.
+const SENTENCE_LINES = 3;
+
+function splitTrailingWords(text: string, trailingWords = 1): { leading: string; trailing: string } {
   const words = text.trim().split(/\s+/u).filter(Boolean);
   if (words.length === 0) return { leading: "", trailing: "" };
   const splitAt = Math.max(0, words.length - trailingWords);
@@ -48,6 +53,9 @@ interface ActiveLiveSegment {
 export class CaptionPresenter {
   private sessionId = 0;
   private mode: CaptionMode = "auto";
+  private sentences: string[] = [];
+  /** Anima (fade 120 ms) só a sentença recém-chegada no próximo render. */
+  private animateNewestSentence = false;
   private activeSegmentId = 0;
   private activeRevision = -1;
   private activeFinal = false;
@@ -97,6 +105,20 @@ export class CaptionPresenter {
     this.activeRevision = update.revision;
     this.activeFinal = update.isFinal;
 
+    // Translate mode: each update is one translated sentence, shown
+    // immediately. The text flows over up to SENTENCE_LINES lines and, once
+    // full, the screen clears and restarts with the newest sentence.
+    if (this.mode !== "auto") {
+      const sentence = update.text.trim();
+      if (sentence) {
+        this.sentences.push(sentence);
+        this.animateNewestSentence = true;
+      }
+      this.layoutSentences();
+      this.render();
+      return true;
+    }
+
     const incomingWords = captionWords(update.text);
     const previous = this.activeLiveSegment;
     const previousWords = previous?.words ?? [];
@@ -114,6 +136,22 @@ export class CaptionPresenter {
     if (update.isFinal) this.commitActiveLiveSegment();
     this.render();
     return true;
+  }
+
+  private layoutSentences(): void {
+    const fitsLines = (text: string) => this.fitsCaption(text, SENTENCE_LINES);
+    if (this.sentences.length > 1 && !fitsLines(this.sentences.join(" "))) {
+      // Encheu as linhas: a tela limpa e recomeça do zero com a sentença nova,
+      // em vez de ir empurrando as antigas para cima.
+      this.sentences = [this.sentences.at(-1) ?? ""];
+    }
+    let text = this.sentences.join(" ");
+    if (text && !fitsLines(text)) {
+      // A single sentence taller than the area keeps only its tail.
+      text = paginateCaption(text, fitsLines).at(-1) ?? text;
+      this.sentences = [text];
+    }
+    this.current = text ? { text, segmentId: this.activeSegmentId } : undefined;
   }
 
   private liveWords(): string[] {
@@ -168,6 +206,12 @@ export class CaptionPresenter {
   }
 
   refreshLayout(): void {
+    if (this.mode !== "auto") {
+      if (this.sentences.length === 0) return;
+      this.layoutSentences();
+      this.render();
+      return;
+    }
     if (this.liveWords().length === 0) return;
     this.layoutLiveCaption();
     this.render();
@@ -198,6 +242,7 @@ export class CaptionPresenter {
       return;
     }
 
+    this.element.dataset.lines = this.mode !== "auto" ? "multi" : "single";
     const content = document.createElement("span");
     content.className = "caption-content";
 
@@ -215,12 +260,28 @@ export class CaptionPresenter {
       } else {
         content.replaceChildren(partialSpan);
       }
+    } else if (this.mode !== "auto" && this.sentences.length > 0) {
+      // Uma `span` por sentença: só a recém-chegada ganha o fade de entrada,
+      // as anteriores ficam paradas (estabilidade acima de decoração).
+      this.sentences.forEach((sentence, index) => {
+        if (index > 0) content.append(" ");
+        const span = document.createElement("span");
+        span.className = "caption-sentence";
+        if (this.animateNewestSentence && index === this.sentences.length - 1) {
+          span.classList.add("caption-sentence-in");
+        }
+        span.textContent = sentence;
+        content.append(span);
+      });
+      this.animateNewestSentence = false;
     } else {
       content.textContent = this.current.text;
     }
     this.element.replaceChildren(content);
 
-    this.element.dataset.state = !this.activeFinal ? "partial" : "final";
+    // Blocks always render in the confirmed style; the live stream marks
+    // in-progress revisions as partial.
+    this.element.dataset.state = this.mode !== "auto" || this.activeFinal ? "final" : "partial";
     this.element.hidden = false;
     void this.element.offsetWidth;
     this.element.style.transition = "";
@@ -234,6 +295,8 @@ export class CaptionPresenter {
     this.activeFinal = false;
     this.finalizedLiveWords = [];
     this.activeLiveSegment = undefined;
+    this.sentences = [];
+    this.animateNewestSentence = false;
     this.current = undefined;
     this.render(immediate);
   }

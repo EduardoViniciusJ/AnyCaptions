@@ -1,6 +1,8 @@
-//! Local text translation behind the [`Translator`] trait. The engine in use
-//! (`riva`) is one implementation; captions never leave the machine.
+//! Local text translation behind the [`Translator`] trait. Two engines
+//! implement it today — `opus` (fast, CPU, English–Portuguese) and `riva`
+//! (GPU, 37 languages) — and captions never leave the machine.
 
+pub mod opus;
 pub mod riva;
 pub mod stage;
 

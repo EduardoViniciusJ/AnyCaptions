@@ -1,4 +1,4 @@
-import { TRANSLATION_TARGETS, flagUrl } from "./languages";
+import { TRANSLATION_ENGINES, TRANSLATION_TARGETS, engineServes, flagUrl } from "./languages";
 import { UI_LANGUAGES, localeTag, setLocale, t, type MessageKey } from "./i18n";
 import type {
   AppSnapshot,
@@ -7,6 +7,7 @@ import type {
   CaptionMode,
   ResizeDirection,
   OutputSelection,
+  TranslationEngine,
 } from "./contracts";
 import {
   DEFAULT_APPEARANCE,
@@ -100,6 +101,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             </div>
           </div>
           <div class="setting-row">
+            <label for="translation-engine" data-i18n="translationEngine">Modelo de tradução</label>
+            <select id="translation-engine"></select>
+          </div>
+          <div class="setting-row">
             <label for="audio-output" data-i18n="audioOutput">Saída de áudio</label>
             <select id="audio-output" disabled><option>Nenhuma saída disponível</option></select>
           </div>
@@ -172,7 +177,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     language.setAttribute("aria-expanded", String(open));
     if (open) {
       const selected = languageItems.find((item) => item.dataset.value === state?.mode);
-      selected?.scrollIntoView({ block: "nearest" });
+      // jsdom (testes) não implementa scrollIntoView.
+      selected?.scrollIntoView?.({ block: "nearest" });
     }
   };
   const renderLanguageButton = (mode: CaptionMode) => {
@@ -222,6 +228,19 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     }
   };
 
+  // Seletor do mecanismo de tradução (configurações); o menu de idiomas
+  // mostra apenas os alvos que o mecanismo escolhido serve.
+  const translationEngine = get<HTMLSelectElement>("#translation-engine");
+  for (const engine of TRANSLATION_ENGINES) {
+    translationEngine.add(new Option(t(engine.labelKey), engine.id));
+  }
+  const renderEngineOptions = () => {
+    for (const option of translationEngine.options) {
+      const engine = TRANSLATION_ENGINES.find((entry) => entry.id === option.value);
+      if (engine) option.textContent = t(engine.labelKey);
+    }
+  };
+
   /** Reaplica todos os textos estáticos no idioma atual da interface. */
   const applyTexts = () => {
     for (const element of root.querySelectorAll<HTMLElement>("[data-i18n]")) {
@@ -245,6 +264,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
         if (target) text.textContent = `${t("translateTo")} ${target.short}`;
       }
     }
+    renderEngineOptions();
     renderUiLanguageButton();
   };
   const lock = get<HTMLButtonElement>("#lock");
@@ -308,6 +328,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     partialColorValue.disabled = disabled;
     resetAppearance.disabled = disabled;
     shortcut.disabled = disabled;
+    translationEngine.disabled = disabled;
     saveSettings.disabled = disabled || !appearanceValid;
   }
 
@@ -380,8 +401,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       toggleLanguageMenu(false);
       toggleUiLanguageMenu(false);
     }
+    translationEngine.value = state.translationEngine;
     for (const item of languageItems) {
       const translate = item.dataset.value?.startsWith("translate-") ?? false;
+      // Alvos fora do mecanismo escolhido saem do menu; os demais só
+      // desabilitam enquanto o modelo não está instalado.
+      item.hidden =
+        translate && !engineServes(state.translationEngine, item.dataset.value as CaptionMode);
       const unavailable = translate && !state.resources.translation;
       item.setAttribute("aria-disabled", String(unavailable));
       item.setAttribute("aria-selected", String(item.dataset.value === state.mode));
@@ -465,6 +491,12 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     const mode = item.dataset.value as CaptionMode;
     if (mode === state?.mode) return;
     void perform(() => backend.setMode(mode));
+  }, options);
+  translationEngine.addEventListener("change", () => {
+    if (!state || busy) return;
+    const engine = translationEngine.value as TranslationEngine;
+    if (engine === state.translationEngine) return;
+    void perform(() => backend.setTranslationEngine(engine));
   }, options);
   uiLanguage.addEventListener("click", () => toggleUiLanguageMenu(Boolean(uiLanguageMenu.hidden)), options);
   uiLanguageMenu.addEventListener("click", (event) => {

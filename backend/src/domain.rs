@@ -21,12 +21,16 @@ impl TargetLanguage {
 /// Portuguese (Brazil), the default translation target.
 pub const PT_BR: TargetLanguage = TargetLanguage("pt-br");
 
-/// Every target the translation model accepts (`src/nmt/langpairs.cc` of the
-/// pinned NeMo-Speech.cpp build); regional variants use their canonical tag.
+/// English and Portuguese (Portugal): the other targets the OPUS engine serves.
+pub const EN: TargetLanguage = TargetLanguage("en");
+pub const PT_PT: TargetLanguage = TargetLanguage("pt-pt");
+
+/// Every target the Riva translation model accepts (`src/nmt/langpairs.cc` of
+/// the pinned NeMo-Speech.cpp build); regional variants use their canonical tag.
 pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
-    TargetLanguage("en"),
+    EN,
     PT_BR,
-    TargetLanguage("pt-pt"),
+    PT_PT,
     TargetLanguage("es-es"),
     TargetLanguage("es-us"),
     TargetLanguage("fr"),
@@ -62,6 +66,35 @@ pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
     TargetLanguage("zh-cn"),
     TargetLanguage("zh-tw"),
 ];
+
+/// Targets the OPUS engine serves (English–Portuguese, both directions).
+pub const OPUS_TARGETS: &[TargetLanguage] = &[EN, PT_BR, PT_PT];
+
+/// A local translation engine the user picks in the settings. The UI offers
+/// only the targets of the chosen engine; a new engine extends this enum and
+/// [`TranslationEngine::targets`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TranslationEngine {
+    /// OPUS-MT via CTranslate2 on the CPU: fast, English–Portuguese.
+    #[default]
+    Opus,
+    /// Riva/NMT on the GPU: every target in [`TRANSLATION_TARGETS`].
+    Riva,
+}
+
+impl TranslationEngine {
+    pub fn targets(self) -> &'static [TargetLanguage] {
+        match self {
+            Self::Opus => OPUS_TARGETS,
+            Self::Riva => TRANSLATION_TARGETS,
+        }
+    }
+
+    pub fn supports(self, target: TargetLanguage) -> bool {
+        self.targets().contains(&target)
+    }
+}
 
 /// A user-interface language, held as its tag (e.g. `pt-br`). Only tags from
 /// [`UI_LANGUAGES`] can be constructed; the frontend owns the actual strings.
@@ -325,6 +358,7 @@ pub struct AppSnapshot {
     pub ui_language: UiLanguage,
     pub session_id: u32,
     pub mode: CaptionMode,
+    pub translation_engine: TranslationEngine,
     pub capture: CaptureState,
     pub window_mode: WindowMode,
     pub appearance: Appearance,
@@ -342,6 +376,7 @@ pub struct AppState {
     ui_language: UiLanguage,
     session_id: u32,
     mode: CaptionMode,
+    translation_engine: TranslationEngine,
     capture: CaptureState,
     appearance: Appearance,
     resources: Resources,
@@ -374,6 +409,7 @@ impl AppState {
             ui_language: self.ui_language,
             session_id: self.session_id,
             mode: self.mode,
+            translation_engine: self.translation_engine,
             capture: self.capture,
             window_mode: self.window_mode,
             appearance: self.appearance,
@@ -406,12 +442,36 @@ impl AppState {
     }
 
     pub fn set_mode(&mut self, mode: CaptionMode) -> Result<(), DomainError> {
+        if let CaptionMode::Translate(target) = mode
+            && !self.translation_engine.supports(target)
+        {
+            return Err(DomainError::TranslationUnavailable);
+        }
         if mode != self.mode {
             self.advance(true)?;
             self.mode = mode;
             self.capture = CaptureState::Stopped;
             self.error = None;
         }
+        Ok(())
+    }
+
+    /// Switches the translation engine. The running session is invalidated and,
+    /// when the new engine does not serve the current target, the mode falls
+    /// back to the default target (both engines translate to PT-BR).
+    pub fn set_translation_engine(&mut self, engine: TranslationEngine) -> Result<(), DomainError> {
+        if engine == self.translation_engine {
+            return Ok(());
+        }
+        self.advance(true)?;
+        self.translation_engine = engine;
+        if let CaptionMode::Translate(target) = self.mode
+            && !engine.supports(target)
+        {
+            self.mode = CaptionMode::Translate(PT_BR);
+        }
+        self.capture = CaptureState::Stopped;
+        self.error = None;
         Ok(())
     }
 
@@ -611,6 +671,44 @@ mod tests {
             state.fail(session, DomainError::TranslationUnavailable),
             Err(DomainError::InvalidTransition)
         );
+    }
+
+    #[test]
+    fn engine_choice_limits_targets_and_switching_falls_back_to_pt_br() {
+        let mut state = ready();
+        let japanese = TargetLanguage::from_tag("ja").unwrap();
+        // Opus (default) rejects targets it does not serve; its own pass.
+        assert_eq!(
+            state.set_mode(CaptionMode::Translate(japanese)),
+            Err(DomainError::TranslationUnavailable)
+        );
+        state.set_mode(CaptionMode::Translate(PT_PT)).unwrap();
+        // Riva serves everything and keeps a target both engines share.
+        state
+            .set_translation_engine(TranslationEngine::Riva)
+            .unwrap();
+        assert_eq!(state.snapshot().mode, CaptionMode::Translate(PT_PT));
+        state.set_mode(CaptionMode::Translate(japanese)).unwrap();
+        let session = state.snapshot().session_id;
+        // Back to Opus: the unsupported target falls back to PT-BR, in a new session.
+        state
+            .set_translation_engine(TranslationEngine::Opus)
+            .unwrap();
+        assert_eq!(state.snapshot().mode, CaptionMode::Translate(PT_BR));
+        assert_ne!(state.snapshot().session_id, session);
+        // Wire format and catalog consistency.
+        assert_eq!(
+            serde_json::to_value(TranslationEngine::Opus).unwrap(),
+            "opus"
+        );
+        assert_eq!(
+            serde_json::from_value::<TranslationEngine>(serde_json::json!("riva")).unwrap(),
+            TranslationEngine::Riva
+        );
+        assert!(serde_json::from_value::<TranslationEngine>(serde_json::json!("nllb")).is_err());
+        for target in OPUS_TARGETS {
+            assert!(TranslationEngine::Riva.supports(*target));
+        }
     }
 
     #[test]

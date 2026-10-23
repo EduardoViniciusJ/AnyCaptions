@@ -67,6 +67,12 @@ pub struct UiLanguageRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct TranslationEngineRequest {
+    pub engine: crate::domain::TranslationEngine,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WindowRequest {
     pub mode: WindowMode,
 }
@@ -150,6 +156,8 @@ impl Controller {
             .0
             .lock()
             .map_err(|_| CommandError::StateUnavailable)?;
+        // Engine first: a saved translate mode is only valid under its engine.
+        state.set_translation_engine(preferences.translation_engine)?;
         state.set_mode(preferences.mode)?;
         state.set_ui_language(preferences.ui_language)?;
         state.set_appearance(preferences.appearance)?;
@@ -333,6 +341,7 @@ pub fn start_live_capture<R: Runtime>(
         if let Err(err) = sessions.start_session(
             snapshot.session_id,
             snapshot.mode,
+            snapshot.translation_engine,
             device_id,
             controller.clone(),
             sink,
@@ -398,6 +407,32 @@ pub fn set_caption_mode<R: Runtime>(
     }
     let state = controller.update(&window, |state| state.set_mode(request.mode))?;
     persist(&app, &state)?;
+    Ok(state)
+}
+
+#[tauri::command]
+pub fn set_translation_engine<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    request: TranslationEngineRequest,
+) -> Result<AppSnapshot, CommandError> {
+    authorize(window.label())?;
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.stop_session();
+    }
+    let state = controller.update(&window, |state| {
+        state.set_translation_engine(request.engine)
+    })?;
+    persist(&app, &state)?;
+    // Availability depends on the chosen engine's files; re-probe so the
+    // translate options enable or disable right away.
+    if let (Some(sessions), Some(outputs)) = (
+        app.try_state::<CaptionSessionManager>(),
+        app.try_state::<Arc<OutputService>>(),
+    ) {
+        return sessions.refresh_resources(&controller, &outputs, &window);
+    }
     Ok(state)
 }
 
@@ -611,6 +646,10 @@ mod tests {
     #[test]
     fn ipc_requests_reject_unsupported_modes_and_extra_fields() {
         assert!(serde_json::from_str::<ModeRequest>(r#"{"mode":"en-en"}"#).is_err());
+        assert!(serde_json::from_str::<TranslationEngineRequest>(r#"{"engine":"nllb"}"#).is_err());
+        assert!(
+            serde_json::from_str::<TranslationEngineRequest>(r#"{"engine":"opus","x":1}"#).is_err()
+        );
         assert!(serde_json::from_str::<ModeRequest>(r#"{"mode":"auto","audio":[1,2]}"#).is_err());
         assert!(serde_json::from_str::<WindowRequest>(r#"{"mode":"hidden"}"#).is_err());
     }
@@ -633,6 +672,7 @@ mod tests {
         );
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");
+        assert_eq!(snapshot["translationEngine"], "opus");
         assert_eq!(snapshot["uiLanguage"], "pt-br");
         assert_eq!(snapshot["appearance"]["fontSize"], 32);
         assert_eq!(snapshot["appearance"]["color"], "#FFFFFF");

@@ -1,4 +1,5 @@
 export type CaptionMode = "auto" | `translate-${string}`;
+export type TranslationEngine = "opus" | "riva";
 export type CaptureState = "stopped" | "preparing" | "listening" | "processing" | "error";
 export type WindowMode = "edit" | "locked";
 export type ResizeDirection = "East" | "West" | "South";
@@ -15,6 +16,7 @@ export interface AppSnapshot {
   uiLanguage: string;
   sessionId: number;
   mode: CaptionMode;
+  translationEngine: TranslationEngine;
   capture: CaptureState;
   windowMode: WindowMode;
   appearance: Appearance;
@@ -46,6 +48,7 @@ export interface OutputSelection {
 export interface Backend {
   getState(): Promise<AppSnapshot>;
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
+  setTranslationEngine(engine: TranslationEngine): Promise<AppSnapshot>;
   setUiLanguage(language: string): Promise<AppSnapshot>;
   start(): Promise<AppSnapshot>;
   stop(): Promise<AppSnapshot>;

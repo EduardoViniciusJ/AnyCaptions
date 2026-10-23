@@ -26,8 +26,9 @@ const ENGLISH: &str = "en";
 const VARIANT_TAGS: &[&str] = &["pt-br", "pt-pt", "es-es", "es-us", "zh-cn", "zh-tw"];
 
 /// Maps a language code (BCP-47, e.g. `en-US`, or a model tag) to the model's
-/// tag (e.g. `en`). Bare Portuguese means the Brazilian variant.
-fn model_tag(code: &str) -> Option<String> {
+/// tag (e.g. `en`). Bare Portuguese means the Brazilian variant. The `opus`
+/// engine shares this normalization so both agree on what a pair means.
+pub(crate) fn model_tag(code: &str) -> Option<String> {
     let lower = code.replace('_', "-").to_ascii_lowercase();
     if VARIANT_TAGS.contains(&lower.as_str()) {
         return Some(lower);

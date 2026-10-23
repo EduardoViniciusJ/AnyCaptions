@@ -71,6 +71,19 @@ select { padding: 0 6px; }
   text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 2px 4px rgba(0, 0, 0, 0.95);
   transition: opacity 120ms ease;
 }
+/* Modo frases (tradução): o texto flui preenchendo a largura, quebra em até
+   3 linhas e, ao encher, limpa e recomeça do zero. */
+.caption[data-lines="multi"] {
+  white-space: normal;
+  height: auto;
+  max-height: calc(var(--caption-base-size) * 1.25 * 3 + 16px);
+}
+/* Entrada de bloco final: apenas opacidade, 120 ms (diretriz de movimento). */
+.caption-sentence-in { animation: caption-sentence-in 120ms ease; }
+@keyframes caption-sentence-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 .caption-content { display: block; }
 .caption-partial {
   color: var(--caption-partial-color);
