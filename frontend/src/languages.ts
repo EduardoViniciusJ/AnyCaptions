@@ -1,4 +1,31 @@
-import type { CaptionMode } from "./contracts";
+import type { CaptionMode, TranslationEngine } from "./contracts";
+import type { MessageKey } from "./i18n";
+
+/**
+ * Mecanismos de tradução oferecidos nas configurações, espelhando
+ * `TranslationEngine` do backend (que valida a escolha e os alvos).
+ */
+export interface TranslationEngineOption {
+  id: TranslationEngine;
+  /** Rótulo traduzível com nome e características do mecanismo. */
+  labelKey: MessageKey;
+}
+
+export const TRANSLATION_ENGINES: TranslationEngineOption[] = [
+  { id: "opus", labelKey: "engineOpus" },
+  { id: "riva", labelKey: "engineRiva" },
+];
+
+/** Modos servidos por cada mecanismo; o backend valida, esta tabela só filtra o menu. */
+const ENGINE_MODES: Record<TranslationEngine, "all" | ReadonlySet<CaptionMode>> = {
+  opus: new Set<CaptionMode>(["translate-en", "translate-pt-br", "translate-pt-pt"]),
+  riva: "all",
+};
+
+export function engineServes(engine: TranslationEngine, mode: CaptionMode): boolean {
+  const modes = ENGINE_MODES[engine] ?? "all";
+  return modes === "all" || modes.has(mode);
+}
 
 /**
  * Idiomas-alvo de tradução, espelhando `TRANSLATION_TARGETS` do backend

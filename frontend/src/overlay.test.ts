@@ -3,7 +3,7 @@ import { createOverlay } from "./overlay";
 import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", capture: "stopped", windowMode: "edit",
+  return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", translationEngine: "opus", capture: "stopped", windowMode: "edit",
     appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
@@ -22,6 +22,7 @@ function setup(initial = snapshot()) {
     subscribe: vi.fn(async (callback) => { listener = callback; return release; }),
     subscribeCaptions: vi.fn(async (callback) => { captionListener = callback; return vi.fn(); }),
     setMode: vi.fn(async (mode) => snapshot({ mode, revision: 1, sessionId: 1 })),
+    setTranslationEngine: vi.fn(async (translationEngine) => snapshot({ translationEngine, revision: 1, sessionId: 1 })),
     setUiLanguage: vi.fn(async (uiLanguage) => snapshot({ uiLanguage, revision: 1 })),
     setAppearance: vi.fn(async (appearance) => snapshot({ appearance, revision: 1 })),
     start: vi.fn().mockResolvedValue(snapshot({ capture: "preparing", revision: 1 })),
@@ -71,6 +72,25 @@ describe("overlay controls", () => {
     expect(portuguese.getAttribute("aria-disabled")).toBe("true");
     app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
     expect(portuguese.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("offers only the chosen engine's targets and switches engines through Rust", async () => {
+    const app = setup(snapshot({ resources: { audioCapture: true, transcription: true, translation: true } }));
+    await app.overlay.ready;
+    // OPUS (padrão): apenas os alvos EN/PT permanecem visíveis no menu.
+    expect(app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]').hidden).toBe(true);
+    expect(app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-br"]').hidden).toBe(false);
+    expect(app.get<HTMLLIElement>('#language-menu li[data-value="translate-pt-pt"]').hidden).toBe(false);
+    expect(app.get<HTMLLIElement>('#language-menu li[data-value="translate-en"]').hidden).toBe(false);
+    app.get<HTMLButtonElement>("#settings-toggle").click();
+    const select = app.get<HTMLSelectElement>("#translation-engine");
+    expect(select.value).toBe("opus");
+    select.value = "riva";
+    select.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => expect(app.backend.setTranslationEngine).toHaveBeenCalledWith("riva"));
+    app.emit(snapshot({ revision: 2, translationEngine: "riva", resources: { audioCapture: true, transcription: true, translation: true } }));
+    expect(select.value).toBe("riva");
+    expect(app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]').hidden).toBe(false);
   });
 
   it("switches the interface language and applies the texts", async () => {

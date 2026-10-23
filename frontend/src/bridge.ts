@@ -5,6 +5,7 @@ import type { Backend, AppSnapshot, CaptionUpdate } from "./contracts";
 export const backend: Backend = {
   getState: () => invoke("get_state"),
   setMode: (mode) => invoke("set_caption_mode", { request: { mode } }),
+  setTranslationEngine: (engine) => invoke("set_translation_engine", { request: { engine } }),
   setUiLanguage: (language) => invoke("set_ui_language", { request: { language } }),
   start: () => invoke("start_capture"),
   stop: () => invoke("stop_capture"),
