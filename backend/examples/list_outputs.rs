@@ -1,7 +1,7 @@
 use anycaptions_lib::audio::devices::{AudioDeviceCatalog, WasapiCatalog};
 
 fn main() {
-    match WasapiCatalog.scan() {
+    match WasapiCatalog::outputs().scan() {
         Ok(inventory) => {
             if inventory.devices.is_empty() {
                 println!("Nenhuma saída de reprodução ativa.");
