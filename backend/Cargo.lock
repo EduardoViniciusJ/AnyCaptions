@@ -70,6 +70,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "wasapi",
  "whatlang",
+ "windows",
 ]
 
 [[package]]

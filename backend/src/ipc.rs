@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use crate::audio::devices::{AudioDeviceError, OutputSelection, OutputService};
+use crate::audio::devices::{AudioDeviceError, DeviceSelection, InputService, OutputService};
+use crate::dictation::{DictationError, DictationSettings, runtime as dictation_runtime};
 use crate::domain::{
     AppSnapshot, AppState, Appearance, CaptionMode, CaptureState, DomainError, Resources,
     WindowMode,
@@ -39,6 +40,7 @@ pub enum CommandError {
     ShortcutUnavailable,
     PreferencesUnavailable,
     AudioDevice(AudioDeviceError),
+    Dictation(DictationError),
 }
 
 impl From<DomainError> for CommandError {
@@ -50,6 +52,12 @@ impl From<DomainError> for CommandError {
 impl From<AudioDeviceError> for CommandError {
     fn from(value: AudioDeviceError) -> Self {
         Self::AudioDevice(value)
+    }
+}
+
+impl From<DictationError> for CommandError {
+    fn from(value: DictationError) -> Self {
+        Self::Dictation(value)
     }
 }
 
@@ -500,9 +508,83 @@ pub fn set_shortcut<R: Runtime>(
     request: ShortcutRequest,
 ) -> Result<AppSnapshot, CommandError> {
     authorize(window.label())?;
+    // O atalho de bloqueio não pode coincidir com o do ditado.
+    if let Some(dictation) = app.try_state::<dictation_runtime::DictationState>() {
+        let normalized = AppState::normalize_shortcut(&request.shortcut)?;
+        if normalized.eq_ignore_ascii_case(&dictation.settings().shortcut) {
+            return Err(CommandError::ShortcutUnavailable);
+        }
+    }
     let state = controller.change_shortcut(&app, &window, &request.shortcut)?;
     persist(&app, &state)?;
     Ok(state)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictationSnapshot {
+    pub settings: DictationSettings,
+    pub available: bool,
+    pub phase: &'static str,
+    pub inputs: DeviceSelection,
+}
+
+fn dictation_snapshot<R: Runtime>(
+    app: &AppHandle<R>,
+    inputs: DeviceSelection,
+) -> Result<DictationSnapshot, CommandError> {
+    let state = app
+        .try_state::<dictation_runtime::DictationState>()
+        .ok_or(CommandError::StateUnavailable)?;
+    Ok(DictationSnapshot {
+        settings: state.settings(),
+        available: state.available(),
+        phase: state.phase_name(),
+        inputs,
+    })
+}
+
+#[tauri::command]
+pub async fn get_dictation<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    inputs: State<'_, Arc<InputService>>,
+) -> Result<DictationSnapshot, CommandError> {
+    authorize(window.label())?;
+    let inputs = Arc::clone(&inputs);
+    let selection: DeviceSelection =
+        tauri::async_runtime::spawn_blocking(move || inputs.selection())
+            .await
+            .map_err(|_| CommandError::StateUnavailable)?
+            .map_err(CommandError::from)?;
+    dictation_snapshot(&app, selection)
+}
+
+#[tauri::command]
+pub async fn set_dictation<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    inputs: State<'_, Arc<InputService>>,
+    request: DictationSettings,
+) -> Result<DictationSnapshot, CommandError> {
+    authorize(window.label())?;
+    let mut settings = request;
+    settings.shortcut = crate::dictation::normalize_shortcut(&settings.shortcut)?;
+    settings.validate(&controller.snapshot()?.shortcut)?;
+    dictation_runtime::apply_settings(&app, settings.clone())?;
+    if let Some(store) = app.try_state::<PreferenceStore>() {
+        store
+            .save_dictation(settings)
+            .map_err(|_| CommandError::PreferencesUnavailable)?;
+    }
+    let inputs = Arc::clone(&inputs);
+    let selection: DeviceSelection =
+        tauri::async_runtime::spawn_blocking(move || inputs.selection())
+            .await
+            .map_err(|_| CommandError::StateUnavailable)?
+            .map_err(CommandError::from)?;
+    dictation_snapshot(&app, selection)
 }
 
 #[tauri::command]
@@ -510,10 +592,10 @@ pub async fn get_audio_outputs<R: Runtime>(
     window: WebviewWindow<R>,
     app: AppHandle<R>,
     service: State<'_, Arc<OutputService>>,
-) -> Result<OutputSelection, CommandError> {
+) -> Result<DeviceSelection, CommandError> {
     authorize(window.label())?;
     let service = Arc::clone(&service);
-    let selection: OutputSelection =
+    let selection: DeviceSelection =
         tauri::async_runtime::spawn_blocking(move || service.selection())
             .await
             .map_err(|_| CommandError::StateUnavailable)?
@@ -534,11 +616,11 @@ pub async fn select_audio_output<R: Runtime>(
     app: AppHandle<R>,
     service: State<'_, Arc<OutputService>>,
     request: OutputRequest,
-) -> Result<OutputSelection, CommandError> {
+) -> Result<DeviceSelection, CommandError> {
     authorize(window.label())?;
     let service = Arc::clone(&service);
     let app_for_save = app.clone();
-    let selection: OutputSelection = tauri::async_runtime::spawn_blocking(move || {
+    let selection: DeviceSelection = tauri::async_runtime::spawn_blocking(move || {
         let selection = service.select(&request.id)?;
         app_for_save
             .state::<PreferenceStore>()

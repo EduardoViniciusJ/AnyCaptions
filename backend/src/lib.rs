@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod dictation;
 pub mod domain;
 pub mod ipc;
 pub mod models;
@@ -25,6 +26,8 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::set_shortcut,
             ipc::get_audio_outputs,
             ipc::select_audio_output,
+            ipc::get_dictation,
+            ipc::set_dictation,
         ])
 }
 
@@ -38,10 +41,19 @@ pub fn run() -> tauri::Result<()> {
             let store = preferences::PreferenceStore::load(preferences::config_path(&root));
             let saved = store.snapshot()?;
             let outputs = std::sync::Arc::new(audio::devices::OutputService::new(
-                Box::new(audio::devices::WasapiCatalog),
+                Box::new(audio::devices::WasapiCatalog::outputs()),
                 saved.output_id.clone(),
             ));
             let sessions = transcription::session::CaptionSessionManager::default_native();
+            let inputs = std::sync::Arc::new(audio::devices::InputService::new(
+                Box::new(audio::devices::WasapiCatalog::inputs()),
+                None,
+            ));
+            let dictation = dictation::runtime::DictationState::new(
+                sessions.factory(),
+                std::sync::Arc::clone(&inputs),
+                saved.dictation.clone(),
+            );
             app.state::<ipc::Controller>()
                 .restore_preferences(&saved)
                 .map_err(|_| std::io::Error::other("Cannot restore preferences"))?;
@@ -52,7 +64,10 @@ pub fn run() -> tauri::Result<()> {
                     sessions.refresh_resources(&app.state::<ipc::Controller>(), &outputs, &window);
             }
             app.manage(outputs);
+            app.manage(inputs);
             app.manage(sessions);
+            app.manage(dictation);
+            dictation::runtime::setup(&app.handle().clone());
             recovery::setup(app)?;
             Ok(())
         })

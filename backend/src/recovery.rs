@@ -82,6 +82,12 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             "capture" => toggle_capture(app),
             "lock" => toggle(app),
             "quit" => {
+                if app
+                    .try_state::<crate::dictation::runtime::DictationState>()
+                    .is_some()
+                {
+                    crate::dictation::runtime::shutdown(app);
+                }
                 if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
                     sessions.stop_and_join();
                 }
