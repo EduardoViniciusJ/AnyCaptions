@@ -4,7 +4,7 @@ use std::{
 };
 
 use anycaptions_lib::audio::{
-    capture::{CaptureEvent, CaptureSession, WasapiLoopback},
+    capture::{CaptureEvent, CaptureSession, WasapiCapture},
     convert::to_mono_f32,
     devices::{AudioDeviceCatalog, WasapiCatalog},
     resample::MonoResampler,
@@ -14,13 +14,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected_id = if let Some(id) = std::env::args().nth(1) {
         id
     } else {
-        let inventory = WasapiCatalog
+        let inventory = WasapiCatalog::outputs()
             .scan()
             .map_err(|e| format!("Cannot list outputs: {e:?}"))?;
         inventory.default_id.ok_or("No default output")?
     };
     for cycle in 1..=3 {
-        let mut session = CaptureSession::start(Arc::new(WasapiLoopback), selected_id.clone())
+        let mut session = CaptureSession::start(Arc::new(WasapiCapture), selected_id.clone())
             .map_err(|e| format!("Cannot start loopback: {e:?}"))?;
         let format = session.format();
         let mut resampler = MonoResampler::new(format.sample_rate)

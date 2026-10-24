@@ -45,6 +45,34 @@ export interface OutputSelection {
   selectedAvailable: boolean;
 }
 
+export type DictationActivation = "hold" | "toggle";
+export type DictationPhase = "idle" | "recording" | "finalizing";
+
+export interface DictationSettings {
+  enabled: boolean;
+  shortcut: string;
+  activation: DictationActivation;
+  soundCue: boolean;
+  maxDurationSecs: number;
+  inputId: string | null;
+}
+
+export interface DictationSnapshot {
+  settings: DictationSettings;
+  available: boolean;
+  phase: DictationPhase;
+  inputs: OutputSelection;
+}
+
+export interface DictationEvent {
+  phase: DictationPhase;
+  text: string;
+  error: string | null;
+  soundCue: boolean;
+  activation: DictationActivation;
+  maxDurationSecs: number;
+}
+
 export interface Backend {
   getState(): Promise<AppSnapshot>;
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
@@ -57,8 +85,11 @@ export interface Backend {
   setShortcut(shortcut: string): Promise<AppSnapshot>;
   getAudioOutputs(): Promise<OutputSelection>;
   selectAudioOutput(id: string): Promise<OutputSelection>;
+  getDictation(): Promise<DictationSnapshot>;
+  setDictation(settings: DictationSettings): Promise<DictationSnapshot>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
+  subscribeDictation(listener: (event: DictationEvent) => void): Promise<() => void>;
   resize(direction: ResizeDirection): Promise<void>;
   close(): Promise<void>;
 }

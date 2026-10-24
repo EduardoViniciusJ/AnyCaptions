@@ -8,7 +8,7 @@ use tauri::{Emitter, Runtime, WebviewWindow};
 
 use crate::{
     audio::{
-        capture::{CaptureBackend, CaptureEvent, CaptureSession, WasapiLoopback},
+        capture::{CaptureBackend, CaptureEvent, CaptureSession, WasapiCapture},
         convert::to_mono_f32,
         devices::OutputService,
         resample::MonoResampler,
@@ -267,9 +267,15 @@ impl CaptionSessionManager {
         }
     }
 
+    /// A mesma fábrica serve as legendas e o ditado: modelos carregados uma
+    /// vez por execução (T08) são compartilhados pelos dois recursos.
+    pub fn factory(&self) -> Arc<dyn ProcessorFactory> {
+        Arc::clone(&self.factory)
+    }
+
     pub fn default_native() -> Self {
         Self::new(
-            Arc::new(WasapiLoopback),
+            Arc::new(WasapiCapture),
             Arc::new(NativeProcessorFactory::new(
                 NemotronPaths::resolve(),
                 RivaPaths::resolve(),

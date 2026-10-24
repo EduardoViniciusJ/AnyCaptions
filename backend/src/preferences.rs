@@ -7,6 +7,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::dictation::DictationSettings;
 use crate::domain::{AppSnapshot, Appearance, CaptionMode, TranslationEngine};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,6 +46,8 @@ pub struct Preferences {
     pub appearance: Appearance,
     pub shortcut: String,
     pub geometry: Option<SavedGeometry>,
+    #[serde(default)]
+    pub dictation: DictationSettings,
 }
 
 impl Default for Preferences {
@@ -57,6 +60,7 @@ impl Default for Preferences {
             appearance: Appearance::default(),
             shortcut: "Ctrl+Alt+L".into(),
             geometry: None,
+            dictation: DictationSettings::default(),
         }
     }
 }
@@ -76,6 +80,7 @@ impl Preferences {
                 .as_ref()
                 .is_none_or(|id| id.len() <= 512 && !id.is_empty())
             && self.geometry.as_ref().is_none_or(SavedGeometry::valid)
+            && self.dictation.validate(&self.shortcut).is_ok()
     }
 }
 
@@ -130,6 +135,21 @@ impl PreferenceStore {
             .lock()
             .map_err(|_| io::Error::other("Preferences unavailable"))?;
         state.geometry = Some(geometry);
+        self.write(&state)
+    }
+
+    pub fn save_dictation(&self, dictation: DictationSettings) -> io::Result<()> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| io::Error::other("Preferences unavailable"))?;
+        if dictation.validate(&state.shortcut).is_err() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid dictation settings",
+            ));
+        }
+        state.dictation = dictation;
         self.write(&state)
     }
 
@@ -224,6 +244,33 @@ mod tests {
         assert!(!preferences.valid());
         preferences.translation_engine = TranslationEngine::Riva;
         assert!(preferences.valid());
+    }
+
+    #[test]
+    fn dictation_preferences_restore_and_conflicts_fall_back_to_defaults() {
+        let dir = isolated();
+        let path = config_path(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut saved = Preferences {
+            dictation: DictationSettings {
+                enabled: true,
+                shortcut: "F9".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+        let restored = PreferenceStore::load(path.clone()).snapshot().unwrap();
+        assert!(restored.dictation.enabled);
+        assert_eq!(restored.dictation.shortcut, "F9");
+        // O atalho do ditado igual ao do overlay invalida o arquivo inteiro.
+        saved.dictation.shortcut = saved.shortcut.clone();
+        fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+        let restored = PreferenceStore::load(path.clone()).snapshot().unwrap();
+        assert!(!restored.dictation.enabled);
+        assert_eq!(restored.dictation.shortcut, "Ctrl+Space");
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(dir).unwrap();
     }
 
     #[test]

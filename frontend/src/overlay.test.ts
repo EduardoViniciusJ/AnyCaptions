@@ -32,6 +32,26 @@ function setup(initial = snapshot()) {
     getAudioOutputs: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     selectAudioOutput: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+    getDictation: vi.fn().mockResolvedValue({
+      settings: {
+        enabled: false,
+        shortcut: "Ctrl+Space",
+        activation: "hold",
+        soundCue: true,
+        maxDurationSecs: 60,
+        inputId: null,
+      },
+      available: true,
+      phase: "idle",
+      inputs: { devices: [], selectedId: null, selectedAvailable: false },
+    }),
+    setDictation: vi.fn(async (settings) => ({
+      settings,
+      available: true,
+      phase: "idle" as const,
+      inputs: { devices: [], selectedId: null, selectedAvailable: false },
+    })),
+    subscribeDictation: vi.fn(async () => vi.fn()),
   };
   const overlay = createOverlay(root, backend);
   disposers.push(overlay.dispose);

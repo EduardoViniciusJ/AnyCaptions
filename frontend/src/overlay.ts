@@ -16,6 +16,8 @@ import {
   sameAppearance,
 } from "./appearance";
 import { CaptionPresenter } from "./captions";
+import { DictationIndicator } from "./dictation";
+import type { DictationActivation, DictationSettings, DictationSnapshot } from "./contracts";
 
 const icons = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7Z"/></svg>',
@@ -39,8 +41,18 @@ function errorMessage(error: unknown): string {
     case "shortcut-unavailable": return t("errShortcutTaken");
     case "not-found": return t("errOutputGone");
     case "invalid-id": return t("errOutputInvalid");
-    default: return t("errGeneric");
+    default: break;
   }
+  const kind = typeof error === "object" && error !== null && "kind" in error ? error.kind : null;
+  if (kind === "dictation") {
+    switch (code) {
+      case "invalid-shortcut": return t("errDictationShortcutFormat");
+      case "shortcut-conflict": return t("errDictationShortcutConflict");
+      case "invalid-duration": return t("errDictationDuration");
+      default: return t("errDictation");
+    }
+  }
+  return t("errGeneric");
 }
 
 export function createOverlay(root: HTMLElement, backend: Backend) {
@@ -116,11 +128,47 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             </div>
           </div>
           <p id="shortcut-status" class="muted" hidden></p>
+          <h3 class="settings-subtitle" data-i18n="dictation">Ditado por voz</h3>
+          <div class="setting-row">
+            <label for="dictation-enabled" data-i18n="dictationEnable">Ativar ditado</label>
+            <input id="dictation-enabled" type="checkbox" />
+          </div>
+          <div class="setting-row">
+            <label for="dictation-mic" data-i18n="dictationMic">Microfone</label>
+            <select id="dictation-mic"></select>
+          </div>
+          <div class="setting-row">
+            <label for="dictation-shortcut" data-i18n="dictationShortcut">Atalho do ditado</label>
+            <div class="setting-actions">
+              <input id="dictation-shortcut" type="text" value="Ctrl+Space" maxlength="24" spellcheck="false" />
+            </div>
+          </div>
+          <div class="setting-row">
+            <label for="dictation-activation" data-i18n="dictationActivation">Modo de ativação</label>
+            <select id="dictation-activation">
+              <option value="hold" data-i18n="dictationHold">Segurar para falar</option>
+              <option value="toggle" data-i18n="dictationToggle">Alternar (toque liga e desliga)</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label for="dictation-sound" data-i18n="dictationSound">Sinal sonoro ao gravar</label>
+            <input id="dictation-sound" type="checkbox" />
+          </div>
+          <div class="setting-row">
+            <label for="dictation-duration" data-i18n="dictationMaxDuration">Duração máxima (s)</label>
+            <input id="dictation-duration" type="number" min="5" max="300" step="5" value="60" />
+          </div>
+          <p id="dictation-status" class="muted" hidden></p>
           <div class="settings-footer">
             <button id="reset-appearance" class="secondary-button" type="button" data-i18n="restoreDefault">Restaurar padrão</button>
             <button id="save-settings" type="button" data-i18n="save">Salvar</button>
           </div>
         </section>
+      </div>
+      <div id="dictation-indicator" class="dictation-indicator" hidden>
+        <span class="dictation-dot" aria-hidden="true"></span>
+        <span id="dictation-text" class="dictation-text" role="status"></span>
+        <span id="dictation-elapsed" class="dictation-elapsed"></span>
       </div>
       <p id="notice" class="notice" role="status" hidden></p>
       <p id="error" class="error" role="alert" hidden></p>
@@ -266,6 +314,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     }
     renderEngineOptions();
     renderUiLanguageButton();
+    renderDictation();
   };
   const lock = get<HTMLButtonElement>("#lock");
   const settingsToggle = get<HTMLButtonElement>("#settings-toggle");
@@ -287,6 +336,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   const shortcut = get<HTMLInputElement>("#shortcut");
   const audioOutput = get<HTMLSelectElement>("#audio-output");
   const error = get<HTMLElement>("#error");
+  const dictationEnabled = get<HTMLInputElement>("#dictation-enabled");
+  const dictationMic = get<HTMLSelectElement>("#dictation-mic");
+  const dictationShortcut = get<HTMLInputElement>("#dictation-shortcut");
+  const dictationActivation = get<HTMLSelectElement>("#dictation-activation");
+  const dictationSound = get<HTMLInputElement>("#dictation-sound");
+  const dictationDuration = get<HTMLInputElement>("#dictation-duration");
+  const dictationStatus = get<HTMLElement>("#dictation-status");
   const listeners = new AbortController();
   let state: AppSnapshot | undefined;
   let busy = false;
@@ -298,6 +354,67 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   let outputBusy = false;
   let appearanceDraft: Appearance | undefined;
   let appearanceValid = true;
+  let dictation: DictationSnapshot | undefined;
+  let dictationBusy = false;
+  let unsubscribeDictation: (() => void) | undefined;
+  const dictationIndicator = new DictationIndicator(
+    get("#dictation-indicator"),
+    get("#dictation-text"),
+    get("#dictation-elapsed"),
+    showError,
+  );
+
+  function renderDictation() {
+    if (!dictation) return;
+    const { settings, inputs, available } = dictation;
+    dictationEnabled.checked = settings.enabled;
+    if (document.activeElement !== dictationShortcut) dictationShortcut.value = settings.shortcut;
+    dictationActivation.value = settings.activation;
+    dictationSound.checked = settings.soundCue;
+    dictationDuration.value = String(settings.maxDurationSecs);
+    dictationMic.replaceChildren();
+    dictationMic.add(new Option(t("dictationDefaultMic"), ""));
+    for (const device of inputs.devices) dictationMic.add(new Option(device.name, device.id));
+    dictationMic.value = settings.inputId ?? "";
+    // Microfone salvo que desapareceu volta ao padrão do sistema na exibição.
+    if (dictationMic.value !== (settings.inputId ?? "")) dictationMic.value = "";
+    dictationStatus.textContent = available ? "" : t("dictationModelMissing");
+    dictationStatus.hidden = available;
+  }
+
+  async function loadDictation() {
+    if (dictationBusy || disposed) return;
+    dictationBusy = true;
+    try {
+      dictation = await backend.getDictation();
+      renderDictation();
+    } catch {
+      /* A seção mantém os últimos valores conhecidos. */
+    } finally {
+      dictationBusy = false;
+    }
+  }
+
+  function dictationDraft(): DictationSettings | undefined {
+    if (!dictation) return undefined;
+    return {
+      enabled: dictationEnabled.checked,
+      shortcut: dictationShortcut.value.trim(),
+      activation: dictationActivation.value as DictationActivation,
+      soundCue: dictationSound.checked,
+      maxDurationSecs: Number(dictationDuration.value),
+      inputId: dictationMic.value || null,
+    };
+  }
+
+  function sameDictation(a: DictationSettings, b: DictationSettings): boolean {
+    return a.enabled === b.enabled
+      && a.shortcut === b.shortcut
+      && a.activation === b.activation
+      && a.soundCue === b.soundCue
+      && a.maxDurationSecs === b.maxDurationSecs
+      && (a.inputId ?? "") === (b.inputId ?? "");
+  }
 
   function setAppearanceInputs(appearance: Appearance) {
     appearanceDraft = { ...appearance };
@@ -476,6 +593,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     settingsToggle.setAttribute("aria-expanded", String(open));
     if (open) {
       void loadOutputs();
+      void loadDictation();
     } else {
       appearanceDraft = undefined;
     }
@@ -522,6 +640,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (!state || !appearanceDraft || !appearanceValid) return;
     const requestedAppearance = { ...appearanceDraft };
     const requestedShortcut = shortcut.value;
+    const requestedDictation = dictationDraft();
     void perform(async () => {
       let saved = state!;
       if (!sameAppearance(requestedAppearance, saved.appearance)) {
@@ -529,6 +648,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       }
       if (requestedShortcut !== saved.shortcut) {
         saved = await backend.setShortcut(requestedShortcut);
+      }
+      if (requestedDictation && dictation && !sameDictation(requestedDictation, dictation.settings)) {
+        dictation = await backend.setDictation(requestedDictation);
+        renderDictation();
       }
       return saved;
     })
@@ -606,6 +729,11 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       const releaseCaptions = await backend.subscribeCaptions(acceptCaption);
       if (disposed) { releaseCaptions(); return; }
       unsubscribeCaptions = releaseCaptions;
+      const releaseDictation = await backend.subscribeDictation(
+        (event) => { if (!disposed) dictationIndicator.accept(event); },
+      );
+      if (disposed) { releaseDictation(); return; }
+      unsubscribeDictation = releaseDictation;
       accept(await backend.getState());
     } catch {
       if (!disposed) {
@@ -620,6 +748,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     listeners.abort();
     unsubscribe?.();
     unsubscribeCaptions?.();
+    unsubscribeDictation?.();
+    dictationIndicator.dispose();
     presenter.dispose();
   } };
 }

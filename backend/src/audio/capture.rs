@@ -65,7 +65,7 @@ impl CaptureSession {
         let (ready_tx, ready_rx) = mpsc::channel();
         let (events_tx, events_rx) = mpsc::sync_channel(PACKET_QUEUE_CAPACITY);
         let worker = thread::Builder::new()
-            .name("audio-loopback".into())
+            .name("audio-capture".into())
             .spawn(move || {
                 let result = backend.run(&device_id, stop_rx, ready_tx, events_tx.clone());
                 if let Err(error) = result {
@@ -187,10 +187,13 @@ impl CaptureManager {
     }
 }
 
+/// Captura WASAPI de um endpoint pelo id: um dispositivo de render vira
+/// loopback (áudio do sistema) e um de captura vira microfone — a distinção
+/// é feita pelo próprio dispositivo, não por este backend.
 #[derive(Default)]
-pub struct WasapiLoopback;
+pub struct WasapiCapture;
 
-impl CaptureBackend for WasapiLoopback {
+impl CaptureBackend for WasapiCapture {
     fn run(
         &self,
         device_id: &str,

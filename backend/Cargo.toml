@@ -24,6 +24,14 @@ sha2 = "0.11.1"
 libloading = "0.8.9"
 # Detects the caption language locally when the recognizer does not tag it.
 whatlang = "0.18.0"
+# Pastes dictated text into the focused app (clipboard + synthetic Ctrl+V).
+# Already in the tree via wasapi, so this adds no new transitive code.
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
 
 [dev-dependencies]
 mockall = "0.15.0"
