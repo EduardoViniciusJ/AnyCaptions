@@ -17,6 +17,8 @@ export interface AppSnapshot {
   sessionId: number;
   mode: CaptionMode;
   translationEngine: TranslationEngine;
+  /** Idioma falado fixado no reconhecedor (BCP-47); null = detecção automática. */
+  sourceLanguage: string | null;
   capture: CaptureState;
   windowMode: WindowMode;
   appearance: Appearance;
@@ -84,6 +86,7 @@ export interface Backend {
   getState(): Promise<AppSnapshot>;
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
   setTranslationEngine(engine: TranslationEngine): Promise<AppSnapshot>;
+  setSourceLanguage(language: string | null): Promise<AppSnapshot>;
   setUiLanguage(language: string): Promise<AppSnapshot>;
   start(): Promise<AppSnapshot>;
   stop(): Promise<AppSnapshot>;

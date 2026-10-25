@@ -173,7 +173,7 @@ fn warm_up(state: &DictationState) {
     let _ = thread::Builder::new()
         .name("dictation-warmup".into())
         .spawn(move || {
-            let _ = factory.create(0, CaptionMode::Auto);
+            let _ = factory.create(0, CaptionMode::Auto, None);
         });
 }
 

@@ -33,6 +33,7 @@ export const fr: Messages = {
   recentColorHex: "Couleur hexadécimale des mots récents",
   audioOutput: "Sortie audio",
   uiLanguage: "Langue de l'interface",
+  sourceLanguage: "Langue parlée (source)",
   translationEngine: "Modèle de traduction",
   engineOpus: "OPUS-MT — rapide (CPU), anglais ↔ portugais",
   engineRiva: "Riva — 37 langues (GPU)",

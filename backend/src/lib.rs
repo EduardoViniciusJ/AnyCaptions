@@ -18,6 +18,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::get_state,
             ipc::set_caption_mode,
             ipc::set_translation_engine,
+            ipc::set_source_language,
             ipc::set_ui_language,
             ipc::start_capture,
             ipc::stop_capture,

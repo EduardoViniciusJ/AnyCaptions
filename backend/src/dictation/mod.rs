@@ -32,20 +32,9 @@ pub enum ActivationMode {
 pub const MIN_MAX_DURATION_SECS: u16 = 5;
 pub const MAX_MAX_DURATION_SECS: u16 = 300;
 
-/// Idiomas aceitos para fixar o reconhecimento do ditado: os 83 idiomas do
-/// dicionário de prompts dentro do GGUF do Nemotron (metadado
-/// `asr.rnnt.prompt_dictionary`; "auto" é o prompt de detecção). Uma tag
-/// canônica por idioma, espelhada em `DICTATION_LANGUAGES` do frontend.
-pub const DICTATION_LANGUAGES: &[&str] = &[
-    "en-US", "en-GB", "es-ES", "es-US", "zh-CN", "zh-TW", "hi", "ar", "fr", "de", "ja-JP", "ru",
-    "pt-BR", "pt-PT", "ko", "it", "nl", "pl", "tr", "uk", "ro", "el", "cs", "hu", "sv", "da", "fi",
-    "no", "sk", "hr", "bg", "lt", "th-TH", "vi-VN", "id-ID", "ms-MY", "bn-IN", "ur-PK", "fa-IR",
-    "ta-IN", "te-IN", "mr-IN", "gu-IN", "kn-IN", "ml-IN", "si-LK", "ne-NP", "km-KH", "sw-KE",
-    "am-ET", "ha-NG", "zu-ZA", "yo-NG", "ig-NG", "af-ZA", "rw-RW", "so-SO", "ny-MW", "ln-CD",
-    "or-KE", "et", "lv", "sl", "he-IL", "ku-TR", "az-AZ", "ka-GE", "hy-AM", "uz-UZ", "tg-TJ",
-    "ky-KG", "qu-PE", "ay-BO", "gn-PY", "nah-MX", "mi-NZ", "haw-US", "sm-WS", "to-TO", "fr-CA",
-    "mt-MT", "nb", "nn",
-];
+/// Idiomas aceitos para fixar o reconhecimento do ditado: a lista oficial do
+/// modelo ASR, compartilhada com as legendas (`crate::domain::ASR_LANGUAGES`).
+pub use crate::domain::ASR_LANGUAGES as DICTATION_LANGUAGES;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

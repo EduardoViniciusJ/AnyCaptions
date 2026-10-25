@@ -13,7 +13,10 @@ use crate::{
         devices::OutputService,
         resample::MonoResampler,
     },
-    domain::{AppSnapshot, CaptionMode, CaptureState, DomainError, Resources, TranslationEngine},
+    domain::{
+        AppSnapshot, CaptionMode, CaptureState, DomainError, Resources, SourceLanguage,
+        TranslationEngine,
+    },
     ipc::{CAPTION_EVENT, CaptionUpdate, CommandError, Controller, StateEvents},
     models::{catalog::NEMOTRON_STREAMING_Q8, models_root},
     pipeline::{AudioProcessor, Cancellation, MAX_BLOCK_SAMPLES, Pipeline},
@@ -64,10 +67,13 @@ impl<R: Runtime> SessionSink for WebviewWindow<R> {
 
 pub trait ProcessorFactory: Send + Sync {
     fn is_available(&self) -> bool;
+    /// `source_language` optionally pins the spoken language on the stream
+    /// (the model's prompt dictionary); `None` keeps auto-detection.
     fn create(
         &self,
         session_id: u32,
         mode: CaptionMode,
+        source_language: Option<&str>,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError>;
     /// Processador do ditado: mesmo modelo compartilhado das legendas, com o
     /// idioma opcionalmente fixado no stream (condiciona o decodificador e
@@ -77,8 +83,7 @@ pub trait ProcessorFactory: Send + Sync {
         session_id: u32,
         language: Option<&str>,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        let _ = language;
-        self.create(session_id, CaptionMode::Auto)
+        self.create(session_id, CaptionMode::Auto, language)
     }
     fn translation_available(&self, _engine: TranslationEngine) -> bool {
         false
@@ -202,36 +207,22 @@ impl ProcessorFactory for NativeProcessorFactory {
         &self,
         session_id: u32,
         mode: CaptionMode,
+        source_language: Option<&str>,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        // Both modes transcribe with model auto-detection; forcing one language on the
-        // recognizer stays available in `NativeNemotron::open` for future features.
         // Auto keeps the recognizer untouched; translate mode closes finals sooner.
         let tuning = if mode.requires_translation() {
             super::tuning::TRANSLATION
         } else {
             super::tuning::TRANSCRIPTION
         };
-        let recognizer =
-            NativeNemotron::open(self.asr_model(tuning.rnnt_right_context)?, None, tuning)
-                .map_err(|_| DomainError::TranscriptionUnavailable)?;
+        let recognizer = NativeNemotron::open(
+            self.asr_model(tuning.rnnt_right_context)?,
+            source_language,
+            tuning,
+        )
+        .map_err(|_| DomainError::TranscriptionUnavailable)?;
         Ok(Box::new(StreamingProcessor::new(
             session_id, mode, recognizer,
-        )))
-    }
-
-    fn create_dictation(
-        &self,
-        session_id: u32,
-        language: Option<&str>,
-    ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        let tuning = super::tuning::TRANSCRIPTION;
-        let recognizer =
-            NativeNemotron::open(self.asr_model(tuning.rnnt_right_context)?, language, tuning)
-                .map_err(|_| DomainError::TranscriptionUnavailable)?;
-        Ok(Box::new(StreamingProcessor::new(
-            session_id,
-            CaptionMode::Auto,
-            recognizer,
         )))
     }
 
@@ -365,9 +356,7 @@ impl CaptionSessionManager {
 
     pub fn start_session(
         &self,
-        session_id: u32,
-        mode: CaptionMode,
-        engine: TranslationEngine,
+        plan: SessionPlan,
         device_id: String,
         controller: Controller,
         sink: Arc<dyn SessionSink>,
@@ -388,9 +377,7 @@ impl CaptionSessionManager {
             .name("caption-coordinator".into())
             .spawn(move || {
                 run_coordinator(
-                    session_id,
-                    mode,
-                    engine,
+                    plan,
                     device_id,
                     capture_backend,
                     factory,
@@ -415,6 +402,16 @@ impl Drop for CaptionSessionManager {
     fn drop(&mut self) {
         self.stop_and_join();
     }
+}
+
+/// Everything the domain decided for one capture session: identity, mode,
+/// translation engine and the pinned spoken language (`None` = auto-detect).
+#[derive(Debug, Clone, Copy)]
+pub struct SessionPlan {
+    pub session_id: u32,
+    pub mode: CaptionMode,
+    pub engine: TranslationEngine,
+    pub source_language: Option<SourceLanguage>,
 }
 
 /// Where finished captions go: straight to the UI, or through the translation
@@ -456,6 +453,7 @@ fn spawn_translation_route(
     session_id: u32,
     target: crate::domain::TargetLanguage,
     engine: TranslationEngine,
+    source_language: Option<SourceLanguage>,
     factory: &Arc<dyn ProcessorFactory>,
     controller: &Controller,
     sink: &Arc<dyn SessionSink>,
@@ -463,7 +461,8 @@ fn spawn_translation_route(
     let translator = factory.create_translator(engine)?;
     let stage_controller = controller.clone();
     let stage_sink = Arc::clone(sink);
-    TranslationStage::spawn(translator, target, move |event| match event {
+    let source = source_language.map(SourceLanguage::tag);
+    TranslationStage::spawn(translator, target, source, move |event| match event {
         StageEvent::Translated(update) => {
             if !stage_controller.is_session_active(update.session_id) {
                 return false;
@@ -489,11 +488,8 @@ fn spawn_translation_route(
     .map_err(|_| DomainError::TranslationUnavailable)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_coordinator(
-    session_id: u32,
-    mode: CaptionMode,
-    engine: TranslationEngine,
+    plan: SessionPlan,
     device_id: String,
     capture_backend: Arc<dyn CaptureBackend>,
     factory: Arc<dyn ProcessorFactory>,
@@ -501,6 +497,12 @@ fn run_coordinator(
     sink: Arc<dyn SessionSink>,
     cancel: Cancellation,
 ) {
+    let SessionPlan {
+        session_id,
+        mode,
+        engine,
+        source_language,
+    } = plan;
     if cancel.is_cancelled() || !controller.is_session_active(session_id) {
         return;
     }
@@ -515,7 +517,8 @@ fn run_coordinator(
         return;
     }
 
-    let processor = match factory.create(session_id, mode) {
+    let processor = match factory.create(session_id, mode, source_language.map(SourceLanguage::tag))
+    {
         Ok(proc) => proc,
         Err(error) => {
             let _ = controller.fail_session(session_id, error, sink.as_ref());
@@ -524,7 +527,15 @@ fn run_coordinator(
     };
 
     let route = if let Some(target) = mode.translation_target() {
-        match spawn_translation_route(session_id, target, engine, &factory, &controller, &sink) {
+        match spawn_translation_route(
+            session_id,
+            target,
+            engine,
+            source_language,
+            &factory,
+            &controller,
+            &sink,
+        ) {
             Ok(route) => route,
             Err(error) => {
                 let _ = controller.fail_session(session_id, error, sink.as_ref());
@@ -770,6 +781,7 @@ mod tests {
             &self,
             session_id: u32,
             mode: CaptionMode,
+            _source_language: Option<&str>,
         ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
             // Speech yields a finished utterance; silence yields nothing.
             let mut recognizer = MockStreamingRecognizer::new();
@@ -844,9 +856,12 @@ mod tests {
         let manager = CaptionSessionManager::new(Arc::new(backend), Arc::new(FakeFactory));
         manager
             .start_session(
-                started.session_id,
-                started.mode,
-                started.translation_engine,
+                SessionPlan {
+                    session_id: started.session_id,
+                    mode: started.mode,
+                    engine: started.translation_engine,
+                    source_language: started.source_language,
+                },
                 "speaker-1".into(),
                 controller.clone(),
                 Arc::clone(&sink) as Arc<dyn SessionSink>,
@@ -886,8 +901,9 @@ mod tests {
             &self,
             session_id: u32,
             mode: CaptionMode,
+            source_language: Option<&str>,
         ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-            FakeFactory.create(session_id, mode)
+            FakeFactory.create(session_id, mode, source_language)
         }
 
         fn create_translator(
@@ -946,9 +962,12 @@ mod tests {
             CaptionSessionManager::new(Arc::new(backend), Arc::new(TranslatingFakeFactory));
         manager
             .start_session(
-                started.session_id,
-                started.mode,
-                started.translation_engine,
+                SessionPlan {
+                    session_id: started.session_id,
+                    mode: started.mode,
+                    engine: started.translation_engine,
+                    source_language: started.source_language,
+                },
                 "speaker-1".into(),
                 controller.clone(),
                 Arc::clone(&sink) as Arc<dyn SessionSink>,
@@ -1003,9 +1022,12 @@ mod tests {
         let manager = CaptionSessionManager::new(Arc::new(backend), Arc::new(FakeFactory));
         manager
             .start_session(
-                started.session_id,
-                started.mode,
-                started.translation_engine,
+                SessionPlan {
+                    session_id: started.session_id,
+                    mode: started.mode,
+                    engine: started.translation_engine,
+                    source_language: started.source_language,
+                },
                 "speaker-1".into(),
                 controller.clone(),
                 Arc::clone(&sink) as Arc<dyn SessionSink>,
@@ -1063,9 +1085,12 @@ mod tests {
 
         manager
             .start_session(
-                started.session_id,
-                started.mode,
-                started.translation_engine,
+                SessionPlan {
+                    session_id: started.session_id,
+                    mode: started.mode,
+                    engine: started.translation_engine,
+                    source_language: started.source_language,
+                },
                 "speaker-1".into(),
                 controller,
                 Arc::clone(&sink) as Arc<dyn SessionSink>,

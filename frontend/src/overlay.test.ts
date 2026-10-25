@@ -3,7 +3,7 @@ import { createOverlay } from "./overlay";
 import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", translationEngine: "opus", capture: "stopped", windowMode: "edit",
+  return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", translationEngine: "opus", sourceLanguage: null, capture: "stopped", windowMode: "edit",
     appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
@@ -23,6 +23,7 @@ function setup(initial = snapshot()) {
     subscribeCaptions: vi.fn(async (callback) => { captionListener = callback; return vi.fn(); }),
     setMode: vi.fn(async (mode) => snapshot({ mode, revision: 1, sessionId: 1 })),
     setTranslationEngine: vi.fn(async (translationEngine) => snapshot({ translationEngine, revision: 1, sessionId: 1 })),
+    setSourceLanguage: vi.fn(async (sourceLanguage) => snapshot({ sourceLanguage, revision: 1, sessionId: 1 })),
     setUiLanguage: vi.fn(async (uiLanguage) => snapshot({ uiLanguage, revision: 1 })),
     setAppearance: vi.fn(async (appearance) => snapshot({ appearance, revision: 1 })),
     start: vi.fn().mockResolvedValue(snapshot({ capture: "preparing", revision: 1 })),
@@ -95,6 +96,24 @@ describe("overlay controls", () => {
     expect(portuguese.getAttribute("aria-disabled")).toBe("true");
     app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
     expect(portuguese.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("pins the caption source language through Rust and reflects the snapshot", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    const items = app.root.querySelectorAll("#source-language-menu li");
+    expect(items.length).toBe(84); // automático + 83 idiomas do modelo
+    expect(app.get("#source-language-label").textContent).toBe("Automático");
+    const portuguese = app.get<HTMLLIElement>('#source-language-menu li[data-value="pt-BR"]');
+    expect(portuguese.querySelector("img.flag")).not.toBeNull();
+    portuguese.click();
+    expect(app.backend.setSourceLanguage).toHaveBeenCalledWith("pt-BR");
+    await app.overlay.ready;
+    await Promise.resolve();
+    expect(app.get("#source-language-label").textContent).toBe("Português (Brasil)");
+    // Escolher o mesmo valor de novo não chama o backend outra vez.
+    portuguese.click();
+    expect(app.backend.setSourceLanguage).toHaveBeenCalledTimes(1);
   });
 
   it("lists every dictation language of the model with a flag and applies the choice", async () => {

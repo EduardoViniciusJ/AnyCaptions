@@ -33,6 +33,7 @@ export const zhCN: Messages = {
   recentColorHex: "最近词语的十六进制颜色",
   audioOutput: "音频输出",
   uiLanguage: "界面语言",
+  sourceLanguage: "语音语言（来源）",
   translationEngine: "翻译模型",
   engineOpus: "OPUS-MT——快速（CPU），英语 ↔ 葡萄牙语",
   engineRiva: "Riva——37 种语言（GPU）",

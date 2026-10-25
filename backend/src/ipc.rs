@@ -81,6 +81,13 @@ pub struct TranslationEngineRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct SourceLanguageRequest {
+    /// `None` volta à detecção automática; a tag é validada pelo domínio.
+    pub language: Option<crate::domain::SourceLanguage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WindowRequest {
     pub mode: WindowMode,
 }
@@ -167,6 +174,7 @@ impl Controller {
         // Engine first: a saved translate mode is only valid under its engine.
         state.set_translation_engine(preferences.translation_engine)?;
         state.set_mode(preferences.mode)?;
+        state.set_source_language(preferences.source_language)?;
         state.set_ui_language(preferences.ui_language)?;
         state.set_appearance(preferences.appearance)?;
         state.set_shortcut(preferences.shortcut.clone(), false)?;
@@ -347,9 +355,12 @@ pub fn start_live_capture<R: Runtime>(
         };
         let sink: Arc<dyn SessionSink> = Arc::new(window.clone());
         if let Err(err) = sessions.start_session(
-            snapshot.session_id,
-            snapshot.mode,
-            snapshot.translation_engine,
+            crate::transcription::session::SessionPlan {
+                session_id: snapshot.session_id,
+                mode: snapshot.mode,
+                engine: snapshot.translation_engine,
+                source_language: snapshot.source_language,
+            },
             device_id,
             controller.clone(),
             sink,
@@ -414,6 +425,22 @@ pub fn set_caption_mode<R: Runtime>(
         sessions.stop_session();
     }
     let state = controller.update(&window, |state| state.set_mode(request.mode))?;
+    persist(&app, &state)?;
+    Ok(state)
+}
+
+#[tauri::command]
+pub fn set_source_language<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    request: SourceLanguageRequest,
+) -> Result<AppSnapshot, CommandError> {
+    authorize(window.label())?;
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.stop_session();
+    }
+    let state = controller.update(&window, |state| state.set_source_language(request.language))?;
     persist(&app, &state)?;
     Ok(state)
 }
