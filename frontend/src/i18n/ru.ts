@@ -73,6 +73,8 @@ export const ru: Messages = {
   dictationToggle: "Переключение (нажатие начинает и завершает)",
   dictationSound: "Звуковой сигнал при записи",
   dictationLanguage: "Язык диктовки",
+  dictationTranslate: "Переводить диктовку на",
+  dictationNoTranslate: "Не переводить",
   dictationShowText: "Показывать распознанный текст",
   dictationLimitDuration: "Ограничить длительность",
   dictationMaxDuration: "Максимальная длительность (с)",
@@ -88,4 +90,5 @@ export const ru: Messages = {
   errDictationShortcutConflict: "Это сочетание уже занято блокировкой окна.",
   errDictationDuration: "Максимальная длительность должна быть от 5 до 300 секунд.",
   errDictationLanguage: "Недопустимый язык диктовки. Выберите вариант из списка.",
+  errDictationTranslate: "Перевод диктовки не удался. Произнесённый текст остался в буфере обмена (Ctrl+V для вставки).",
 };

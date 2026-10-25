@@ -72,6 +72,8 @@ export const ptBR = {
   dictationToggle: "Alternar (toque liga e desliga)",
   dictationSound: "Sinal sonoro ao gravar",
   dictationLanguage: "Idioma do ditado",
+  dictationTranslate: "Traduzir ditado para",
+  dictationNoTranslate: "Não traduzir",
   dictationShowText: "Mostrar texto reconhecido",
   dictationLimitDuration: "Limitar duração",
   dictationMaxDuration: "Duração máxima (s)",
@@ -87,4 +89,5 @@ export const ptBR = {
   errDictationShortcutConflict: "Esse atalho já está em uso pelo bloqueio da janela.",
   errDictationDuration: "A duração máxima deve ficar entre 5 e 300 segundos.",
   errDictationLanguage: "Idioma do ditado inválido. Escolha uma opção da lista.",
+  errDictationTranslate: "A tradução do ditado falhou. O texto falado ficou na área de transferência (Ctrl+V para colar).",
 } as const;

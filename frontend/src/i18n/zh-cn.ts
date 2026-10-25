@@ -73,6 +73,8 @@ export const zhCN: Messages = {
   dictationToggle: "切换（按一下开始，再按结束）",
   dictationSound: "录音提示音",
   dictationLanguage: "听写语言",
+  dictationTranslate: "将听写翻译为",
+  dictationNoTranslate: "不翻译",
   dictationShowText: "显示识别文本",
   dictationLimitDuration: "限制时长",
   dictationMaxDuration: "最长时长（秒）",
@@ -88,4 +90,5 @@ export const zhCN: Messages = {
   errDictationShortcutConflict: "该快捷键已被窗口锁定功能占用。",
   errDictationDuration: "最长时长必须在 5 到 300 秒之间。",
   errDictationLanguage: "听写语言无效。请从列表中选择。",
+  errDictationTranslate: "听写翻译失败。口述文本已留在剪贴板中（Ctrl+V 粘贴）。",
 };

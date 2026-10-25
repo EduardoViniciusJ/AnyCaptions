@@ -46,6 +46,13 @@ pub fn paste_into_focused_app(text: &str) -> Result<(), InjectError> {
     Ok(())
 }
 
+/// Deixa `text` no clipboard sem colar nem restaurar o conteúdo anterior.
+/// Usado quando a tradução do ditado falha: nada é injetado no app em foco,
+/// mas o texto original fica disponível para colagem manual.
+pub fn copy_to_clipboard(text: &str) -> Result<(), InjectError> {
+    replace_clipboard_text(text).map(|_| ())
+}
+
 /// Garante `CloseClipboard` em todos os caminhos depois de um `OpenClipboard`.
 struct ClipboardGuard;
 

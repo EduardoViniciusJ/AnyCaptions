@@ -45,6 +45,15 @@ fn guess_source(text: &str) -> Option<&'static str> {
     detect_source_with(text, 0.0)
 }
 
+/// Best local guess of a text's language for one-shot uses (dictation):
+/// confident detection, else the best-effort guess, else English. Caption
+/// sessions keep using [`SourceTracker`], which adds session memory.
+pub(crate) fn resolve_text_source(text: &str) -> &'static str {
+    detect_source(text)
+        .or_else(|| guess_source(text))
+        .unwrap_or("en")
+}
+
 fn detect_source_with(text: &str, min_confidence: f64) -> Option<&'static str> {
     use whatlang::{Detector, Lang};
     const LANGS: [Lang; 34] = [
@@ -196,7 +205,7 @@ const MIN_SENTENCE_CHARS: usize = 24;
 /// a small quality cost paid for much lower first-sentence latency. Sentences
 /// below [`MIN_SENTENCE_CHARS`] stay attached to the next one (or the previous,
 /// at the end), so no tiny fragment reaches the screen on its own.
-fn split_sentences(text: &str) -> Vec<String> {
+pub(crate) fn split_sentences(text: &str) -> Vec<String> {
     let mut sentences: Vec<String> = Vec::new();
     let mut current = String::new();
     for ch in text.chars() {

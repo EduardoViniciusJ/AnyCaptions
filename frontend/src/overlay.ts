@@ -165,6 +165,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             </div>
           </div>
           <div class="setting-row">
+            <label for="dictation-translate" data-i18n="dictationTranslate">Traduzir ditado para</label>
+            <div class="language-picker">
+              <button id="dictation-translate" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="dictation-translate-label"></span></button>
+              <ul id="dictation-translate-menu" role="listbox" data-i18n-aria="dictationTranslate" aria-label="Traduzir ditado para" hidden></ul>
+            </div>
+          </div>
+          <div class="setting-row">
             <label for="dictation-activation" data-i18n="dictationActivation">Modo de ativação</label>
             <select id="dictation-activation">
               <option value="hold" data-i18n="dictationHold">Segurar para falar</option>
@@ -372,6 +379,78 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   };
   renderDictationLanguageButton();
 
+  // Seletor do alvo de tradução do ditado: "Não traduzir" + os alvos do
+  // mecanismo de tradução escolhido (o render filtra, como no menu das
+  // legendas). Valor em rascunho, confirmado pelo botão Salvar.
+  const dictationTranslate = get<HTMLButtonElement>("#dictation-translate");
+  const dictationTranslateLabel = get<HTMLElement>("#dictation-translate-label");
+  const dictationTranslateMenu = get<HTMLUListElement>("#dictation-translate-menu");
+  let dictationTranslateValue = "";
+  {
+    const none = document.createElement("li");
+    none.role = "option";
+    none.dataset.value = "";
+    const text = document.createElement("span");
+    text.textContent = t("dictationNoTranslate");
+    none.append(text);
+    dictationTranslateMenu.append(none);
+  }
+  for (const target of TRANSLATION_TARGETS) {
+    const item = document.createElement("li");
+    item.role = "option";
+    item.dataset.value = target.mode.replace("translate-", "");
+    item.title = target.name;
+    const flag = flagUrl(target.country);
+    if (flag) {
+      const image = document.createElement("img");
+      image.className = "flag";
+      image.src = flag;
+      image.alt = "";
+      item.append(image);
+    }
+    const text = document.createElement("span");
+    text.textContent = target.name;
+    item.append(text);
+    dictationTranslateMenu.append(item);
+  }
+  const dictationTranslateItems = [
+    ...dictationTranslateMenu.querySelectorAll<HTMLLIElement>("li"),
+  ];
+  const toggleDictationTranslateMenu = (open: boolean) => {
+    dictationTranslateMenu.hidden = !open;
+    dictationTranslate.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const selected = dictationTranslateItems.find(
+        (item) => item.dataset.value === dictationTranslateValue,
+      );
+      // jsdom (testes) não implementa scrollIntoView.
+      selected?.scrollIntoView?.({ block: "nearest" });
+    }
+  };
+  const renderDictationTranslateButton = () => {
+    // Alvos fora do mecanismo atual saem do menu; um valor salvo que ficou
+    // fora volta a "Não traduzir" na exibição.
+    const engine = state?.translationEngine ?? "opus";
+    for (const entry of dictationTranslateItems) {
+      const tag = entry.dataset.value ?? "";
+      entry.hidden = tag !== "" && !engineServes(engine, `translate-${tag}` as CaptionMode);
+    }
+    const item =
+      dictationTranslateItems.find(
+        (entry) => entry.dataset.value === dictationTranslateValue && !entry.hidden,
+      ) ?? dictationTranslateItems[0];
+    if (!item) return;
+    dictationTranslateValue = item.dataset.value ?? "";
+    dictationTranslateLabel.textContent =
+      item.querySelector("span:not(.flag)")?.textContent ?? "";
+    dictationTranslate.querySelector(".flag")?.remove();
+    const flag = item.querySelector(".flag");
+    if (flag) dictationTranslate.prepend(flag.cloneNode(true));
+    for (const entry of dictationTranslateItems) {
+      entry.setAttribute("aria-selected", String(entry === item));
+    }
+  };
+
   // Seletor do idioma falado (origem) das legendas: mesma lista do modelo
   // ASR; fixar condiciona o reconhecedor e dá a origem exata à tradução.
   // Diferente do ditado, aplica na hora (via Rust), como o mecanismo.
@@ -476,6 +555,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     }
     const dictationAuto = dictationLanguageItems[0]?.querySelector("span:not(.flag)");
     if (dictationAuto) dictationAuto.textContent = t("autoMode");
+    const dictationNone = dictationTranslateItems[0]?.querySelector("span:not(.flag)");
+    if (dictationNone) dictationNone.textContent = t("dictationNoTranslate");
     const sourceAuto = sourceLanguageItems[0]?.querySelector("span:not(.flag)");
     if (sourceAuto) sourceAuto.textContent = t("autoMode");
     renderSourceLanguageButton();
@@ -546,6 +627,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       dictationLanguageValue = "";
     }
     renderDictationLanguageButton();
+    dictationTranslateValue = settings.translateTo ?? "";
+    renderDictationTranslateButton();
     dictationShowText.checked = settings.showLiveText;
     dictationLimit.checked = settings.limitDuration;
     dictationDuration.value = String(settings.maxDurationSecs);
@@ -585,6 +668,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       maxDurationSecs: Number(dictationDuration.value),
       inputId: dictationMic.value || null,
       language: dictationLanguageValue || null,
+      translateTo: dictationTranslateValue || null,
     };
   }
 
@@ -597,7 +681,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       && a.limitDuration === b.limitDuration
       && a.maxDurationSecs === b.maxDurationSecs
       && (a.inputId ?? "") === (b.inputId ?? "")
-      && (a.language ?? "") === (b.language ?? "");
+      && (a.language ?? "") === (b.language ?? "")
+      && (a.translateTo ?? "") === (b.translateTo ?? "");
   }
 
   function setAppearanceInputs(appearance: Appearance) {
@@ -701,6 +786,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     sourceLanguageValue = state.sourceLanguage ?? "";
     renderSourceLanguageButton();
     sourceLanguage.disabled = busy;
+    // Troca de mecanismo refiltra os alvos de tradução do ditado.
+    renderDictationTranslateButton();
     if (busy || state.windowMode === "locked") {
       toggleLanguageMenu(false);
       toggleUiLanguageMenu(false);
@@ -817,6 +904,18 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (tag === sourceLanguageValue) return;
     void perform(() => backend.setSourceLanguage(tag || null));
   }, options);
+  dictationTranslate.addEventListener(
+    "click",
+    () => toggleDictationTranslateMenu(Boolean(dictationTranslateMenu.hidden)),
+    options,
+  );
+  dictationTranslateMenu.addEventListener("click", (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLLIElement>("li[data-value]");
+    if (!item) return;
+    toggleDictationTranslateMenu(false);
+    dictationTranslateValue = item.dataset.value ?? "";
+    renderDictationTranslateButton();
+  }, options);
   dictationLanguage.addEventListener(
     "click",
     () => toggleDictationLanguageMenu(Boolean(dictationLanguageMenu.hidden)),
@@ -843,6 +942,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (!languageMenu.hidden && !insidePicker) toggleLanguageMenu(false);
     if (!uiLanguageMenu.hidden && !insidePicker) toggleUiLanguageMenu(false);
     if (!dictationLanguageMenu.hidden && !insidePicker) toggleDictationLanguageMenu(false);
+    if (!dictationTranslateMenu.hidden && !insidePicker) toggleDictationTranslateMenu(false);
     if (!sourceLanguageMenu.hidden && !insidePicker) toggleSourceLanguageMenu(false);
   }, options);
   document.addEventListener("keydown", (event) => {
@@ -850,6 +950,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (!languageMenu.hidden) toggleLanguageMenu(false);
     if (!uiLanguageMenu.hidden) toggleUiLanguageMenu(false);
     if (!dictationLanguageMenu.hidden) toggleDictationLanguageMenu(false);
+    if (!dictationTranslateMenu.hidden) toggleDictationTranslateMenu(false);
     if (!sourceLanguageMenu.hidden) toggleSourceLanguageMenu(false);
   }, options);
   lock.addEventListener("click", () => void perform(() => backend.setWindowMode("locked")), options);

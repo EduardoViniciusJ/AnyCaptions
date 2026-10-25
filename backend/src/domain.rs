@@ -18,6 +18,20 @@ impl TargetLanguage {
     }
 }
 
+// Wire format: the catalog tag (e.g. `pt-br`); unknown tags are rejected.
+impl Serialize for TargetLanguage {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for TargetLanguage {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_tag(&value).ok_or_else(|| de::Error::custom("unsupported translation target"))
+    }
+}
+
 /// Portuguese (Brazil), the default translation target.
 pub const PT_BR: TargetLanguage = TargetLanguage("pt-br");
 
