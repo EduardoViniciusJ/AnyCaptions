@@ -32,6 +32,7 @@ export const ptBR = {
   recentColorHex: "Cor hexadecimal das palavras recentes",
   audioOutput: "Saída de áudio",
   uiLanguage: "Idioma da interface",
+  sourceLanguage: "Idioma falado (origem)",
   translationEngine: "Modelo de tradução",
   engineOpus: "OPUS-MT — rápido (CPU), inglês ↔ português",
   engineRiva: "Riva — 37 idiomas (GPU)",

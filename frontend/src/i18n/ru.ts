@@ -33,6 +33,7 @@ export const ru: Messages = {
   recentColorHex: "HEX-цвет недавних слов",
   audioOutput: "Аудиовыход",
   uiLanguage: "Язык интерфейса",
+  sourceLanguage: "Язык речи (источник)",
   translationEngine: "Модель перевода",
   engineOpus: "OPUS-MT — быстрая (CPU), английский ↔ португальский",
   engineRiva: "Riva — 37 языков (GPU)",

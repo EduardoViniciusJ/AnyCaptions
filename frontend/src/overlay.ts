@@ -1,5 +1,5 @@
 import {
-  DICTATION_LANGUAGES,
+  ASR_LANGUAGES,
   TRANSLATION_ENGINES,
   TRANSLATION_TARGETS,
   engineServes,
@@ -117,6 +117,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             <div class="language-picker">
               <button id="ui-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="ui-language-label"></span></button>
               <ul id="ui-language-menu" role="listbox" data-i18n-aria="uiLanguage" aria-label="Idioma da interface" hidden></ul>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label for="source-language" data-i18n="sourceLanguage">Idioma falado (origem)</label>
+            <div class="language-picker">
+              <button id="source-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="source-language-label"></span></button>
+              <ul id="source-language-menu" role="listbox" data-i18n-aria="sourceLanguage" aria-label="Idioma falado (origem)" hidden></ul>
             </div>
           </div>
           <div class="setting-row">
@@ -318,7 +325,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     auto.append(text);
     dictationLanguageMenu.append(auto);
   }
-  for (const option of DICTATION_LANGUAGES) {
+  for (const option of ASR_LANGUAGES) {
     const item = document.createElement("li");
     item.role = "option";
     item.dataset.value = option.tag;
@@ -365,6 +372,72 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   };
   renderDictationLanguageButton();
 
+  // Seletor do idioma falado (origem) das legendas: mesma lista do modelo
+  // ASR; fixar condiciona o reconhecedor e dá a origem exata à tradução.
+  // Diferente do ditado, aplica na hora (via Rust), como o mecanismo.
+  const sourceLanguage = get<HTMLButtonElement>("#source-language");
+  const sourceLanguageLabel = get<HTMLElement>("#source-language-label");
+  const sourceLanguageMenu = get<HTMLUListElement>("#source-language-menu");
+  {
+    const auto = document.createElement("li");
+    auto.role = "option";
+    auto.dataset.value = "";
+    const globe = document.createElement("span");
+    globe.className = "flag flag-globe";
+    globe.innerHTML = icons.globe;
+    auto.append(globe);
+    const text = document.createElement("span");
+    text.textContent = t("autoMode");
+    auto.append(text);
+    sourceLanguageMenu.append(auto);
+  }
+  for (const option of ASR_LANGUAGES) {
+    const item = document.createElement("li");
+    item.role = "option";
+    item.dataset.value = option.tag;
+    item.title = option.name;
+    const flag = flagUrl(option.country);
+    if (flag) {
+      const image = document.createElement("img");
+      image.className = "flag";
+      image.src = flag;
+      image.alt = "";
+      item.append(image);
+    }
+    const text = document.createElement("span");
+    text.textContent = option.name;
+    item.append(text);
+    sourceLanguageMenu.append(item);
+  }
+  const sourceLanguageItems = [...sourceLanguageMenu.querySelectorAll<HTMLLIElement>("li")];
+  // Valor confirmado pelo backend (snapshot); "" = detecção automática.
+  let sourceLanguageValue = "";
+  const toggleSourceLanguageMenu = (open: boolean) => {
+    sourceLanguageMenu.hidden = !open;
+    sourceLanguage.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const selected = sourceLanguageItems.find(
+        (item) => item.dataset.value === sourceLanguageValue,
+      );
+      // jsdom (testes) não implementa scrollIntoView.
+      selected?.scrollIntoView?.({ block: "nearest" });
+    }
+  };
+  const renderSourceLanguageButton = () => {
+    const item =
+      sourceLanguageItems.find((entry) => entry.dataset.value === sourceLanguageValue)
+      ?? sourceLanguageItems[0];
+    if (!item) return;
+    sourceLanguageLabel.textContent = item.querySelector("span:not(.flag)")?.textContent ?? "";
+    sourceLanguage.querySelector(".flag")?.remove();
+    const flag = item.querySelector(".flag");
+    if (flag) sourceLanguage.prepend(flag.cloneNode(true));
+    for (const entry of sourceLanguageItems) {
+      entry.setAttribute("aria-selected", String(entry === item));
+    }
+  };
+  renderSourceLanguageButton();
+
   // Seletor do mecanismo de tradução (configurações); o menu de idiomas
   // mostra apenas os alvos que o mecanismo escolhido serve.
   const translationEngine = get<HTMLSelectElement>("#translation-engine");
@@ -403,6 +476,9 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     }
     const dictationAuto = dictationLanguageItems[0]?.querySelector("span:not(.flag)");
     if (dictationAuto) dictationAuto.textContent = t("autoMode");
+    const sourceAuto = sourceLanguageItems[0]?.querySelector("span:not(.flag)");
+    if (sourceAuto) sourceAuto.textContent = t("autoMode");
+    renderSourceLanguageButton();
     renderEngineOptions();
     renderUiLanguageButton();
     renderDictation();
@@ -622,9 +698,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     renderLanguageButton(state.mode);
     language.disabled = busy;
     uiLanguage.disabled = busy;
+    sourceLanguageValue = state.sourceLanguage ?? "";
+    renderSourceLanguageButton();
+    sourceLanguage.disabled = busy;
     if (busy || state.windowMode === "locked") {
       toggleLanguageMenu(false);
       toggleUiLanguageMenu(false);
+      toggleSourceLanguageMenu(false);
     }
     translationEngine.value = state.translationEngine;
     for (const item of languageItems) {
@@ -724,6 +804,19 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (engine === state.translationEngine) return;
     void perform(() => backend.setTranslationEngine(engine));
   }, options);
+  sourceLanguage.addEventListener(
+    "click",
+    () => toggleSourceLanguageMenu(Boolean(sourceLanguageMenu.hidden)),
+    options,
+  );
+  sourceLanguageMenu.addEventListener("click", (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLLIElement>("li[data-value]");
+    if (!item || !state || busy) return;
+    toggleSourceLanguageMenu(false);
+    const tag = item.dataset.value ?? "";
+    if (tag === sourceLanguageValue) return;
+    void perform(() => backend.setSourceLanguage(tag || null));
+  }, options);
   dictationLanguage.addEventListener(
     "click",
     () => toggleDictationLanguageMenu(Boolean(dictationLanguageMenu.hidden)),
@@ -750,12 +843,14 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (!languageMenu.hidden && !insidePicker) toggleLanguageMenu(false);
     if (!uiLanguageMenu.hidden && !insidePicker) toggleUiLanguageMenu(false);
     if (!dictationLanguageMenu.hidden && !insidePicker) toggleDictationLanguageMenu(false);
+    if (!sourceLanguageMenu.hidden && !insidePicker) toggleSourceLanguageMenu(false);
   }, options);
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!languageMenu.hidden) toggleLanguageMenu(false);
     if (!uiLanguageMenu.hidden) toggleUiLanguageMenu(false);
     if (!dictationLanguageMenu.hidden) toggleDictationLanguageMenu(false);
+    if (!sourceLanguageMenu.hidden) toggleSourceLanguageMenu(false);
   }, options);
   lock.addEventListener("click", () => void perform(() => backend.setWindowMode("locked")), options);
   saveSettings.addEventListener("click", () => {

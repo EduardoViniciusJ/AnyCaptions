@@ -70,6 +70,54 @@ pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
 /// Targets the OPUS engine serves (English–Portuguese, both directions).
 pub const OPUS_TARGETS: &[TargetLanguage] = &[EN, PT_BR, PT_PT];
 
+/// Every language the ASR model recognizes: the prompt dictionary embedded in
+/// the Nemotron GGUF (`asr.rnnt.prompt_dictionary` metadata; "auto" is the
+/// detection prompt). One canonical tag per language, mirrored by the
+/// frontend's `ASR_LANGUAGES` table.
+pub const ASR_LANGUAGES: &[&str] = &[
+    "en-US", "en-GB", "es-ES", "es-US", "zh-CN", "zh-TW", "hi", "ar", "fr", "de", "ja-JP", "ru",
+    "pt-BR", "pt-PT", "ko", "it", "nl", "pl", "tr", "uk", "ro", "el", "cs", "hu", "sv", "da", "fi",
+    "no", "sk", "hr", "bg", "lt", "th-TH", "vi-VN", "id-ID", "ms-MY", "bn-IN", "ur-PK", "fa-IR",
+    "ta-IN", "te-IN", "mr-IN", "gu-IN", "kn-IN", "ml-IN", "si-LK", "ne-NP", "km-KH", "sw-KE",
+    "am-ET", "ha-NG", "zu-ZA", "yo-NG", "ig-NG", "af-ZA", "rw-RW", "so-SO", "ny-MW", "ln-CD",
+    "or-KE", "et", "lv", "sl", "he-IL", "ku-TR", "az-AZ", "ka-GE", "hy-AM", "uz-UZ", "tg-TJ",
+    "ky-KG", "qu-PE", "ay-BO", "gn-PY", "nah-MX", "mi-NZ", "haw-US", "sm-WS", "to-TO", "fr-CA",
+    "mt-MT", "nb", "nn",
+];
+
+/// The spoken (source) language the recognizer is pinned to, held as its
+/// canonical tag from [`ASR_LANGUAGES`]. `None` in the app state means
+/// auto-detection. Pinning conditions the decoder per stream and removes the
+/// language-detection cascade from the translation stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceLanguage(&'static str);
+
+impl SourceLanguage {
+    pub const fn tag(self) -> &'static str {
+        self.0
+    }
+
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        ASR_LANGUAGES
+            .iter()
+            .find(|candidate| candidate.eq_ignore_ascii_case(tag))
+            .map(|candidate| Self(candidate))
+    }
+}
+
+impl Serialize for SourceLanguage {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for SourceLanguage {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_tag(&value).ok_or_else(|| de::Error::custom("unsupported source language"))
+    }
+}
+
 /// A local translation engine the user picks in the settings. The UI offers
 /// only the targets of the chosen engine; a new engine extends this enum and
 /// [`TranslationEngine::targets`].
@@ -359,6 +407,7 @@ pub struct AppSnapshot {
     pub session_id: u32,
     pub mode: CaptionMode,
     pub translation_engine: TranslationEngine,
+    pub source_language: Option<SourceLanguage>,
     pub capture: CaptureState,
     pub window_mode: WindowMode,
     pub appearance: Appearance,
@@ -377,6 +426,7 @@ pub struct AppState {
     session_id: u32,
     mode: CaptionMode,
     translation_engine: TranslationEngine,
+    source_language: Option<SourceLanguage>,
     capture: CaptureState,
     appearance: Appearance,
     resources: Resources,
@@ -410,6 +460,7 @@ impl AppState {
             session_id: self.session_id,
             mode: self.mode,
             translation_engine: self.translation_engine,
+            source_language: self.source_language,
             capture: self.capture,
             window_mode: self.window_mode,
             appearance: self.appearance,
@@ -472,6 +523,22 @@ impl AppState {
         }
         self.capture = CaptureState::Stopped;
         self.error = None;
+        Ok(())
+    }
+
+    /// Pins the spoken language the recognizer listens for (`None` =
+    /// auto-detection). The running session is invalidated: the language is a
+    /// per-stream prompt, chosen when the recognition stream opens.
+    pub fn set_source_language(
+        &mut self,
+        language: Option<SourceLanguage>,
+    ) -> Result<(), DomainError> {
+        if language != self.source_language {
+            self.advance(true)?;
+            self.source_language = language;
+            self.capture = CaptureState::Stopped;
+            self.error = None;
+        }
         Ok(())
     }
 
@@ -709,6 +776,37 @@ mod tests {
         for target in OPUS_TARGETS {
             assert!(TranslationEngine::Riva.supports(*target));
         }
+    }
+
+    #[test]
+    fn pinning_the_source_language_invalidates_the_session() {
+        let mut state = ready();
+        state.start().unwrap();
+        let session = state.snapshot().session_id;
+        let portuguese = SourceLanguage::from_tag("pt-br").unwrap();
+        assert_eq!(portuguese.tag(), "pt-BR", "canonical casing is restored");
+        state.set_source_language(Some(portuguese)).unwrap();
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.source_language, Some(portuguese));
+        assert_eq!(snapshot.capture, CaptureState::Stopped);
+        assert_ne!(snapshot.session_id, session);
+        // Setting the same value again changes nothing.
+        let revision = snapshot.revision;
+        state.set_source_language(Some(portuguese)).unwrap();
+        assert_eq!(state.snapshot().revision, revision);
+        // Unknown tags cannot be constructed; the wire format round-trips.
+        assert!(SourceLanguage::from_tag("xx-XX").is_none());
+        assert_eq!(ASR_LANGUAGES.len(), 83);
+        for tag in ASR_LANGUAGES {
+            let language = SourceLanguage::from_tag(tag).unwrap();
+            let wire = serde_json::to_value(language).unwrap();
+            assert_eq!(wire, *tag);
+            assert_eq!(
+                serde_json::from_value::<SourceLanguage>(wire).unwrap(),
+                language
+            );
+        }
+        assert!(serde_json::from_value::<SourceLanguage>(serde_json::json!("auto")).is_err());
     }
 
     #[test]

@@ -40,6 +40,9 @@ pub struct Preferences {
     pub mode: CaptionMode,
     #[serde(default)]
     pub translation_engine: TranslationEngine,
+    /// Idioma falado fixado para o reconhecimento; `None` = detecção automática.
+    #[serde(default)]
+    pub source_language: Option<crate::domain::SourceLanguage>,
     #[serde(default)]
     pub ui_language: crate::domain::UiLanguage,
     pub output_id: Option<String>,
@@ -55,6 +58,7 @@ impl Default for Preferences {
         Self {
             mode: CaptionMode::Auto,
             translation_engine: TranslationEngine::default(),
+            source_language: None,
             ui_language: crate::domain::UiLanguage::default(),
             output_id: None,
             appearance: Appearance::default(),
@@ -117,6 +121,7 @@ impl PreferenceStore {
             .map_err(|_| io::Error::other("Preferences unavailable"))?;
         state.mode = snapshot.mode;
         state.translation_engine = snapshot.translation_engine;
+        state.source_language = snapshot.source_language;
         state.ui_language = snapshot.ui_language;
         state.appearance = snapshot.appearance;
         state.shortcut = snapshot.shortcut.clone();

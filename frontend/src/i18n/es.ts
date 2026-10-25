@@ -33,6 +33,7 @@ export const es: Messages = {
   recentColorHex: "Color hexadecimal de las palabras recientes",
   audioOutput: "Salida de audio",
   uiLanguage: "Idioma de la interfaz",
+  sourceLanguage: "Idioma hablado (origen)",
   translationEngine: "Modelo de traducción",
   engineOpus: "OPUS-MT — rápido (CPU), inglés ↔ portugués",
   engineRiva: "Riva — 37 idiomas (GPU)",

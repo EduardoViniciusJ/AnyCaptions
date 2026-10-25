@@ -310,10 +310,13 @@ pub struct TranslationStage {
 impl TranslationStage {
     /// `emit` runs on the worker thread for every event and returns `false` to
     /// stop early (stale session or failed delivery). `target` is the language
-    /// every caption is translated into.
+    /// every caption is translated into. `fixed_source` is the spoken language
+    /// the user pinned; `None` resolves it per caption (recognizer tag →
+    /// detection window → session memory → English).
     pub fn spawn(
         mut translator: Box<dyn Translator>,
         target: TargetLanguage,
+        fixed_source: Option<&'static str>,
         mut emit: impl FnMut(StageEvent) -> bool + Send + 'static,
     ) -> Result<Self, StageError> {
         let queue = StageQueue::new();
@@ -329,7 +332,10 @@ impl TranslationStage {
                     if stop_flag.load(Ordering::Acquire) {
                         return;
                     }
-                    let source = source_tracker.resolve(&update);
+                    let source = match fixed_source {
+                        Some(tag) => tag.to_owned(),
+                        None => source_tracker.resolve(&update),
+                    };
                     let source = source.as_str();
                     // Long finals translate sentence by sentence, and each
                     // translated sentence is shown as its own block (the next
@@ -470,17 +476,19 @@ mod tests {
 
         let emitted = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&emitted);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
-                match event {
-                    StageEvent::Translated(update) => {
-                        sink.lock().unwrap().push(update);
-                        true
-                    }
-                    StageEvent::Failed => false,
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
                 }
-            })
-            .unwrap();
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
 
         stage
             .submit(final_update(1, "First", Some("es-ES")))
@@ -524,17 +532,19 @@ mod tests {
 
         let emitted = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&emitted);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
-                match event {
-                    StageEvent::Translated(update) => {
-                        sink.lock().unwrap().push(update);
-                        true
-                    }
-                    StageEvent::Failed => false,
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
                 }
-            })
-            .unwrap();
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
         stage
             .submit(final_update(
                 3,
@@ -592,14 +602,18 @@ mod tests {
 
         let failed = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&failed);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| {
                 if matches!(event, StageEvent::Failed) {
                     flag.store(true, Ordering::Release);
                 }
                 false
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
 
         for segment in 1..=(MAX_CONSECUTIVE_FAILURES as u32) {
             stage.submit(final_update(segment, "Boom", None)).unwrap();
@@ -627,20 +641,22 @@ mod tests {
         let failed = Arc::new(AtomicBool::new(false));
         let sink = Arc::clone(&emitted);
         let flag = Arc::clone(&failed);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
-                match event {
-                    StageEvent::Translated(update) => {
-                        sink.lock().unwrap().push(update.text);
-                        true
-                    }
-                    StageEvent::Failed => {
-                        flag.store(true, Ordering::Release);
-                        false
-                    }
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update.text);
+                    true
                 }
-            })
-            .unwrap();
+                StageEvent::Failed => {
+                    flag.store(true, Ordering::Release);
+                    false
+                }
+            },
+        )
+        .unwrap();
 
         stage.submit(final_update(1, "Boom", None)).unwrap();
         stage.submit(final_update(2, "Fine", None)).unwrap();
@@ -671,14 +687,18 @@ mod tests {
 
         let failed = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&failed);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| {
                 if matches!(event, StageEvent::Failed) {
                     flag.store(true, Ordering::Release);
                 }
                 true
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
 
         stage
             .submit(final_update(1, "Hello there.", Some("xx-weird")))
@@ -704,17 +724,19 @@ mod tests {
         });
         let emitted = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&emitted);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
-                match event {
-                    StageEvent::Translated(update) => {
-                        sink.lock().unwrap().push(update.segment_id);
-                        true
-                    }
-                    StageEvent::Failed => false,
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update.segment_id);
+                    true
                 }
-            })
-            .unwrap();
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
 
         // Twice the capacity: every submit must succeed (never fail the session),
         // dropping backlog instead.
@@ -839,17 +861,19 @@ mod tests {
 
         let emitted = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&emitted);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |event| {
-                match event {
-                    StageEvent::Translated(update) => {
-                        sink.lock().unwrap().push(update);
-                        true
-                    }
-                    StageEvent::Failed => false,
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
                 }
-            })
-            .unwrap();
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
         // The recognizer did not tag the final; the text itself is Portuguese.
         stage
             .submit(final_update(
@@ -863,6 +887,52 @@ mod tests {
     }
 
     #[test]
+    fn a_pinned_source_bypasses_detection_tags_and_session_memory() {
+        let mut translator = MockTranslator::new();
+        // Every caption must reach the translator as pt-BR: the English text,
+        // the conflicting recognizer tag, and the ambiguous short final would
+        // each have produced a different source through the tracker.
+        translator
+            .expect_translate()
+            .withf(|_, source, target| source == "pt-BR" && target == "en")
+            .times(3)
+            .returning(|text, _, _| Ok(format!("EN {text}")));
+
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::EN,
+            Some("pt-BR"),
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
+                }
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
+        stage
+            .submit(final_update(
+                1,
+                "The update will be released next week for everyone.",
+                None,
+            ))
+            .unwrap();
+        stage
+            .submit(final_update(
+                2,
+                "Now tagged as English by the model.",
+                Some("en-US"),
+            ))
+            .unwrap();
+        stage.submit(final_update(3, "Ok.", None)).unwrap();
+        stage.finish();
+        assert_eq!(emitted.lock().unwrap().len(), 3);
+    }
+
+    #[test]
     fn empty_translations_are_skipped_and_stale_sessions_stop_the_worker() {
         let mut translator = MockTranslator::new();
         translator
@@ -870,12 +940,16 @@ mod tests {
             .returning(|_, _, _| Ok(String::new()));
         let emitted = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&emitted);
-        let stage =
-            TranslationStage::spawn(Box::new(translator), crate::domain::PT_BR, move |_| {
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |_| {
                 flag.store(true, Ordering::Release);
                 true
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
         stage.submit(final_update(1, "   ", None)).unwrap();
         stage.finish();
         assert!(!emitted.load(Ordering::Acquire));

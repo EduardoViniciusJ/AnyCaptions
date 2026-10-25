@@ -82,20 +82,20 @@ export const TRANSLATION_TARGETS: TranslationTarget[] = [
 ];
 
 /**
- * Idiomas do ditado, espelhando `DICTATION_LANGUAGES` do backend: o
- * dicionário de prompts dentro do GGUF do Nemotron (chave
- * `asr.rnnt.prompt_dictionary`, um prompt por idioma; "auto" é o prompt de
- * detecção). O backend valida o valor; esta tabela só apresenta.
- * Ordem: PT-BR (padrão do público), EN, demais por nome.
+ * Idiomas do modelo ASR, espelhando `ASR_LANGUAGES` do backend: o dicionário
+ * de prompts dentro do GGUF do Nemotron (chave `asr.rnnt.prompt_dictionary`,
+ * um prompt por idioma; "auto" é o prompt de detecção). Usado pelo idioma do
+ * ditado e pelo idioma de origem das legendas. O backend valida o valor;
+ * esta tabela só apresenta. Ordem: PT-BR (padrão do público), EN, demais por nome.
  */
-export interface DictationLanguage {
+export interface AsrLanguage {
   tag: string;
   /** Código do país da bandeira (`assets/flags/<código>.svg`, flag-icons/MIT). */
   country: string;
   name: string;
 }
 
-export const DICTATION_LANGUAGES: DictationLanguage[] = [
+export const ASR_LANGUAGES: AsrLanguage[] = [
   { tag: "pt-BR", country: "br", name: "Português (Brasil)" },
   { tag: "en-US", country: "us", name: "Inglês (EUA)" },
   { tag: "af-ZA", country: "za", name: "Africâner" },

@@ -5,6 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "get_state",
             "set_caption_mode",
             "set_translation_engine",
+            "set_source_language",
             "set_ui_language",
             "start_capture",
             "stop_capture",

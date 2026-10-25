@@ -33,6 +33,7 @@ export const en: Messages = {
   recentColorHex: "Recent words hex color",
   audioOutput: "Audio output",
   uiLanguage: "Interface language",
+  sourceLanguage: "Spoken language (source)",
   translationEngine: "Translation model",
   engineOpus: "OPUS-MT — fast (CPU), English ↔ Portuguese",
   engineRiva: "Riva — 37 languages (GPU)",

@@ -8,6 +8,7 @@
     "allow-get-state",
     "allow-set-caption-mode",
     "allow-set-translation-engine",
+    "allow-set-source-language",
     "allow-set-ui-language",
     "allow-start-capture",
     "allow-stop-capture",
