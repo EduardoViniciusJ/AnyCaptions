@@ -102,6 +102,7 @@ export function dictationErrorMessage(code: string): string {
     case "dictation-capture": return t("errDictationMic");
     case "dictation-model": return t("errDictationModel");
     case "dictation-paste": return t("errDictationPaste");
+    case "dictation-translate": return t("errDictationTranslate");
     default: return t("errDictation");
   }
 }

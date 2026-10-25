@@ -63,6 +63,8 @@ export interface DictationSettings {
   inputId: string | null;
   /** Idioma fixo do reconhecimento (BCP-47); null = detecção automática. */
   language: string | null;
+  /** Alvo de tradução do ditado (tag do catálogo); null = colar como falado. */
+  translateTo: string | null;
 }
 
 export interface DictationSnapshot {

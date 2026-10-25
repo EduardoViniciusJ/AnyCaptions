@@ -59,6 +59,10 @@ pub struct DictationSettings {
     /// idioma condiciona o decodificador e melhora a precisão na fala nele.
     #[serde(default)]
     pub language: Option<String>,
+    /// Alvo de tradução do ditado (`None` = colar como falado). O texto final
+    /// passa pelo tradutor compartilhado das legendas antes da colagem.
+    #[serde(default)]
+    pub translate_to: Option<crate::domain::TargetLanguage>,
 }
 
 fn default_true() -> bool {
@@ -77,6 +81,7 @@ impl Default for DictationSettings {
             max_duration_secs: 60,
             input_id: None,
             language: None,
+            translate_to: None,
         }
     }
 }
@@ -278,12 +283,14 @@ mod tests {
             max_duration_secs: 120,
             input_id: Some("mic-1".into()),
             language: Some("pt-BR".into()),
+            translate_to: Some(crate::domain::EN),
         };
         let wire = serde_json::to_value(&settings).unwrap();
         assert_eq!(wire["activation"], "toggle");
         assert_eq!(wire["maxDurationSecs"], 120);
         assert_eq!(wire["showLiveText"], false);
         assert_eq!(wire["limitDuration"], false);
+        assert_eq!(wire["translateTo"], "en");
         assert_eq!(
             serde_json::from_value::<DictationSettings>(wire).unwrap(),
             settings

@@ -21,9 +21,14 @@ use crate::{
         devices::InputService,
         resample::MonoResampler,
     },
-    domain::CaptionMode,
+    domain::{CaptionMode, TargetLanguage, TranslationEngine},
     pipeline::{MAX_BLOCK_SAMPLES, Pipeline},
     transcription::session::ProcessorFactory,
+    translation::{
+        Translator,
+        riva::model_tag,
+        stage::{resolve_text_source, split_sentences},
+    },
 };
 
 use super::{
@@ -159,21 +164,35 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     let settings = state.settings();
     if settings.enabled {
         let _ = register_hotkey(app, &settings.shortcut);
-        warm_up(&state);
+        warm_up(app, &state);
     }
 }
 
-/// Carrega o modelo ASR em segundo plano para o primeiro ditado não perder a
-/// fala inicial durante a carga.
-fn warm_up(state: &DictationState) {
+/// Mecanismo de tradução escolhido nas configurações das legendas; o ditado
+/// usa o mesmo (e o mesmo tradutor em cache).
+fn translation_engine<R: Runtime>(app: &AppHandle<R>) -> TranslationEngine {
+    app.try_state::<crate::ipc::Controller>()
+        .and_then(|controller| controller.snapshot().ok())
+        .map(|snapshot| snapshot.translation_engine)
+        .unwrap_or_default()
+}
+
+/// Carrega o modelo ASR (e o tradutor, quando o ditado traduz) em segundo
+/// plano, para o primeiro ditado não perder a fala inicial durante a carga.
+fn warm_up<R: Runtime>(app: &AppHandle<R>, state: &DictationState) {
     let factory = Arc::clone(&state.factory);
     if !factory.is_available() {
         return;
     }
+    let engine = translation_engine(app);
+    let translates = state.settings().translate_to.is_some();
     let _ = thread::Builder::new()
         .name("dictation-warmup".into())
         .spawn(move || {
             let _ = factory.create(0, CaptionMode::Auto, None);
+            if translates {
+                let _ = factory.create_translator(engine);
+            }
         });
 }
 
@@ -303,7 +322,7 @@ pub fn apply_settings<R: Runtime>(
         *stored = settings.clone();
     }
     if settings.enabled {
-        warm_up(&state);
+        warm_up(app, &state);
     }
     emit(app, "idle", String::new(), None);
     Ok(())
@@ -479,9 +498,18 @@ fn run_worker<R: Runtime>(
                     let error = if text.is_empty() {
                         None
                     } else {
-                        inject::paste_into_focused_app(&text)
-                            .err()
-                            .map(|_| "dictation-paste")
+                        match prepare_output(&state, &settings, translation_engine(&app), &text) {
+                            Ok(output) if output.is_empty() => None,
+                            Ok(output) => inject::paste_into_focused_app(&output)
+                                .err()
+                                .map(|_| "dictation-paste"),
+                            Err(()) => {
+                                // Sem fallback silencioso: nada é colado, mas o
+                                // texto original fica no clipboard para uso manual.
+                                let _ = inject::copy_to_clipboard(&text);
+                                Some("dictation-translate")
+                            }
+                        }
                     };
                     complete(&app, session, error);
                 }
@@ -499,6 +527,64 @@ fn run_worker<R: Runtime>(
             fail(&app, session, code);
         }
     }
+}
+
+/// Decide se o ditado precisa de tradução: devolve a origem e o alvo, ou
+/// `None` para colar como falado (sem alvo, ou origem já no idioma do alvo).
+/// Origem: o idioma fixo do ditado quando definido; senão, detecção local no
+/// texto final (janela única — o ditado não tem memória de sessão).
+fn translation_plan(settings: &DictationSettings, text: &str) -> Option<(String, TargetLanguage)> {
+    let target = settings.translate_to?;
+    let source = match settings.language.as_deref() {
+        Some(tag) => tag.to_owned(),
+        None => resolve_text_source(text).to_owned(),
+    };
+    if model_tag(&source).as_deref() == Some(target.tag()) {
+        return None;
+    }
+    Some((source, target))
+}
+
+/// Traduz o texto final sentença a sentença (sentenças curtas se agrupam, como
+/// nas legendas) e junta o resultado. Qualquer falha devolve `Err`.
+fn translate_text(
+    translator: &mut dyn Translator,
+    text: &str,
+    source: &str,
+    target: TargetLanguage,
+) -> Result<String, ()> {
+    let mut parts: Vec<String> = Vec::new();
+    for sentence in split_sentences(text) {
+        let translated = translator
+            .translate(&sentence, source, target.tag())
+            .map_err(|_| ())?;
+        if !translated.is_empty() {
+            parts.push(translated);
+        }
+    }
+    Ok(parts.join(" "))
+}
+
+/// Texto que vai para a colagem: o original, ou a tradução quando configurada.
+fn prepare_output(
+    state: &DictationState,
+    settings: &DictationSettings,
+    engine: TranslationEngine,
+    text: &str,
+) -> Result<String, ()> {
+    let Some((source, target)) = translation_plan(settings, text) else {
+        return Ok(text.to_owned());
+    };
+    let mut translator = state.factory.create_translator(engine).map_err(|_| ())?;
+    let start = std::time::Instant::now();
+    let output = translate_text(translator.as_mut(), text, &source, target)?;
+    // Tempos e idiomas apenas; o texto ditado nunca chega aos logs.
+    eprintln!(
+        "[dictation] translate_ms={} source={source} target={}",
+        start.elapsed().as_millis(),
+        target.tag()
+    );
+    Ok(output)
 }
 
 fn apply_update(update: crate::ipc::CaptionUpdate, finals: &mut Vec<String>, partial: &mut String) {
@@ -524,6 +610,63 @@ fn compose(finals: &[String], partial: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::translation::{MockTranslator, TranslatorError};
+
+    #[test]
+    fn translation_plan_skips_when_disabled_or_already_in_the_target_language() {
+        let mut settings = DictationSettings::default();
+        let text = "Olá pessoal, hoje vamos conversar sobre o projeto novo.";
+        // Sem alvo configurado: cola como falado.
+        assert_eq!(translation_plan(&settings, text), None);
+        // Origem fixa já no idioma do alvo: nada a traduzir.
+        settings.translate_to = Some(crate::domain::PT_BR);
+        settings.language = Some("pt-BR".into());
+        assert_eq!(translation_plan(&settings, text), None);
+        // Origem fixa diferente do alvo: traduz.
+        settings.translate_to = Some(crate::domain::EN);
+        assert_eq!(
+            translation_plan(&settings, text),
+            Some(("pt-BR".into(), crate::domain::EN))
+        );
+        // Sem idioma fixo, a origem vem da detecção local no texto.
+        settings.language = None;
+        let (source, target) = translation_plan(&settings, text).unwrap();
+        assert_eq!(source, "pt-br");
+        assert_eq!(target, crate::domain::EN);
+        // Texto detectado como inglês com alvo EN: cola como falado.
+        settings.translate_to = Some(crate::domain::EN);
+        assert_eq!(
+            translation_plan(
+                &settings,
+                "The update will be released next week for everyone."
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn dictated_text_translates_sentence_by_sentence_and_failures_bubble_up() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|_, source, target| source == "pt-BR" && target == "en")
+            .times(2)
+            .returning(|text, _, _| Ok(format!("EN {text}")));
+        let text = "Primeira frase longa o bastante para ficar sozinha, certo? \
+                    Segunda frase igualmente longa para fechar o pensamento.";
+        let output = translate_text(&mut translator, text, "pt-BR", crate::domain::EN).unwrap();
+        assert!(output.starts_with("EN Primeira"));
+        assert!(output.contains(" EN Segunda"));
+
+        let mut failing = MockTranslator::new();
+        failing
+            .expect_translate()
+            .returning(|_, _, _| Err(TranslatorError::TranslationFailed));
+        assert_eq!(
+            translate_text(&mut failing, text, "pt-BR", crate::domain::EN),
+            Err(())
+        );
+    }
 
     #[test]
     fn composed_text_joins_finished_sentences_and_the_live_partial() {

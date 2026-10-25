@@ -44,6 +44,7 @@ function setup(initial = snapshot()) {
         maxDurationSecs: 60,
         inputId: null,
         language: null,
+        translateTo: null,
       },
       available: true,
       phase: "idle",
@@ -114,6 +115,23 @@ describe("overlay controls", () => {
     // Escolher o mesmo valor de novo não chama o backend outra vez.
     portuguese.click();
     expect(app.backend.setSourceLanguage).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers dictation translation targets filtered by the chosen engine", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    const items = app.root.querySelectorAll<HTMLLIElement>("#dictation-translate-menu li");
+    expect(items.length).toBe(38); // "Não traduzir" + 37 alvos do catálogo
+    expect(app.get("#dictation-translate-label").textContent).toBe("Não traduzir");
+    // Mecanismo OPUS (padrão): só EN/PT visíveis, como no menu das legendas.
+    const japanese = app.get<HTMLLIElement>('#dictation-translate-menu li[data-value="ja"]');
+    const english = app.get<HTMLLIElement>('#dictation-translate-menu li[data-value="en"]');
+    expect(japanese.hidden).toBe(true);
+    expect(english.hidden).toBe(false);
+    expect(english.querySelector("img.flag")).not.toBeNull();
+    english.click();
+    expect(app.get("#dictation-translate-label").textContent).toBe("Inglês");
+    expect(english.getAttribute("aria-selected")).toBe("true");
   });
 
   it("lists every dictation language of the model with a flag and applies the choice", async () => {

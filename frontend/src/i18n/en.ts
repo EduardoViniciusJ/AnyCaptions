@@ -73,6 +73,8 @@ export const en: Messages = {
   dictationToggle: "Toggle (tap to start and stop)",
   dictationSound: "Sound cue while recording",
   dictationLanguage: "Dictation language",
+  dictationTranslate: "Translate dictation to",
+  dictationNoTranslate: "Don't translate",
   dictationShowText: "Show recognized text",
   dictationLimitDuration: "Limit duration",
   dictationMaxDuration: "Maximum duration (s)",
@@ -88,4 +90,5 @@ export const en: Messages = {
   errDictationShortcutConflict: "That shortcut is already used by the window lock.",
   errDictationDuration: "The maximum duration must be between 5 and 300 seconds.",
   errDictationLanguage: "Invalid dictation language. Pick an option from the list.",
+  errDictationTranslate: "Dictation translation failed. The spoken text was left on the clipboard (Ctrl+V to paste).",
 };

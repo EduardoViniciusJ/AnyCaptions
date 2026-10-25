@@ -73,6 +73,8 @@ export const fr: Messages = {
   dictationToggle: "Basculer (appui pour démarrer et arrêter)",
   dictationSound: "Signal sonore pendant l'enregistrement",
   dictationLanguage: "Langue de dictée",
+  dictationTranslate: "Traduire la dictée en",
+  dictationNoTranslate: "Ne pas traduire",
   dictationShowText: "Afficher le texte reconnu",
   dictationLimitDuration: "Limiter la durée",
   dictationMaxDuration: "Durée maximale (s)",
@@ -88,4 +90,5 @@ export const fr: Messages = {
   errDictationShortcutConflict: "Ce raccourci est déjà utilisé par le verrouillage de la fenêtre.",
   errDictationDuration: "La durée maximale doit être comprise entre 5 et 300 secondes.",
   errDictationLanguage: "Langue de dictée non valide. Choisissez une option de la liste.",
+  errDictationTranslate: "La traduction de la dictée a échoué. Le texte dicté reste dans le presse-papiers (Ctrl+V pour coller).",
 };

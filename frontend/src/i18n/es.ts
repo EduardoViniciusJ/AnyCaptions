@@ -73,6 +73,8 @@ export const es: Messages = {
   dictationToggle: "Alternar (un toque inicia y otro termina)",
   dictationSound: "Señal sonora al grabar",
   dictationLanguage: "Idioma del dictado",
+  dictationTranslate: "Traducir dictado a",
+  dictationNoTranslate: "No traducir",
   dictationShowText: "Mostrar texto reconocido",
   dictationLimitDuration: "Limitar duración",
   dictationMaxDuration: "Duración máxima (s)",
@@ -88,4 +90,5 @@ export const es: Messages = {
   errDictationShortcutConflict: "Ese atajo ya lo usa el bloqueo de la ventana.",
   errDictationDuration: "La duración máxima debe estar entre 5 y 300 segundos.",
   errDictationLanguage: "Idioma de dictado no válido. Elige una opción de la lista.",
+  errDictationTranslate: "La traducción del dictado falló. El texto hablado quedó en el portapapeles (Ctrl+V para pegar).",
 };
