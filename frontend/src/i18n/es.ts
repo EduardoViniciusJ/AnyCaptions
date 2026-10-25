@@ -71,6 +71,9 @@ export const es: Messages = {
   dictationHold: "Mantener para hablar",
   dictationToggle: "Alternar (un toque inicia y otro termina)",
   dictationSound: "Señal sonora al grabar",
+  dictationLanguage: "Idioma del dictado",
+  dictationShowText: "Mostrar texto reconocido",
+  dictationLimitDuration: "Limitar duración",
   dictationMaxDuration: "Duración máxima (s)",
   dictationModelMissing: "Modelo de transcripción no disponible; el dictado no funcionará.",
   dictationListening: "Escuchando… suelta para enviar",
@@ -83,4 +86,5 @@ export const es: Messages = {
   errDictationShortcutFormat: "Usa F6–F24 o Ctrl/Alt + tecla (p. ej. Ctrl+Space).",
   errDictationShortcutConflict: "Ese atajo ya lo usa el bloqueo de la ventana.",
   errDictationDuration: "La duración máxima debe estar entre 5 y 300 segundos.",
+  errDictationLanguage: "Idioma de dictado no válido. Elige una opción de la lista.",
 };

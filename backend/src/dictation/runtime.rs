@@ -43,6 +43,7 @@ pub struct DictationEventPayload {
     pub error: Option<&'static str>,
     pub sound_cue: bool,
     pub activation: ActivationMode,
+    pub show_live_text: bool,
     pub max_duration_secs: u16,
 }
 
@@ -106,10 +107,10 @@ impl DictationState {
 }
 
 fn machine_for(settings: &DictationSettings) -> DictationMachine {
-    DictationMachine::new(
-        settings.activation,
-        Duration::from_secs(u64::from(settings.max_duration_secs)),
-    )
+    let max_duration = settings
+        .limit_duration
+        .then(|| Duration::from_secs(u64::from(settings.max_duration_secs)));
+    DictationMachine::new(settings.activation, max_duration)
 }
 
 fn phase_name(phase: DictationPhase) -> &'static str {
@@ -133,6 +134,7 @@ fn emit<R: Runtime>(
         error,
         sound_cue: settings.sound_cue,
         activation: settings.activation,
+        show_live_text: settings.show_live_text,
         max_duration_secs: settings.max_duration_secs,
     };
     let _ = app.emit_to("overlay", DICTATION_EVENT, payload);
@@ -352,7 +354,10 @@ fn run_worker<R: Runtime>(
     };
     // O id da sessão da máquina (u64) identifica o trabalho; o processador só
     // usa o número para etiquetar atualizações que este worker mesmo consome.
-    let processor = match state.factory.create(session as u32, CaptionMode::Auto) {
+    let processor = match state
+        .factory
+        .create_dictation(session as u32, settings.language.as_deref())
+    {
         Ok(processor) => processor,
         Err(_) => {
             fail(&app, session, "dictation-model");

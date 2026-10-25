@@ -20,6 +20,7 @@ function event(overrides: Partial<DictationEvent>): DictationEvent {
     error: null,
     soundCue: false,
     activation: "hold",
+    showLiveText: true,
     maxDurationSecs: 60,
     ...overrides,
   };
@@ -47,15 +48,30 @@ describe("indicador do ditado", () => {
     expect(root.hidden).toBe(true);
   });
 
-  it("conta o tempo no modo alternar e para no ocioso", () => {
+  it("conta o tempo nos dois modos e para no ocioso", () => {
     vi.useFakeTimers();
-    const { elapsed, subject } = indicator();
+    for (const activation of ["toggle", "hold"] as const) {
+      const { elapsed, subject } = indicator();
+      disposers.push(() => subject.dispose());
+      subject.accept(event({ phase: "recording", activation }));
+      vi.advanceTimersByTime(65_000);
+      expect(elapsed.textContent).toBe("1:05");
+      subject.accept(event({ phase: "idle", activation }));
+      expect(elapsed.textContent).toBe("");
+    }
+  });
+
+  it("modo compacto esconde o texto mas mantém o indicador visível", () => {
+    const { root, text, subject } = indicator();
     disposers.push(() => subject.dispose());
-    subject.accept(event({ phase: "recording", activation: "toggle" }));
-    vi.advanceTimersByTime(65_000);
-    expect(elapsed.textContent).toBe("1:05");
-    subject.accept(event({ phase: "idle", activation: "toggle" }));
-    expect(elapsed.textContent).toBe("");
+    subject.accept(event({ phase: "recording", text: "hello", showLiveText: false }));
+    expect(root.hidden).toBe(false);
+    expect(root.dataset.compact).toBe("true");
+    expect(text.textContent).toBe("");
+    // Religar a exibição volta a mostrar o texto na mesma gravação.
+    subject.accept(event({ phase: "recording", text: "hello", showLiveText: true }));
+    expect(root.dataset.compact).toBe("false");
+    expect(text.textContent).toBe("hello");
   });
 
   it("erros chegam como mensagem acionável ao voltar ao ocioso", () => {

@@ -71,6 +71,9 @@ export const ru: Messages = {
   dictationHold: "Удерживать для записи",
   dictationToggle: "Переключение (нажатие начинает и завершает)",
   dictationSound: "Звуковой сигнал при записи",
+  dictationLanguage: "Язык диктовки",
+  dictationShowText: "Показывать распознанный текст",
+  dictationLimitDuration: "Ограничить длительность",
   dictationMaxDuration: "Максимальная длительность (с)",
   dictationModelMissing: "Модель распознавания недоступна; голосовой ввод не будет работать.",
   dictationListening: "Слушаю… отпустите, чтобы отправить",
@@ -83,4 +86,5 @@ export const ru: Messages = {
   errDictationShortcutFormat: "Используйте F6–F24 или Ctrl/Alt + клавишу (например, Ctrl+Space).",
   errDictationShortcutConflict: "Это сочетание уже занято блокировкой окна.",
   errDictationDuration: "Максимальная длительность должна быть от 5 до 300 секунд.",
+  errDictationLanguage: "Недопустимый язык диктовки. Выберите вариант из списка.",
 };

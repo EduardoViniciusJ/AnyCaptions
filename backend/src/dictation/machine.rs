@@ -36,7 +36,8 @@ pub enum DictationAction {
 
 pub struct DictationMachine {
     activation: ActivationMode,
-    max_duration: Duration,
+    /// `None` = sem teto: a gravação só termina por ação do usuário ou erro.
+    max_duration: Option<Duration>,
     phase: DictationPhase,
     /// Estado físico da tecla: o auto-repeat do Windows reenvia `Pressed`
     /// enquanto a tecla está presa, e esses repetidos devem ser ignorados.
@@ -46,7 +47,7 @@ pub struct DictationMachine {
 }
 
 impl DictationMachine {
-    pub fn new(activation: ActivationMode, max_duration: Duration) -> Self {
+    pub fn new(activation: ActivationMode, max_duration: Option<Duration>) -> Self {
         Self {
             activation,
             max_duration,
@@ -103,9 +104,11 @@ impl DictationMachine {
 
     /// Deve ser chamada periodicamente durante a gravação: aplica o teto de
     /// duração nos dois modos (alternar esquecido ou tecla presa no segurar).
+    /// Sem teto configurado, nunca corta.
     pub fn tick(&mut self, now: Instant) -> Option<DictationAction> {
+        let max_duration = self.max_duration?;
         let elapsed = now.duration_since(self.recording_since?);
-        if self.phase == DictationPhase::Recording && elapsed >= self.max_duration {
+        if self.phase == DictationPhase::Recording && elapsed >= max_duration {
             return Some(self.finish(FinishReason::TimedOut));
         }
         None
@@ -146,11 +149,11 @@ mod tests {
     use super::*;
 
     fn hold() -> DictationMachine {
-        DictationMachine::new(ActivationMode::Hold, Duration::from_secs(60))
+        DictationMachine::new(ActivationMode::Hold, Some(Duration::from_secs(60)))
     }
 
     fn toggle() -> DictationMachine {
-        DictationMachine::new(ActivationMode::Toggle, Duration::from_secs(60))
+        DictationMachine::new(ActivationMode::Toggle, Some(Duration::from_secs(60)))
     }
 
     #[test]
@@ -235,6 +238,15 @@ mod tests {
             // Depois de finalizar, o tick fica quieto.
             assert_eq!(machine.tick(start + Duration::from_secs(61)), None);
         }
+    }
+
+    #[test]
+    fn without_a_limit_the_recording_never_times_out() {
+        let mut machine = DictationMachine::new(ActivationMode::Toggle, None);
+        let start = Instant::now();
+        machine.key_pressed(start);
+        assert_eq!(machine.tick(start + Duration::from_secs(60 * 60)), None);
+        assert_eq!(machine.phase(), DictationPhase::Recording);
     }
 
     #[test]

@@ -69,6 +69,17 @@ pub trait ProcessorFactory: Send + Sync {
         session_id: u32,
         mode: CaptionMode,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError>;
+    /// Processador do ditado: mesmo modelo compartilhado das legendas, com o
+    /// idioma opcionalmente fixado no stream (condiciona o decodificador e
+    /// melhora a precisão quando o usuário sabe em que idioma vai falar).
+    fn create_dictation(
+        &self,
+        session_id: u32,
+        language: Option<&str>,
+    ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
+        let _ = language;
+        self.create(session_id, CaptionMode::Auto)
+    }
     fn translation_available(&self, _engine: TranslationEngine) -> bool {
         false
     }
@@ -205,6 +216,22 @@ impl ProcessorFactory for NativeProcessorFactory {
                 .map_err(|_| DomainError::TranscriptionUnavailable)?;
         Ok(Box::new(StreamingProcessor::new(
             session_id, mode, recognizer,
+        )))
+    }
+
+    fn create_dictation(
+        &self,
+        session_id: u32,
+        language: Option<&str>,
+    ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
+        let tuning = super::tuning::TRANSCRIPTION;
+        let recognizer =
+            NativeNemotron::open(self.asr_model(tuning.rnnt_right_context)?, language, tuning)
+                .map_err(|_| DomainError::TranscriptionUnavailable)?;
+        Ok(Box::new(StreamingProcessor::new(
+            session_id,
+            CaptionMode::Auto,
+            recognizer,
         )))
     }
 
