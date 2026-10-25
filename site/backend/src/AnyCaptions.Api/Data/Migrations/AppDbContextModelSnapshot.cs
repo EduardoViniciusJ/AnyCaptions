@@ -22,6 +22,35 @@ namespace AnyCaptions.Api.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AnyCaptions.Api.Domain.Entities.Download", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("ReleaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReleaseId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Downloads");
+                });
+
             modelBuilder.Entity("AnyCaptions.Api.Domain.Entities.Release", b =>
                 {
                     b.Property<Guid>("Id")
@@ -141,6 +170,25 @@ namespace AnyCaptions.Api.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("DataProtectionKeys");
+                });
+
+            modelBuilder.Entity("AnyCaptions.Api.Domain.Entities.Download", b =>
+                {
+                    b.HasOne("AnyCaptions.Api.Domain.Entities.Release", "Release")
+                        .WithMany()
+                        .HasForeignKey("ReleaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AnyCaptions.Api.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Release");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("AnyCaptions.Api.Domain.Entities.UserLogin", b =>

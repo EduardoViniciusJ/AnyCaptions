@@ -9,6 +9,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<User> Users => Set<User>();
     public DbSet<UserLogin> UserLogins => Set<UserLogin>();
     public DbSet<Release> Releases => Set<Release>();
+    public DbSet<Download> Downloads => Set<Download>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -36,6 +37,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(release => release.WindowsInstallerUrl).HasMaxLength(2048);
             entity.Property(release => release.WindowsZipUrl).HasMaxLength(2048);
             entity.Property(release => release.Sha256).HasMaxLength(64);
+        });
+        modelBuilder.Entity<Download>(entity =>
+        {
+            entity.HasKey(download => download.Id);
+            entity.Property(download => download.Kind).HasMaxLength(16);
+            entity.HasIndex(download => download.UserId);
+            entity.HasIndex(download => download.ReleaseId);
+            entity.HasOne(download => download.User).WithMany().HasForeignKey(download => download.UserId);
+            entity.HasOne(download => download.Release).WithMany().HasForeignKey(download => download.ReleaseId);
         });
     }
 }
