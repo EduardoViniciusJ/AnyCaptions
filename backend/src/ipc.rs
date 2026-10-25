@@ -41,6 +41,7 @@ pub enum CommandError {
     PreferencesUnavailable,
     AudioDevice(AudioDeviceError),
     Dictation(DictationError),
+    BrowserUnavailable,
 }
 
 impl From<DomainError> for CommandError {
@@ -666,6 +667,16 @@ pub async fn select_audio_output<R: Runtime>(
         let _ = sessions.refresh_resources(&controller, &outputs, &window);
     }
     Ok(selection)
+}
+
+/// The project page is the only URL the app ever opens. The command takes no
+/// arguments, so the webview cannot steer the browser anywhere else.
+pub const PROJECT_PAGE_URL: &str = "https://github.com/EduardoViniciusJ";
+
+#[tauri::command]
+pub fn open_project_page<R: Runtime>(window: WebviewWindow<R>) -> Result<(), CommandError> {
+    authorize(window.label())?;
+    crate::native::open_in_browser(PROJECT_PAGE_URL).map_err(|_| CommandError::BrowserUnavailable)
 }
 
 #[cfg(test)]

@@ -22,4 +22,5 @@ export const backend: Backend = {
   subscribeDictation: (listener) => getCurrentWindow().listen<DictationEvent>("dictation-changed", (event) => listener(event.payload)),
   resize: (direction) => getCurrentWindow().startResizeDragging(direction),
   close: () => getCurrentWindow().close(),
+  openProjectPage: () => invoke("open_project_page"),
 };

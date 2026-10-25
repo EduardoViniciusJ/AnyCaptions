@@ -104,4 +104,5 @@ export interface Backend {
   subscribeDictation(listener: (event: DictationEvent) => void): Promise<() => void>;
   resize(direction: ResizeDirection): Promise<void>;
   close(): Promise<void>;
+  openProjectPage(): Promise<void>;
 }
