@@ -217,6 +217,10 @@ impl NemotronModel {
         for gpu in [0, -1] {
             recognizer = create_recognizer(&api, &model_path, gpu, rnnt_right_context);
             if !recognizer.is_null() {
+                if gpu < 0 {
+                    // T07.1: CPU recovery must be explicit, never silent.
+                    eprintln!("[asr] gpu unavailable, model loaded on cpu");
+                }
                 break;
             }
         }
