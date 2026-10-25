@@ -1,8 +1,8 @@
 export interface Release {
   version: string;
   releaseNotes: string;
-  windowsInstallerUrl: string;
-  windowsZipUrl: string | null;
+  hasInstaller: boolean;
+  hasZip: boolean;
   sha256: string;
   publishedAt: string;
 }

@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Geist Fallback';
+  src: local('Arial');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Fallback';
+  src: local('Arial Bold');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --primary: #FFFFFF;
   --accent: #FFFFFF;
@@ -9,7 +24,7 @@
   --text-primary: #FFFFFF;
   --text-secondary: #A3A3A3;
   --border: #272727;
-  --font: 'DM Mono', monospace, system-ui;
+  --font: 'Geist', 'Geist Fallback', Arial, sans-serif;
   --space: 8px;
   --gap: 16px;
   --card-padding: 24px;
@@ -55,9 +70,11 @@ nav a:hover, .github-link:hover, .text-link:hover { color: white; }
 .hero { position: relative; isolation: isolate; padding-block: 88px 64px; text-align: center; }
 .hero::before { content: ''; position: absolute; z-index: -1; pointer-events: none; inset: -89px -16vw 0; background: radial-gradient(ellipse at 50% 0, #ffffff08, transparent 64%); }
 .hero h1 { max-width: 100%; margin: 0 auto 24px; font-family: var(--font); font-size: 64px; font-weight: 500; line-height: 1.04; letter-spacing: 0; }
-.hero h1 span { color: var(--text-primary); }
 .hero-copy { color: var(--text-secondary); font-size: 16px; font-weight: 400; line-height: 1.6; }
+.hero-copy strong { color: var(--text-primary); font-weight: 700; }
 .hero-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: var(--gap); margin-top: 32px; }
+.button.hero-download { color: var(--text-primary); background: var(--surface); cursor: pointer; }
+.button.hero-download:hover, .button.hero-download:focus-visible { color: var(--on-primary); background: var(--primary); border-color: var(--primary); transform: translateY(-1px); }
 .section-label { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; font-size: 12px; font-weight: 600; line-height: 1.2; }
 .preview-section { padding-bottom: 64px; }
 .caption-preview { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: 0 24px 64px #00000030; }
