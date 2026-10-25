@@ -99,6 +99,22 @@ describe("overlay controls", () => {
     expect(portuguese.getAttribute("aria-disabled")).toBe("false");
   });
 
+  it("groups the settings into four titled sections with icons", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    const sections = app.root.querySelectorAll("#settings .settings-section");
+    expect(sections.length).toBe(4);
+    for (const section of sections) {
+      expect(section.querySelector("h3 svg")).not.toBeNull();
+      expect(section.querySelector("h3 span")?.textContent).not.toBe("");
+    }
+    // Cada seção guarda seus controles: aparência, idiomas, sistema, ditado.
+    expect(sections[0]?.querySelector("#font-size")).not.toBeNull();
+    expect(sections[1]?.querySelector("#source-language")).not.toBeNull();
+    expect(sections[2]?.querySelector("#audio-output")).not.toBeNull();
+    expect(sections[3]?.querySelector("#dictation-enabled")).not.toBeNull();
+  });
+
   it("pins the caption source language through Rust and reflects the snapshot", async () => {
     const app = setup();
     await app.overlay.ready;
