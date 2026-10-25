@@ -53,8 +53,14 @@ export interface DictationSettings {
   shortcut: string;
   activation: DictationActivation;
   soundCue: boolean;
+  /** Mostrar o texto reconhecido no indicador; desligado, só ponto e tempo. */
+  showLiveText: boolean;
+  /** Aplicar o teto de duração; desligado, a gravação não é cortada. */
+  limitDuration: boolean;
   maxDurationSecs: number;
   inputId: string | null;
+  /** Idioma fixo do reconhecimento (BCP-47); null = detecção automática. */
+  language: string | null;
 }
 
 export interface DictationSnapshot {
@@ -70,6 +76,7 @@ export interface DictationEvent {
   error: string | null;
   soundCue: boolean;
   activation: DictationActivation;
+  showLiveText: boolean;
   maxDurationSecs: number;
 }
 

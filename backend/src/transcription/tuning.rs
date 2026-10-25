@@ -17,7 +17,10 @@ pub struct RecognizerTuning {
     pub rnnt_right_context: Option<i32>,
 }
 
-/// Transcription modes (Auto): library defaults, deliberately untouched.
+/// Transcription modes (Auto) and dictation: library defaults, deliberately
+/// untouched. The maximum right context (`Some(-1)` → right=3, 320 ms steps)
+/// was tried on 2026-10-25 and reverted: the user preferred the speed of the
+/// low-latency preset (right=1, 160 ms steps).
 pub const TRANSCRIPTION: RecognizerTuning = RecognizerTuning {
     stop_history_eou_ms: 0,
     rnnt_right_context: None,

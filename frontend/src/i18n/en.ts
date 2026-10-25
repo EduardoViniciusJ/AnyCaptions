@@ -71,6 +71,9 @@ export const en: Messages = {
   dictationHold: "Hold to talk",
   dictationToggle: "Toggle (tap to start and stop)",
   dictationSound: "Sound cue while recording",
+  dictationLanguage: "Dictation language",
+  dictationShowText: "Show recognized text",
+  dictationLimitDuration: "Limit duration",
   dictationMaxDuration: "Maximum duration (s)",
   dictationModelMissing: "Transcription model unavailable; dictation will not work.",
   dictationListening: "Listening… release to send",
@@ -83,4 +86,5 @@ export const en: Messages = {
   errDictationShortcutFormat: "Use F6–F24 or Ctrl/Alt + key (e.g. Ctrl+Space).",
   errDictationShortcutConflict: "That shortcut is already used by the window lock.",
   errDictationDuration: "The maximum duration must be between 5 and 300 seconds.",
+  errDictationLanguage: "Invalid dictation language. Pick an option from the list.",
 };

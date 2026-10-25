@@ -70,6 +70,9 @@ export const ptBR = {
   dictationHold: "Segurar para falar",
   dictationToggle: "Alternar (toque liga e desliga)",
   dictationSound: "Sinal sonoro ao gravar",
+  dictationLanguage: "Idioma do ditado",
+  dictationShowText: "Mostrar texto reconhecido",
+  dictationLimitDuration: "Limitar duração",
   dictationMaxDuration: "Duração máxima (s)",
   dictationModelMissing: "Modelo de transcrição indisponível; o ditado não funcionará.",
   dictationListening: "Ouvindo… solte para enviar",
@@ -82,4 +85,5 @@ export const ptBR = {
   errDictationShortcutFormat: "Use F6–F24 ou Ctrl/Alt + tecla (ex.: Ctrl+Space).",
   errDictationShortcutConflict: "Esse atalho já está em uso pelo bloqueio da janela.",
   errDictationDuration: "A duração máxima deve ficar entre 5 e 300 segundos.",
+  errDictationLanguage: "Idioma do ditado inválido. Escolha uma opção da lista.",
 } as const;

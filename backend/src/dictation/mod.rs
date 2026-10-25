@@ -15,6 +15,7 @@ pub enum DictationError {
     InvalidShortcut,
     ShortcutConflict,
     InvalidDuration,
+    InvalidLanguage,
 }
 
 /// Como o atalho controla a gravação.
@@ -31,6 +32,21 @@ pub enum ActivationMode {
 pub const MIN_MAX_DURATION_SECS: u16 = 5;
 pub const MAX_MAX_DURATION_SECS: u16 = 300;
 
+/// Idiomas aceitos para fixar o reconhecimento do ditado: os 83 idiomas do
+/// dicionário de prompts dentro do GGUF do Nemotron (metadado
+/// `asr.rnnt.prompt_dictionary`; "auto" é o prompt de detecção). Uma tag
+/// canônica por idioma, espelhada em `DICTATION_LANGUAGES` do frontend.
+pub const DICTATION_LANGUAGES: &[&str] = &[
+    "en-US", "en-GB", "es-ES", "es-US", "zh-CN", "zh-TW", "hi", "ar", "fr", "de", "ja-JP", "ru",
+    "pt-BR", "pt-PT", "ko", "it", "nl", "pl", "tr", "uk", "ro", "el", "cs", "hu", "sv", "da", "fi",
+    "no", "sk", "hr", "bg", "lt", "th-TH", "vi-VN", "id-ID", "ms-MY", "bn-IN", "ur-PK", "fa-IR",
+    "ta-IN", "te-IN", "mr-IN", "gu-IN", "kn-IN", "ml-IN", "si-LK", "ne-NP", "km-KH", "sw-KE",
+    "am-ET", "ha-NG", "zu-ZA", "yo-NG", "ig-NG", "af-ZA", "rw-RW", "so-SO", "ny-MW", "ln-CD",
+    "or-KE", "et", "lv", "sl", "he-IL", "ku-TR", "az-AZ", "ka-GE", "hy-AM", "uz-UZ", "tg-TJ",
+    "ky-KG", "qu-PE", "ay-BO", "gn-PY", "nah-MX", "mi-NZ", "haw-US", "sm-WS", "to-TO", "fr-CA",
+    "mt-MT", "nb", "nn",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DictationSettings {
@@ -38,10 +54,26 @@ pub struct DictationSettings {
     pub shortcut: String,
     pub activation: ActivationMode,
     pub sound_cue: bool,
+    /// Mostrar o texto reconhecido no indicador. Desligado, o indicador fica
+    /// compacto (ponto vermelho + tempo); a indicação visual nunca some.
+    #[serde(default = "default_true")]
+    pub show_live_text: bool,
+    /// Aplicar o teto de duração. Desligado, a gravação só termina por ação
+    /// do usuário (soltar/alternar/Esc) ou erro.
+    #[serde(default = "default_true")]
+    pub limit_duration: bool,
     /// Teto de gravação em segundos: proteção contra o modo alternar
     /// esquecido ou uma tecla presa no modo segurar.
     pub max_duration_secs: u16,
     pub input_id: Option<String>,
+    /// Idioma fixo do reconhecimento (`None` = detecção automática). Fixar o
+    /// idioma condiciona o decodificador e melhora a precisão na fala nele.
+    #[serde(default)]
+    pub language: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for DictationSettings {
@@ -51,8 +83,11 @@ impl Default for DictationSettings {
             shortcut: "Ctrl+Space".into(),
             activation: ActivationMode::Hold,
             sound_cue: true,
+            show_live_text: true,
+            limit_duration: true,
             max_duration_secs: 60,
             input_id: None,
+            language: None,
         }
     }
 }
@@ -74,6 +109,13 @@ impl DictationSettings {
             .is_some_and(|id| id.is_empty() || id.len() > 512)
         {
             return Err(DictationError::InvalidShortcut);
+        }
+        if self
+            .language
+            .as_ref()
+            .is_some_and(|code| !DICTATION_LANGUAGES.contains(&code.as_str()))
+        {
+            return Err(DictationError::InvalidLanguage);
         }
         Ok(())
     }
@@ -210,22 +252,62 @@ mod tests {
     }
 
     #[test]
+    fn only_model_dictionary_language_codes_are_accepted() {
+        assert_eq!(DICTATION_LANGUAGES.len(), 83);
+        let mut settings = DictationSettings::default();
+        for language in [
+            None,
+            Some("pt-BR"),
+            Some("en-US"),
+            Some("ja-JP"),
+            Some("nn"),
+        ] {
+            settings.language = language.map(str::to_owned);
+            assert_eq!(settings.validate(OVERLAY), Ok(()), "{language:?}");
+        }
+        // Aliases e caixa divergente ficam de fora: o frontend envia apenas as
+        // tags canônicas e um código fora do dicionário filtraria toda a fala.
+        for language in ["pt", "pt-br", "es", "auto", "xx-XX", ""] {
+            settings.language = Some(language.to_owned());
+            assert_eq!(
+                settings.validate(OVERLAY),
+                Err(DictationError::InvalidLanguage),
+                "{language}"
+            );
+        }
+    }
+
+    #[test]
     fn wire_format_round_trips_and_rejects_unknown_fields() {
         let settings = DictationSettings {
             enabled: true,
             shortcut: "F9".into(),
             activation: ActivationMode::Toggle,
             sound_cue: false,
+            show_live_text: false,
+            limit_duration: false,
             max_duration_secs: 120,
             input_id: Some("mic-1".into()),
+            language: Some("pt-BR".into()),
         };
         let wire = serde_json::to_value(&settings).unwrap();
         assert_eq!(wire["activation"], "toggle");
         assert_eq!(wire["maxDurationSecs"], 120);
+        assert_eq!(wire["showLiveText"], false);
+        assert_eq!(wire["limitDuration"], false);
         assert_eq!(
             serde_json::from_value::<DictationSettings>(wire).unwrap(),
             settings
         );
+        // Preferências salvas antes destes campos continuam válidas: os dois
+        // assumem o padrão ligado.
+        let old_wire = serde_json::json!({
+            "enabled": true, "shortcut": "F9", "activation": "hold",
+            "soundCue": true, "maxDurationSecs": 60, "inputId": null,
+        });
+        let upgraded = serde_json::from_value::<DictationSettings>(old_wire).unwrap();
+        assert!(upgraded.show_live_text);
+        assert!(upgraded.limit_duration);
         assert!(
             serde_json::from_value::<DictationSettings>(serde_json::json!({
                 "enabled": true, "shortcut": "F9", "activation": "hold",

@@ -24,7 +24,7 @@ export class DictationIndicator {
     if (event.phase === "recording" && this.lastPhase === "idle") {
       this.startedAt = Date.now();
       if (event.soundCue) this.beep(880);
-      if (event.activation === "toggle") this.startTimer();
+      this.startTimer();
     }
     if (event.phase === "idle" && this.lastPhase !== "idle" && event.soundCue) {
       this.beep(440);
@@ -38,12 +38,18 @@ export class DictationIndicator {
     }
     this.root.hidden = false;
     this.root.dataset.phase = event.phase;
+    // Compacto: o usuário pediu para não ver a transcrição; ficam o ponto
+    // vermelho (indicação obrigatória de microfone aberto) e o tempo.
+    this.root.dataset.compact = event.showLiveText ? "false" : "true";
     const hint = event.phase === "finalizing"
       ? t("dictationFinalizing")
       : event.activation === "hold" ? t("dictationListening") : t("dictationListeningToggle");
     // Sempre textContent: o texto vem do reconhecedor, nunca é HTML.
-    this.text.textContent = event.text ? event.text : hint;
+    this.text.textContent = event.showLiveText ? (event.text ? event.text : hint) : "";
     this.text.title = hint;
+    // Frases longas quebram linha; passado o teto de linhas, o fim (as
+    // palavras mais novas) permanece visível.
+    this.text.scrollTop = this.text.scrollHeight;
   }
 
   private startTimer() {

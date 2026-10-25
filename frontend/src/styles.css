@@ -196,9 +196,13 @@ select { padding: 0 6px; }
 }
 .dictation-text {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  /* Até 4 linhas; o JS mantém o fim do texto visível via scrollTop. */
+  max-height: calc(4 * 1.45em);
+  line-height: 1.45;
 }
+.dictation-indicator[data-compact="true"] .dictation-text { display: none; }
+.dictation-indicator[data-compact="true"] { gap: 6px; }
 .dictation-elapsed { color: #c4c4c4; font-variant-numeric: tabular-nums; }
 @keyframes dictation-pulse {
   0%, 100% { opacity: 1; }

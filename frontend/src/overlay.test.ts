@@ -38,8 +38,11 @@ function setup(initial = snapshot()) {
         shortcut: "Ctrl+Space",
         activation: "hold",
         soundCue: true,
+        showLiveText: true,
+        limitDuration: true,
         maxDurationSecs: 60,
         inputId: null,
+        language: null,
       },
       available: true,
       phase: "idle",
@@ -92,6 +95,21 @@ describe("overlay controls", () => {
     expect(portuguese.getAttribute("aria-disabled")).toBe("true");
     app.emit(snapshot({ revision: 1, resources: { audioCapture: true, transcription: true, translation: true } }));
     expect(portuguese.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("lists every dictation language of the model with a flag and applies the choice", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    const items = app.root.querySelectorAll("#dictation-language-menu li");
+    expect(items.length).toBe(84); // automático + 83 idiomas do dicionário do modelo
+    expect(app.get("#dictation-language-label").textContent).toBe("Automático");
+    const portuguese = app.get<HTMLLIElement>('#dictation-language-menu li[data-value="pt-BR"]');
+    expect(portuguese.querySelector("img.flag")).not.toBeNull();
+    const japanese = app.get<HTMLLIElement>('#dictation-language-menu li[data-value="ja-JP"]');
+    expect(japanese.querySelector("img.flag")).not.toBeNull();
+    portuguese.click();
+    expect(app.get("#dictation-language-label").textContent).toBe("Português (Brasil)");
+    expect(portuguese.getAttribute("aria-selected")).toBe("true");
   });
 
   it("offers only the chosen engine's targets and switches engines through Rust", async () => {

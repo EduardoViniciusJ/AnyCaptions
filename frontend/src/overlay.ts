@@ -1,4 +1,10 @@
-import { TRANSLATION_ENGINES, TRANSLATION_TARGETS, engineServes, flagUrl } from "./languages";
+import {
+  DICTATION_LANGUAGES,
+  TRANSLATION_ENGINES,
+  TRANSLATION_TARGETS,
+  engineServes,
+  flagUrl,
+} from "./languages";
 import { UI_LANGUAGES, localeTag, setLocale, t, type MessageKey } from "./i18n";
 import type {
   AppSnapshot,
@@ -49,6 +55,7 @@ function errorMessage(error: unknown): string {
       case "invalid-shortcut": return t("errDictationShortcutFormat");
       case "shortcut-conflict": return t("errDictationShortcutConflict");
       case "invalid-duration": return t("errDictationDuration");
+      case "invalid-language": return t("errDictationLanguage");
       default: return t("errDictation");
     }
   }
@@ -144,6 +151,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             </div>
           </div>
           <div class="setting-row">
+            <label for="dictation-language" data-i18n="dictationLanguage">Idioma do ditado</label>
+            <div class="language-picker">
+              <button id="dictation-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="dictation-language-label"></span></button>
+              <ul id="dictation-language-menu" role="listbox" data-i18n-aria="dictationLanguage" aria-label="Idioma do ditado" hidden></ul>
+            </div>
+          </div>
+          <div class="setting-row">
             <label for="dictation-activation" data-i18n="dictationActivation">Modo de ativação</label>
             <select id="dictation-activation">
               <option value="hold" data-i18n="dictationHold">Segurar para falar</option>
@@ -153,6 +167,14 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
           <div class="setting-row">
             <label for="dictation-sound" data-i18n="dictationSound">Sinal sonoro ao gravar</label>
             <input id="dictation-sound" type="checkbox" />
+          </div>
+          <div class="setting-row">
+            <label for="dictation-show-text" data-i18n="dictationShowText">Mostrar texto reconhecido</label>
+            <input id="dictation-show-text" type="checkbox" />
+          </div>
+          <div class="setting-row">
+            <label for="dictation-limit" data-i18n="dictationLimitDuration">Limitar duração</label>
+            <input id="dictation-limit" type="checkbox" />
           </div>
           <div class="setting-row">
             <label for="dictation-duration" data-i18n="dictationMaxDuration">Duração máxima (s)</label>
@@ -276,6 +298,73 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     }
   };
 
+  // Seletor do idioma do ditado (configurações): os 83 idiomas do dicionário
+  // de prompts do modelo, com as mesmas bandeiras dos demais seletores.
+  // "" = detecção automática (ícone de globo).
+  const dictationLanguage = get<HTMLButtonElement>("#dictation-language");
+  const dictationLanguageLabel = get<HTMLElement>("#dictation-language-label");
+  const dictationLanguageMenu = get<HTMLUListElement>("#dictation-language-menu");
+  let dictationLanguageValue = "";
+  {
+    const auto = document.createElement("li");
+    auto.role = "option";
+    auto.dataset.value = "";
+    const globe = document.createElement("span");
+    globe.className = "flag flag-globe";
+    globe.innerHTML = icons.globe;
+    auto.append(globe);
+    const text = document.createElement("span");
+    text.textContent = t("autoMode");
+    auto.append(text);
+    dictationLanguageMenu.append(auto);
+  }
+  for (const option of DICTATION_LANGUAGES) {
+    const item = document.createElement("li");
+    item.role = "option";
+    item.dataset.value = option.tag;
+    item.title = option.name;
+    const flag = flagUrl(option.country);
+    if (flag) {
+      const image = document.createElement("img");
+      image.className = "flag";
+      image.src = flag;
+      image.alt = "";
+      item.append(image);
+    }
+    const text = document.createElement("span");
+    text.textContent = option.name;
+    item.append(text);
+    dictationLanguageMenu.append(item);
+  }
+  const dictationLanguageItems = [
+    ...dictationLanguageMenu.querySelectorAll<HTMLLIElement>("li"),
+  ];
+  const toggleDictationLanguageMenu = (open: boolean) => {
+    dictationLanguageMenu.hidden = !open;
+    dictationLanguage.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const selected = dictationLanguageItems.find(
+        (item) => item.dataset.value === dictationLanguageValue,
+      );
+      // jsdom (testes) não implementa scrollIntoView.
+      selected?.scrollIntoView?.({ block: "nearest" });
+    }
+  };
+  const renderDictationLanguageButton = () => {
+    const item =
+      dictationLanguageItems.find((entry) => entry.dataset.value === dictationLanguageValue)
+      ?? dictationLanguageItems[0];
+    if (!item) return;
+    dictationLanguageLabel.textContent = item.querySelector("span:not(.flag)")?.textContent ?? "";
+    dictationLanguage.querySelector(".flag")?.remove();
+    const flag = item.querySelector(".flag");
+    if (flag) dictationLanguage.prepend(flag.cloneNode(true));
+    for (const entry of dictationLanguageItems) {
+      entry.setAttribute("aria-selected", String(entry === item));
+    }
+  };
+  renderDictationLanguageButton();
+
   // Seletor do mecanismo de tradução (configurações); o menu de idiomas
   // mostra apenas os alvos que o mecanismo escolhido serve.
   const translationEngine = get<HTMLSelectElement>("#translation-engine");
@@ -312,6 +401,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
         if (target) text.textContent = `${t("translateTo")} ${target.short}`;
       }
     }
+    const dictationAuto = dictationLanguageItems[0]?.querySelector("span:not(.flag)");
+    if (dictationAuto) dictationAuto.textContent = t("autoMode");
     renderEngineOptions();
     renderUiLanguageButton();
     renderDictation();
@@ -341,6 +432,8 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   const dictationShortcut = get<HTMLInputElement>("#dictation-shortcut");
   const dictationActivation = get<HTMLSelectElement>("#dictation-activation");
   const dictationSound = get<HTMLInputElement>("#dictation-sound");
+  const dictationShowText = get<HTMLInputElement>("#dictation-show-text");
+  const dictationLimit = get<HTMLInputElement>("#dictation-limit");
   const dictationDuration = get<HTMLInputElement>("#dictation-duration");
   const dictationStatus = get<HTMLElement>("#dictation-status");
   const listeners = new AbortController();
@@ -371,7 +464,16 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (document.activeElement !== dictationShortcut) dictationShortcut.value = settings.shortcut;
     dictationActivation.value = settings.activation;
     dictationSound.checked = settings.soundCue;
+    dictationLanguageValue = settings.language ?? "";
+    // Idioma salvo que saiu da lista volta à detecção automática na exibição.
+    if (!dictationLanguageItems.some((item) => item.dataset.value === dictationLanguageValue)) {
+      dictationLanguageValue = "";
+    }
+    renderDictationLanguageButton();
+    dictationShowText.checked = settings.showLiveText;
+    dictationLimit.checked = settings.limitDuration;
     dictationDuration.value = String(settings.maxDurationSecs);
+    dictationDuration.disabled = !settings.limitDuration;
     dictationMic.replaceChildren();
     dictationMic.add(new Option(t("dictationDefaultMic"), ""));
     for (const device of inputs.devices) dictationMic.add(new Option(device.name, device.id));
@@ -402,8 +504,11 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       shortcut: dictationShortcut.value.trim(),
       activation: dictationActivation.value as DictationActivation,
       soundCue: dictationSound.checked,
+      showLiveText: dictationShowText.checked,
+      limitDuration: dictationLimit.checked,
       maxDurationSecs: Number(dictationDuration.value),
       inputId: dictationMic.value || null,
+      language: dictationLanguageValue || null,
     };
   }
 
@@ -412,8 +517,11 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       && a.shortcut === b.shortcut
       && a.activation === b.activation
       && a.soundCue === b.soundCue
+      && a.showLiveText === b.showLiveText
+      && a.limitDuration === b.limitDuration
       && a.maxDurationSecs === b.maxDurationSecs
-      && (a.inputId ?? "") === (b.inputId ?? "");
+      && (a.inputId ?? "") === (b.inputId ?? "")
+      && (a.language ?? "") === (b.language ?? "");
   }
 
   function setAppearanceInputs(appearance: Appearance) {
@@ -616,6 +724,18 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     if (engine === state.translationEngine) return;
     void perform(() => backend.setTranslationEngine(engine));
   }, options);
+  dictationLanguage.addEventListener(
+    "click",
+    () => toggleDictationLanguageMenu(Boolean(dictationLanguageMenu.hidden)),
+    options,
+  );
+  dictationLanguageMenu.addEventListener("click", (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLLIElement>("li[data-value]");
+    if (!item) return;
+    toggleDictationLanguageMenu(false);
+    dictationLanguageValue = item.dataset.value ?? "";
+    renderDictationLanguageButton();
+  }, options);
   uiLanguage.addEventListener("click", () => toggleUiLanguageMenu(Boolean(uiLanguageMenu.hidden)), options);
   uiLanguageMenu.addEventListener("click", (event) => {
     const item = (event.target as HTMLElement).closest<HTMLLIElement>("li[data-value]");
@@ -629,11 +749,13 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     const insidePicker = (event.target as HTMLElement).closest(".language-picker");
     if (!languageMenu.hidden && !insidePicker) toggleLanguageMenu(false);
     if (!uiLanguageMenu.hidden && !insidePicker) toggleUiLanguageMenu(false);
+    if (!dictationLanguageMenu.hidden && !insidePicker) toggleDictationLanguageMenu(false);
   }, options);
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!languageMenu.hidden) toggleLanguageMenu(false);
     if (!uiLanguageMenu.hidden) toggleUiLanguageMenu(false);
+    if (!dictationLanguageMenu.hidden) toggleDictationLanguageMenu(false);
   }, options);
   lock.addEventListener("click", () => void perform(() => backend.setWindowMode("locked")), options);
   saveSettings.addEventListener("click", () => {
@@ -668,6 +790,9 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     void backend.selectAudioOutput(id).then((selection) => { outputs = selection; })
       .catch((error) => { showError(errorMessage(error)); reload = true; })
       .finally(() => { outputBusy = false; renderOutputs(); if (reload) void loadOutputs(); });
+  }, options);
+  dictationLimit.addEventListener("change", () => {
+    dictationDuration.disabled = !dictationLimit.checked;
   }, options);
   settingsToggle.addEventListener("click", () => {
     const open = settings.hidden !== false;

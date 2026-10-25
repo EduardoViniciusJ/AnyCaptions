@@ -71,6 +71,9 @@ export const zhCN: Messages = {
   dictationHold: "按住说话",
   dictationToggle: "切换（按一下开始，再按结束）",
   dictationSound: "录音提示音",
+  dictationLanguage: "听写语言",
+  dictationShowText: "显示识别文本",
+  dictationLimitDuration: "限制时长",
   dictationMaxDuration: "最长时长（秒）",
   dictationModelMissing: "转写模型不可用，听写无法工作。",
   dictationListening: "正在聆听……松开发送",
@@ -83,4 +86,5 @@ export const zhCN: Messages = {
   errDictationShortcutFormat: "使用 F6–F24 或 Ctrl/Alt + 按键（如 Ctrl+Space）。",
   errDictationShortcutConflict: "该快捷键已被窗口锁定功能占用。",
   errDictationDuration: "最长时长必须在 5 到 300 秒之间。",
+  errDictationLanguage: "听写语言无效。请从列表中选择。",
 };
