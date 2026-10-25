@@ -33,6 +33,12 @@ const icons = {
   // Globo: detecção automática de idioma.
   globe:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3Z"/></svg>',
+  // Cabeçalhos das seções de configurações.
+  captions:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4m3 0h3M7 11h2m3 0h5"/></svg>',
+  speaker:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
 };
 
 function errorMessage(error: unknown): string {
@@ -90,111 +96,124 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
         </div>
         <section id="settings" class="settings" data-i18n-aria="settingsAria" aria-label="Configurações de legendas" hidden>
           <h2 data-i18n="settings">Configurações</h2>
-          <div class="appearance-preview" data-i18n-aria="previewAria" aria-label="Prévia da legenda">
-            <span class="appearance-preview-label" data-i18n="preview">Prévia</span>
-            <p id="appearance-preview" class="caption appearance-example"><span data-i18n="previewFinal">Texto </span><span class="caption-partial" data-i18n="previewPartial">fica claro</span></p>
+          <div class="settings-grid">
+            <section class="settings-section">
+              <h3>${icons.captions}<span data-i18n="sectionCaptions">Legendas</span></h3>
+              <div class="appearance-preview" data-i18n-aria="previewAria" aria-label="Prévia da legenda">
+                <span class="appearance-preview-label" data-i18n="preview">Prévia</span>
+                <p id="appearance-preview" class="caption appearance-example"><span data-i18n="previewFinal">Texto </span><span class="caption-partial" data-i18n="previewPartial">fica claro</span></p>
+              </div>
+              <div class="setting-row">
+                <label for="font-size"><span data-i18n="fontSize">Tamanho</span> <output id="font-value" for="font-size">32 px</output></label>
+                <input id="font-size" type="range" min="16" max="80" value="32" step="1" disabled />
+              </div>
+              <div class="setting-row">
+                <label for="font-color" data-i18n="confirmedText">Texto confirmado</label>
+                <div class="color-control">
+                  <input id="font-color" type="color" value="#ffffff" data-i18n-aria="pickConfirmedColor" aria-label="Escolher cor do texto confirmado" disabled />
+                  <input id="font-color-value" type="text" value="#FFFFFF" maxlength="7" spellcheck="false" data-i18n-aria="confirmedColorHex" aria-label="Cor hexadecimal do texto confirmado" disabled />
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="partial-color" data-i18n="recentWords">Palavras recentes</label>
+                <div class="color-control">
+                  <input id="partial-color" type="color" value="#b8b8b8" data-i18n-aria="pickRecentColor" aria-label="Escolher cor das palavras recentes" disabled />
+                  <input id="partial-color-value" type="text" value="#B8B8B8" maxlength="7" spellcheck="false" data-i18n-aria="recentColorHex" aria-label="Cor hexadecimal das palavras recentes" disabled />
+                </div>
+              </div>
+            </section>
+            <section class="settings-section">
+              <h3>${icons.globe}<span data-i18n="sectionLanguages">Idiomas e tradução</span></h3>
+              <div class="setting-row">
+                <label for="ui-language" data-i18n="uiLanguage">Idioma da interface</label>
+                <div class="language-picker">
+                  <button id="ui-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="ui-language-label"></span></button>
+                  <ul id="ui-language-menu" role="listbox" data-i18n-aria="uiLanguage" aria-label="Idioma da interface" hidden></ul>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="source-language" data-i18n="sourceLanguage">Idioma falado (origem)</label>
+                <div class="language-picker">
+                  <button id="source-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="source-language-label"></span></button>
+                  <ul id="source-language-menu" role="listbox" data-i18n-aria="sourceLanguage" aria-label="Idioma falado (origem)" hidden></ul>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="translation-engine" data-i18n="translationEngine">Modelo de tradução</label>
+                <select id="translation-engine"></select>
+              </div>
+            </section>
+            <section class="settings-section">
+              <h3>${icons.speaker}<span data-i18n="sectionSystem">Áudio e atalhos</span></h3>
+              <div class="setting-row">
+                <label for="audio-output" data-i18n="audioOutput">Saída de áudio</label>
+                <select id="audio-output" disabled><option>Nenhuma saída disponível</option></select>
+              </div>
+              <p id="audio-output-status" class="muted" hidden></p>
+              <div class="setting-row">
+                <label for="shortcut" data-i18n="lockShortcut">Atalho de bloqueio</label>
+                <div class="setting-actions">
+                  <input id="shortcut" type="text" value="Ctrl+Alt+L" aria-describedby="shortcut-status" maxlength="16" spellcheck="false" />
+                </div>
+              </div>
+              <p id="shortcut-status" class="muted" hidden></p>
+            </section>
+            <section class="settings-section">
+              <h3>${icons.mic}<span data-i18n="dictation">Ditado por voz</span></h3>
+              <div class="setting-row">
+                <label for="dictation-enabled" data-i18n="dictationEnable">Ativar ditado</label>
+                <input id="dictation-enabled" type="checkbox" />
+              </div>
+              <div class="setting-row">
+                <label for="dictation-mic" data-i18n="dictationMic">Microfone</label>
+                <select id="dictation-mic"></select>
+              </div>
+              <div class="setting-row">
+                <label for="dictation-shortcut" data-i18n="dictationShortcut">Atalho do ditado</label>
+                <div class="setting-actions">
+                  <input id="dictation-shortcut" type="text" value="Ctrl+Space" maxlength="24" spellcheck="false" />
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="dictation-language" data-i18n="dictationLanguage">Idioma do ditado</label>
+                <div class="language-picker">
+                  <button id="dictation-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="dictation-language-label"></span></button>
+                  <ul id="dictation-language-menu" role="listbox" data-i18n-aria="dictationLanguage" aria-label="Idioma do ditado" hidden></ul>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="dictation-translate" data-i18n="dictationTranslate">Traduzir ditado para</label>
+                <div class="language-picker">
+                  <button id="dictation-translate" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="dictation-translate-label"></span></button>
+                  <ul id="dictation-translate-menu" role="listbox" data-i18n-aria="dictationTranslate" aria-label="Traduzir ditado para" hidden></ul>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="dictation-activation" data-i18n="dictationActivation">Modo de ativação</label>
+                <select id="dictation-activation">
+                  <option value="hold" data-i18n="dictationHold">Segurar para falar</option>
+                  <option value="toggle" data-i18n="dictationToggle">Alternar (toque liga e desliga)</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label for="dictation-sound" data-i18n="dictationSound">Sinal sonoro ao gravar</label>
+                <input id="dictation-sound" type="checkbox" />
+              </div>
+              <div class="setting-row">
+                <label for="dictation-show-text" data-i18n="dictationShowText">Mostrar texto reconhecido</label>
+                <input id="dictation-show-text" type="checkbox" />
+              </div>
+              <div class="setting-row">
+                <label for="dictation-limit" data-i18n="dictationLimitDuration">Limitar duração</label>
+                <input id="dictation-limit" type="checkbox" />
+              </div>
+              <div class="setting-row">
+                <label for="dictation-duration" data-i18n="dictationMaxDuration">Duração máxima (s)</label>
+                <input id="dictation-duration" type="number" min="5" max="300" step="5" value="60" />
+              </div>
+              <p id="dictation-status" class="muted" hidden></p>
+            </section>
           </div>
-          <div class="setting-row">
-            <label for="font-size"><span data-i18n="fontSize">Tamanho</span> <output id="font-value" for="font-size">32 px</output></label>
-            <input id="font-size" type="range" min="16" max="80" value="32" step="1" disabled />
-          </div>
-          <div class="setting-row">
-            <label for="font-color" data-i18n="confirmedText">Texto confirmado</label>
-            <div class="color-control">
-              <input id="font-color" type="color" value="#ffffff" data-i18n-aria="pickConfirmedColor" aria-label="Escolher cor do texto confirmado" disabled />
-              <input id="font-color-value" type="text" value="#FFFFFF" maxlength="7" spellcheck="false" data-i18n-aria="confirmedColorHex" aria-label="Cor hexadecimal do texto confirmado" disabled />
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="partial-color" data-i18n="recentWords">Palavras recentes</label>
-            <div class="color-control">
-              <input id="partial-color" type="color" value="#b8b8b8" data-i18n-aria="pickRecentColor" aria-label="Escolher cor das palavras recentes" disabled />
-              <input id="partial-color-value" type="text" value="#B8B8B8" maxlength="7" spellcheck="false" data-i18n-aria="recentColorHex" aria-label="Cor hexadecimal das palavras recentes" disabled />
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="ui-language" data-i18n="uiLanguage">Idioma da interface</label>
-            <div class="language-picker">
-              <button id="ui-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="ui-language-label"></span></button>
-              <ul id="ui-language-menu" role="listbox" data-i18n-aria="uiLanguage" aria-label="Idioma da interface" hidden></ul>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="source-language" data-i18n="sourceLanguage">Idioma falado (origem)</label>
-            <div class="language-picker">
-              <button id="source-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="source-language-label"></span></button>
-              <ul id="source-language-menu" role="listbox" data-i18n-aria="sourceLanguage" aria-label="Idioma falado (origem)" hidden></ul>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="translation-engine" data-i18n="translationEngine">Modelo de tradução</label>
-            <select id="translation-engine"></select>
-          </div>
-          <div class="setting-row">
-            <label for="audio-output" data-i18n="audioOutput">Saída de áudio</label>
-            <select id="audio-output" disabled><option>Nenhuma saída disponível</option></select>
-          </div>
-          <p id="audio-output-status" class="muted" hidden></p>
-          <div class="setting-row">
-            <label for="shortcut" data-i18n="lockShortcut">Atalho de bloqueio</label>
-            <div class="setting-actions">
-              <input id="shortcut" type="text" value="Ctrl+Alt+L" aria-describedby="shortcut-status" maxlength="16" spellcheck="false" />
-            </div>
-          </div>
-          <p id="shortcut-status" class="muted" hidden></p>
-          <h3 class="settings-subtitle" data-i18n="dictation">Ditado por voz</h3>
-          <div class="setting-row">
-            <label for="dictation-enabled" data-i18n="dictationEnable">Ativar ditado</label>
-            <input id="dictation-enabled" type="checkbox" />
-          </div>
-          <div class="setting-row">
-            <label for="dictation-mic" data-i18n="dictationMic">Microfone</label>
-            <select id="dictation-mic"></select>
-          </div>
-          <div class="setting-row">
-            <label for="dictation-shortcut" data-i18n="dictationShortcut">Atalho do ditado</label>
-            <div class="setting-actions">
-              <input id="dictation-shortcut" type="text" value="Ctrl+Space" maxlength="24" spellcheck="false" />
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="dictation-language" data-i18n="dictationLanguage">Idioma do ditado</label>
-            <div class="language-picker">
-              <button id="dictation-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="dictation-language-label"></span></button>
-              <ul id="dictation-language-menu" role="listbox" data-i18n-aria="dictationLanguage" aria-label="Idioma do ditado" hidden></ul>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="dictation-translate" data-i18n="dictationTranslate">Traduzir ditado para</label>
-            <div class="language-picker">
-              <button id="dictation-translate" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="dictation-translate-label"></span></button>
-              <ul id="dictation-translate-menu" role="listbox" data-i18n-aria="dictationTranslate" aria-label="Traduzir ditado para" hidden></ul>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label for="dictation-activation" data-i18n="dictationActivation">Modo de ativação</label>
-            <select id="dictation-activation">
-              <option value="hold" data-i18n="dictationHold">Segurar para falar</option>
-              <option value="toggle" data-i18n="dictationToggle">Alternar (toque liga e desliga)</option>
-            </select>
-          </div>
-          <div class="setting-row">
-            <label for="dictation-sound" data-i18n="dictationSound">Sinal sonoro ao gravar</label>
-            <input id="dictation-sound" type="checkbox" />
-          </div>
-          <div class="setting-row">
-            <label for="dictation-show-text" data-i18n="dictationShowText">Mostrar texto reconhecido</label>
-            <input id="dictation-show-text" type="checkbox" />
-          </div>
-          <div class="setting-row">
-            <label for="dictation-limit" data-i18n="dictationLimitDuration">Limitar duração</label>
-            <input id="dictation-limit" type="checkbox" />
-          </div>
-          <div class="setting-row">
-            <label for="dictation-duration" data-i18n="dictationMaxDuration">Duração máxima (s)</label>
-            <input id="dictation-duration" type="number" min="5" max="300" step="5" value="60" />
-          </div>
-          <p id="dictation-status" class="muted" hidden></p>
           <div class="settings-footer">
             <button id="reset-appearance" class="secondary-button" type="button" data-i18n="restoreDefault">Restaurar padrão</button>
             <button id="save-settings" type="button" data-i18n="save">Salvar</button>
