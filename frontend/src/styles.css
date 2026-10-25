@@ -111,8 +111,10 @@ select { padding: 0 6px; }
 .setting-row input[type="range"] { width: 100%; margin: 0; accent-color: #60a5fa; }
 .setting-row output { color: #bfbfbf; padding-left: 8px; font-variant-numeric: tabular-nums; }
 .setting-row select { min-width: 0; width: 100%; max-width: 100%; text-overflow: ellipsis; }
-.settings-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; }
+.settings-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 12px; }
 .settings-footer button { min-width: 88px; }
+.settings-credit { margin-right: auto; min-width: 0; padding: 0; border: none; background: none; color: #8a8a8a; font-size: 11px; cursor: pointer; }
+.settings-footer button.settings-credit { min-width: 0; }
 .secondary-button { background: transparent; }
 .muted { color: #c4c4c4; font-size: 11px; }
 .error { flex: 0 0 auto; color: #f87171; font-size: 11px; line-height: 1.4; margin: 0; padding: 0 22px 8px 14px; }

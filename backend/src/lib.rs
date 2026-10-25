@@ -29,6 +29,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::select_audio_output,
             ipc::get_dictation,
             ipc::set_dictation,
+            ipc::open_project_page,
         ])
 }
 

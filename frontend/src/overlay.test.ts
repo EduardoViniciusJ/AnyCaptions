@@ -33,6 +33,7 @@ function setup(initial = snapshot()) {
     getAudioOutputs: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     selectAudioOutput: vi.fn().mockResolvedValue({ devices: [], selectedId: null, selectedAvailable: false }),
     resize: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+    openProjectPage: vi.fn().mockResolvedValue(undefined),
     getDictation: vi.fn().mockResolvedValue({
       settings: {
         enabled: false,
@@ -234,6 +235,15 @@ describe("overlay controls", () => {
     app.get("#settings").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(app.get("#settings").hidden).toBe(true);
     expect(document.activeElement).toBe(toggle);
+  });
+
+  it("opens the project page when the developer credit is clicked", async () => {
+    const app = setup();
+    await app.overlay.ready;
+    const credit = app.get<HTMLButtonElement>("#developer-credit");
+    expect(credit.textContent).toBe("developed by EduardoViniciusJ");
+    credit.click();
+    expect(app.backend.openProjectPage).toHaveBeenCalledTimes(1);
   });
 
   it("previews appearance changes and applies them only after saving", async () => {

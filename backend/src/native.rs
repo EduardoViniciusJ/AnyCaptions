@@ -26,6 +26,39 @@ pub(crate) fn nemo_library_dir() -> PathBuf {
     .unwrap_or_else(|| manifest.join(DEV_NEMO_LIBRARY_DIR))
 }
 
+/// Opens a URL in the user's default browser. Callers pass compile-time
+/// constants only; the webview never supplies a URL.
+#[cfg(windows)]
+pub(crate) fn open_in_browser(url: &str) -> Result<(), ()> {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{HSTRING, PCWSTR, w};
+
+    let wide = HSTRING::from(url);
+    // SAFETY: all strings outlive the call; ShellExecuteW only reads them.
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            PCWSTR(wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // Per the Win32 docs, values greater than 32 indicate success.
+    if result.0 as isize > 32 {
+        Ok(())
+    } else {
+        Err(())
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn open_in_browser(_url: &str) -> Result<(), ()> {
+    Err(())
+}
+
 #[cfg(windows)]
 pub(crate) fn open_library(path: &Path) -> Result<Library, libloading::Error> {
     use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WindowsLibrary};

@@ -196,6 +196,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
           </div>
           <p id="dictation-status" class="muted" hidden></p>
           <div class="settings-footer">
+            <button id="developer-credit" class="settings-credit" type="button">developed by EduardoViniciusJ</button>
             <button id="reset-appearance" class="secondary-button" type="button" data-i18n="restoreDefault">Restaurar padrão</button>
             <button id="save-settings" type="button" data-i18n="save">Salvar</button>
           </div>
@@ -1023,6 +1024,9 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     }, options);
   }
   resetAppearance.addEventListener("click", () => setAppearanceInputs(DEFAULT_APPEARANCE), options);
+  get<HTMLButtonElement>("#developer-credit").addEventListener("click", () => {
+    void backend.openProjectPage().catch((error) => showError(errorMessage(error)));
+  }, options);
   window.addEventListener("resize", () => presenter.refreshLayout(), options);
   for (const [selector, direction] of [
     ["#resize-left", "West"],
