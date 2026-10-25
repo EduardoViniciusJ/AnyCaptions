@@ -3,15 +3,15 @@ import Layout from '../layouts/Layout.astro';
 const repo = 'https://github.com/EduardoViniciusJ/AnyCaptions';
 ---
 <Layout title="Contribuir" description="Reporte problemas, sugira melhorias e contribua com o desenvolvimento do AnyCaptions.">
-  <section class="container page-heading"><p class="kicker">CÓDIGO ABERTO / IDEIAS COMPARTILHADAS</p><h1>vamos construir<br />as próximas palavras.</h1><p>você não precisa escrever código para ajudar. um relato claro ou uma experiência em outro hardware já faz diferença.</p></section>
+  <section class="container page-heading"><p class="kicker">Código aberto / Ideias compartilhadas</p><h1>Vamos construir<br />as próximas palavras.</h1><p>Você não precisa escrever código para ajudar. Um relato claro ou uma experiência em outro hardware já faz diferença.</p></section>
   <section class="container contribute-content">
     <div class="feature-grid">
-      <article class="feature-card"><span class="card-index">01 / feedback</span><h2>encontrou um problema?</h2><p>conte o que aconteceu, o que você esperava e como reproduzir. inclua a versão e o hardware, sem compartilhar conversas ou informações privadas.</p><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">reportar problema ↗</a></article>
-      <article class="feature-card"><span class="card-index">02 / ideias</span><h2>sentiu falta de alguma coisa?</h2><p>explique a situação que você quer resolver. sugestões de acessibilidade, leitura e usabilidade ajudam a orientar a evolução do aplicativo.</p><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">compartilhar uma ideia ↗</a></article>
+      <article class="feature-card"><span class="card-index">01 / Feedback</span><h2>Encontrou um problema?</h2><p>Conte o que aconteceu, o que você esperava e como reproduzir. Inclua a versão e o hardware, sem compartilhar conversas ou informações privadas.</p><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">Reportar problema ↗</a></article>
+      <article class="feature-card"><span class="card-index">02 / Ideias</span><h2>Sentiu falta de alguma coisa?</h2><p>Explique a situação que você quer resolver. Sugestões de acessibilidade, leitura e usabilidade ajudam a orientar a evolução do aplicativo.</p><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">Compartilhar uma ideia ↗</a></article>
     </div>
-    <div class="manifesto"><span class="kicker">PARA QUEM DESENVOLVE</span><p>Rust + Tauri no desktop.<br /><strong>TypeScript na interface.</strong></p><p class="contribute-note">o repositório contém o aplicativo nas pastas backend e frontend; o site vive em site/backend e site/frontend. comece pelo README para conferir os requisitos e o fluxo de desenvolvimento.</p><pre class="docs-code">git clone https://github.com/EduardoViniciusJ/AnyCaptions.git
+    <div class="manifesto"><span class="kicker">Para quem desenvolve</span><p>Rust + Tauri no desktop.<br /><strong>TypeScript na interface.</strong></p><p class="contribute-note">O repositório contém o aplicativo nas pastas backend e frontend; o site vive em site/backend e site/frontend. Comece pelo README para conferir os requisitos e o fluxo de desenvolvimento.</p><pre class="docs-code">git clone https://github.com/EduardoViniciusJ/AnyCaptions.git
 cd AnyCaptions
 npm --prefix frontend ci
-npm --prefix frontend run tauri -- dev</pre><a class="text-link" href={repo} target="_blank" rel="noreferrer">abrir o repositório ↗</a></div>
+npm --prefix frontend run tauri -- dev</pre><a class="text-link" href={repo} target="_blank" rel="noreferrer">Abrir o repositório ↗</a></div>
   </section>
 </Layout>
