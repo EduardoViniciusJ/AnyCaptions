@@ -41,12 +41,18 @@ pub fn run() -> tauri::Result<()> {
         .setup(|app| {
             let root = app.path().app_config_dir()?;
             let store = preferences::PreferenceStore::load(preferences::config_path(&root));
+            let sessions = transcription::session::CaptionSessionManager::default_native();
+            // The saved engine's model may not be on disk (the installer ships
+            // OPUS; Riva arrives by a later download). Open with the default
+            // engine instead of an overlay where every translate option is
+            // disabled; the saved choice stays untouched.
             let saved = store.snapshot()?;
+            let engine = sessions.startup_engine(saved.translation_engine);
+            let saved = saved.with_translation_engine(engine);
             let outputs = std::sync::Arc::new(audio::devices::OutputService::new(
                 Box::new(audio::devices::WasapiCatalog::outputs()),
                 saved.output_id.clone(),
             ));
-            let sessions = transcription::session::CaptionSessionManager::default_native();
             let inputs = std::sync::Arc::new(audio::devices::InputService::new(
                 Box::new(audio::devices::WasapiCatalog::inputs()),
                 None,

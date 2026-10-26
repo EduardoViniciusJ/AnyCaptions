@@ -70,6 +70,18 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    /// Reabre sob `engine`; um alvo de tradução que o mecanismo não atende
+    /// cai para o padrão (pt-BR). O arquivo salvo não é alterado.
+    pub fn with_translation_engine(mut self, engine: TranslationEngine) -> Self {
+        self.translation_engine = engine;
+        if let CaptionMode::Translate(target) = self.mode
+            && !engine.supports(target)
+        {
+            self.mode = CaptionMode::Translate(crate::domain::PT_BR);
+        }
+        self
+    }
+
     fn valid(&self) -> bool {
         // A saved target must belong to the saved engine, or the restore would fail.
         let mode_supported = match self.mode {
@@ -249,6 +261,28 @@ mod tests {
         assert!(!preferences.valid());
         preferences.translation_engine = TranslationEngine::Riva;
         assert!(preferences.valid());
+    }
+
+    #[test]
+    fn engine_fallback_keeps_supported_targets_and_replaces_the_rest() {
+        let japanese = crate::domain::TargetLanguage::from_tag("ja").unwrap();
+        let saved = Preferences {
+            mode: CaptionMode::Translate(japanese),
+            translation_engine: TranslationEngine::Riva,
+            ..Default::default()
+        };
+        let replaced = saved.with_translation_engine(TranslationEngine::Opus);
+        assert_eq!(replaced.translation_engine, TranslationEngine::Opus);
+        assert_eq!(replaced.mode, CaptionMode::Translate(crate::domain::PT_BR));
+
+        let saved = Preferences {
+            mode: CaptionMode::Translate(crate::domain::PT_PT),
+            translation_engine: TranslationEngine::Riva,
+            ..Default::default()
+        };
+        let kept = saved.with_translation_engine(TranslationEngine::Opus);
+        assert_eq!(kept.mode, CaptionMode::Translate(crate::domain::PT_PT));
+        assert!(kept.valid());
     }
 
     #[test]

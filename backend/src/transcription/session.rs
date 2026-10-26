@@ -318,6 +318,21 @@ impl CaptionSessionManager {
         }
     }
 
+    /// Engine the app opens with: the saved choice, unless its model is
+    /// missing while the default engine's is installed (the installer ships
+    /// OPUS; Riva only exists after its separate download).
+    pub fn startup_engine(&self, saved: TranslationEngine) -> TranslationEngine {
+        let fallback = TranslationEngine::default();
+        if saved != fallback
+            && !self.factory.translation_available(saved)
+            && self.factory.translation_available(fallback)
+        {
+            fallback
+        } else {
+            saved
+        }
+    }
+
     pub fn refresh_resources(
         &self,
         controller: &Controller,
@@ -801,6 +816,52 @@ mod tests {
                 session_id, mode, recognizer,
             )))
         }
+    }
+
+    struct OpusOnlyFactory;
+
+    impl ProcessorFactory for OpusOnlyFactory {
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        fn create(
+            &self,
+            session_id: u32,
+            mode: CaptionMode,
+            source_language: Option<&str>,
+        ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
+            FakeFactory.create(session_id, mode, source_language)
+        }
+
+        fn translation_available(&self, engine: TranslationEngine) -> bool {
+            engine == TranslationEngine::Opus
+        }
+    }
+
+    #[test]
+    fn startup_falls_back_to_the_default_engine_only_when_the_saved_one_is_missing() {
+        let manager = CaptionSessionManager::new(
+            Arc::new(MockCaptureBackend::new()),
+            Arc::new(OpusOnlyFactory),
+        );
+        assert_eq!(
+            manager.startup_engine(TranslationEngine::Riva),
+            TranslationEngine::Opus
+        );
+        assert_eq!(
+            manager.startup_engine(TranslationEngine::Opus),
+            TranslationEngine::Opus
+        );
+
+        // FakeFactory reports no translation at all: keep the saved choice so
+        // the overlay explains the missing engine instead of lying about OPUS.
+        let unavailable =
+            CaptionSessionManager::new(Arc::new(MockCaptureBackend::new()), Arc::new(FakeFactory));
+        assert_eq!(
+            unavailable.startup_engine(TranslationEngine::Riva),
+            TranslationEngine::Riva
+        );
     }
 
     fn ready_controller(sink: &RecordedSink) -> Controller {
