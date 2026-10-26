@@ -1,6 +1,8 @@
 FROM node:24-alpine AS build
 WORKDIR /app
-ARG PUBLIC_API_URL=/api
+# Astro inlines PUBLIC_* at build time; the production API is the default
+# because Dokploy's Dockerfile builder has no build-args field.
+ARG PUBLIC_API_URL=https://api.anycaptions.app/api
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
 COPY package*.json ./
 RUN npm ci
