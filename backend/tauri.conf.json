@@ -36,5 +36,16 @@
       "devCsp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"
     }
   },
-  "bundle": { "active": false, "icon": ["icons/icon.ico", "icons/icon.png"] }
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "EduardoViniciusJ",
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "resources": {
+      "local-data/nemo-speech/build-vulkan-asr/bin/*.dll": "./",
+      "models/asr/nemotron-3.5-asr-streaming-0.6b/*": "models/asr/nemotron-3.5-asr-streaming-0.6b/",
+      "models/translation/opus-mt-en-pt/*": "models/translation/opus-mt-en-pt/",
+      "models/translation/opus-mt-pt-en/*": "models/translation/opus-mt-pt-en/"
+    }
+  }
 }
