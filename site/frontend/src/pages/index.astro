@@ -6,6 +6,18 @@ const release = await getLatestRelease();
 const hasInstaller = release?.hasInstaller ?? false;
 ---
 <Layout title="Legendas em tempo real" description="Transcreva e traduza o áudio de jogos, vídeos e chamadas no Windows. Fale em vez de digitar com ditado local.">
+  <script type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'AnyCaptions',
+    operatingSystem: 'Windows 11',
+    applicationCategory: 'UtilitiesApplication',
+    description: 'Legendas em tempo real de qualquer áudio do computador, com reconhecimento de voz e tradução rodando localmente. Inclui ditado por voz colado em qualquer aplicativo.',
+    url: 'https://anycaptions.app',
+    image: 'https://anycaptions.app/og.png',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'BRL' },
+    author: { '@type': 'Person', name: 'Eduardo Vinicius', url: 'https://github.com/EduardoViniciusJ' },
+  })} />
   <section class="hero container">
     <h1>Legendas em tempo real</h1>
     <p class="hero-copy">

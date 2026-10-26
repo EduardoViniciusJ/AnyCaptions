@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /account
+
+Sitemap: https://anycaptions.app/sitemap.xml

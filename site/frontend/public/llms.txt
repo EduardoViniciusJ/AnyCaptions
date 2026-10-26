@@ -1,0 +1,22 @@
+# AnyCaptions
+
+> AnyCaptions is a free Windows desktop app that shows real-time captions for any audio playing on the computer — games, videos, calls and streams — with on-device AI. It can also translate the captions and type dictated speech into any app. All speech recognition and translation run locally: no audio or text ever leaves the machine.
+
+AnyCaptions é um aplicativo gratuito para Windows que mostra legendas em tempo real de qualquer áudio do computador (jogos, vídeos, chamadas), com reconhecimento de voz e tradução rodando 100% localmente — nenhum áudio ou texto sai da máquina.
+
+## Key facts
+
+- Platform: Windows 11 x64 (desktop app, Tauri + Rust)
+- Price: free; account (Google, GitHub or Discord) required only to download
+- Speech recognition: NVIDIA Nemotron streaming ASR, on device (Vulkan GPU or CPU)
+- Translation: local models (OPUS-MT, Riva Translate), dozens of target languages
+- Dictation: push-to-talk speech-to-text pasted into the focused app, with optional translation
+- Privacy: audio and captions stay in memory only — no history, no logs, no cloud
+- Overlay: transparent, click-through caption window that works over games and videos
+
+## Links
+
+- Website: https://anycaptions.app
+- User guide: https://anycaptions.app/docs
+- Changelog: https://anycaptions.app/changelog
+- Source code: https://github.com/EduardoViniciusJ/AnyCaptions
