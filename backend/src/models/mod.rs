@@ -54,21 +54,24 @@ impl ModelProfile {
     }
 }
 
-/// Models root: `ANYCAPTIONS_MODELS_DIR`, `backend/models`, or `models/` next to the executable.
+/// Models root: `ANYCAPTIONS_MODELS_DIR`, `backend/models` (debug builds only),
+/// or `models/` next to the executable. Release builds skip the development path
+/// so an installed app never reads models from the source tree.
 pub fn models_root() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dev_models =
+        cfg!(debug_assertions).then(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("models"));
     let exe_models = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join("models")));
     [
         std::env::var_os("ANYCAPTIONS_MODELS_DIR").map(PathBuf::from),
-        Some(manifest.join("models")),
-        exe_models,
+        dev_models,
+        exe_models.clone(),
     ]
     .into_iter()
     .flatten()
     .find(|dir| dir.is_dir())
-    .unwrap_or_else(|| manifest.join("models"))
+    .unwrap_or_else(|| exe_models.unwrap_or_else(|| PathBuf::from("models")))
 }
 
 #[cfg(test)]
