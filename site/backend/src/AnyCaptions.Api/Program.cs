@@ -18,6 +18,12 @@ if (!Uri.TryCreate(frontendUrl, UriKind.Absolute, out var frontendOrigin)
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // The container is only reachable through the reverse proxy on the private
+    // Docker network (no published port), and the proxy overwrites forwarded
+    // headers from clients, so every RFC 1918 range is safe to trust.
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("10.0.0.0/8"));
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("172.16.0.0/12"));
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("192.168.0.0/16"));
     var trustedNetwork = builder.Configuration["TrustedProxyNetwork"];
     if (!string.IsNullOrWhiteSpace(trustedNetwork))
         options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(trustedNetwork));
