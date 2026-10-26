@@ -7,6 +7,7 @@ import '@fontsource/geist/600.css';
 import '@fontsource/geist/700.css';
 interface Props { title: string; description: string; }
 const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://anycaptions.app');
 ---
 <!doctype html>
 <html lang="pt-BR">
@@ -14,6 +15,17 @@ const { title, description } = Astro.props;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AnyCaptions" />
+    <meta property="og:title" content={`${title} · AnyCaptions`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content="https://anycaptions.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta name="twitter:card" content="summary_large_image" />
     <title>{title} · AnyCaptions</title>
   </head>
   <body>
