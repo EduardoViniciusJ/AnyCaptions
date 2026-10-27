@@ -1,17 +1,18 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import { ButtonLink } from '../components/ButtonLink';
+import { Separator } from '../components/ui/separator';
 const repo = 'https://github.com/EduardoViniciusJ/AnyCaptions';
 ---
-<Layout title="Contribuir" description="Reporte problemas, sugira melhorias e contribua com o desenvolvimento do AnyCaptions.">
-  <section class="container page-heading"><p class="kicker">Código aberto / Ideias compartilhadas</p><h1>Vamos construir<br />as próximas palavras.</h1><p>Você não precisa escrever código para ajudar. Um relato claro ou uma experiência em outro hardware já faz diferença.</p></section>
-  <section class="container contribute-content">
-    <div class="feature-grid">
-      <article class="feature-card"><span class="card-index">01 / Feedback</span><h2>Encontrou um problema?</h2><p>Conte o que aconteceu, o que você esperava e como reproduzir. Inclua a versão e o hardware, sem compartilhar conversas ou informações privadas.</p><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">Reportar problema ↗</a></article>
-      <article class="feature-card"><span class="card-index">02 / Ideias</span><h2>Sentiu falta de alguma coisa?</h2><p>Explique a situação que você quer resolver. Sugestões de acessibilidade, leitura e usabilidade ajudam a orientar a evolução do aplicativo.</p><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">Compartilhar uma ideia ↗</a></article>
+<Layout title="Contribuir" description="Crie uma issue com um problema ou sugestão e contribua pelo repositório do AnyCaptions.">
+  <section class="container contribute-page">
+    <h1>Encontrou um problema ou tem uma sugestão?</h1>
+    <p>Crie uma issue no GitHub.</p>
+    <ButtonLink variant="outline" className="contribute-issue h-12 px-5" href={`${repo}/issues/new/choose`} target="_blank" rel="noreferrer">Criar uma issue ↗</ButtonLink>
+    <div class="contribute-repository">
+      <Separator className="mb-6" />
+      <p>Quer contribuir com o projeto?</p>
+      <ButtonLink variant="link" className="contribute-repo-link h-auto justify-start px-0" href={repo} target="_blank" rel="noreferrer">Abrir o repositório no GitHub ↗</ButtonLink>
     </div>
-    <div class="manifesto"><span class="kicker">Para quem desenvolve</span><p>Rust + Tauri no desktop.<br /><strong>TypeScript na interface.</strong></p><p class="contribute-note">O repositório contém o aplicativo nas pastas backend e frontend; o site vive em site/backend e site/frontend. Comece pelo README para conferir os requisitos e o fluxo de desenvolvimento.</p><pre class="docs-code">git clone https://github.com/EduardoViniciusJ/AnyCaptions.git
-cd AnyCaptions
-npm --prefix frontend ci
-npm --prefix frontend run tauri -- dev</pre><a class="text-link" href={repo} target="_blank" rel="noreferrer">Abrir o repositório ↗</a></div>
   </section>
 </Layout>

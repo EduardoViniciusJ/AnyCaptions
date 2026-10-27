@@ -23,7 +23,7 @@ public static class AuthEndpoints
                 || string.IsNullOrWhiteSpace(configuration[$"Authentication:{scheme}:ClientSecret"]))
                 return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
             return Results.Challenge(new AuthenticationProperties
-                    { RedirectUri = new Uri(frontendOrigin, "/account").ToString() }, [scheme]);
+                    { RedirectUri = new Uri(frontendOrigin, "/").ToString() }, [scheme]);
         });
         // The OAuth middleware owns /callback/{provider}, validates state/correlation,
         // exchanges the code and issues the application cookie.
@@ -43,5 +43,15 @@ public static class AuthEndpoints
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.NoContent();
         });
+        group.MapPost("/account/delete", async (HttpContext context, ClaimsPrincipal principal, AuthService auth, CancellationToken ct) =>
+        {
+            if (context.Request.Headers.Origin != frontendOrigin.GetLeftPart(UriPartial.Authority))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var rawId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(rawId, out var id)) return Results.Unauthorized();
+            if (!await auth.DeleteUserAsync(id, ct)) return Results.Unauthorized();
+            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return Results.NoContent();
+        }).RequireAuthorization();
     }
 }

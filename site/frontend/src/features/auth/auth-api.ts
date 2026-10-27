@@ -26,3 +26,11 @@ export async function logout(): Promise<boolean> {
   });
   return response.ok;
 }
+
+export async function deleteAccount(): Promise<boolean> {
+  const response = await fetch(`${baseUrl}/auth/account/delete`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return response.ok;
+}
