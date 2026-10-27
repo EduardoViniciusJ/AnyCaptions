@@ -14,6 +14,7 @@ mod window;
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .manage(ipc::Controller::default())
+        .manage(models::download::DownloadManager::default())
         .invoke_handler(tauri::generate_handler![
             ipc::get_state,
             ipc::set_caption_mode,
@@ -30,6 +31,9 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::get_dictation,
             ipc::set_dictation,
             ipc::open_project_page,
+            ipc::get_model_downloads,
+            ipc::download_model,
+            ipc::cancel_model_download,
         ])
 }
 

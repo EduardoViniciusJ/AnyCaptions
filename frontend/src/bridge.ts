@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { Backend, AppSnapshot, CaptionUpdate, DictationEvent } from "./contracts";
+import type {
+  Backend,
+  AppSnapshot,
+  CaptionUpdate,
+  DictationEvent,
+  ModelDownloadUpdate,
+} from "./contracts";
 
 export const backend: Backend = {
   getState: () => invoke("get_state"),
@@ -20,6 +26,10 @@ export const backend: Backend = {
   subscribe: (listener) => getCurrentWindow().listen<AppSnapshot>("app-state-changed", (event) => listener(event.payload)),
   subscribeCaptions: (listener) => getCurrentWindow().listen<CaptionUpdate>("caption-updated", (event) => listener(event.payload)),
   subscribeDictation: (listener) => getCurrentWindow().listen<DictationEvent>("dictation-changed", (event) => listener(event.payload)),
+  getModelDownloads: () => invoke("get_model_downloads"),
+  downloadModel: (model) => invoke("download_model", { request: { model } }),
+  cancelModelDownload: () => invoke("cancel_model_download"),
+  subscribeModelDownloads: (listener) => getCurrentWindow().listen<ModelDownloadUpdate>("model-download-changed", (event) => listener(event.payload)),
   resize: (direction) => getCurrentWindow().startResizeDragging(direction),
   close: () => getCurrentWindow().close(),
   openProjectPage: () => invoke("open_project_page"),

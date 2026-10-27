@@ -20,6 +20,9 @@ wasapi = "0.26.0"
 rubato = "5.0.1"
 audioadapter-buffers = "5.2.0"
 sha2 = "0.11.1"
+# Streams catalog model downloads on a worker thread; blocking and small
+# (no async runtime), with rustls built in.
+ureq = "3.4"
 # Loads the NeMo-Speech C library at runtime, so the app still builds and starts without it.
 libloading = "0.8.9"
 # Detects the caption language locally when the recognizer does not tag it.

@@ -11,6 +11,8 @@ import type {
   Appearance,
   Backend,
   CaptionMode,
+  ModelDownloadState,
+  ModelDownloadUpdate,
   ResizeDirection,
   OutputSelection,
   TranslationEngine,
@@ -130,6 +132,11 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             <label for="translation-engine" data-i18n="translationEngine">Modelo de tradução</label>
             <select id="translation-engine"></select>
           </div>
+          <div class="setting-row" id="model-download" hidden>
+            <span id="model-download-status" class="muted"></span>
+            <button id="model-download-action" type="button"></button>
+          </div>
+          <progress id="model-download-progress" max="100" value="0" hidden></progress>
           <div class="setting-row">
             <label for="audio-output" data-i18n="audioOutput">Saída de áudio</label>
             <select id="audio-output" disabled><option>Nenhuma saída disponível</option></select>
@@ -608,6 +615,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   let dictation: DictationSnapshot | undefined;
   let dictationBusy = false;
   let unsubscribeDictation: (() => void) | undefined;
+  let unsubscribeModelDownloads: (() => void) | undefined;
   const dictationIndicator = new DictationIndicator(
     get("#dictation-indicator"),
     get("#dictation-text"),
@@ -772,6 +780,80 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     finally { outputBusy = false; renderOutputs(); }
   }
 
+  // Download do modelo do mecanismo selecionado (hoje só o Riva). A interface
+  // passa apenas o id do catálogo; o backend resolve e valida a origem.
+  const modelDownloadRow = get<HTMLDivElement>("#model-download");
+  const modelDownloadStatus = get<HTMLSpanElement>("#model-download-status");
+  const modelDownloadAction = get<HTMLButtonElement>("#model-download-action");
+  const modelDownloadProgress = get<HTMLProgressElement>("#model-download-progress");
+  let modelDownloads: ModelDownloadState[] = [];
+  let modelDownloadUpdate: ModelDownloadUpdate | null = null;
+
+  function selectedEngineDownload(): ModelDownloadState | undefined {
+    return modelDownloads.find((entry) => entry.engine === state?.translationEngine);
+  }
+
+  function downloadFailureKey(reason: ModelDownloadUpdate["reason"]): MessageKey {
+    switch (reason) {
+      case "disk":
+        return "modelDownloadFailedDisk";
+      case "corrupted":
+        return "modelDownloadFailedCorrupted";
+      default:
+        return "modelDownloadFailedNetwork";
+    }
+  }
+
+  function renderModelDownload() {
+    const entry = selectedEngineDownload();
+    const visible = entry !== undefined && entry.downloadable && !entry.installed;
+    modelDownloadRow.hidden = !visible;
+    modelDownloadProgress.hidden = true;
+    if (!entry || !visible) return;
+    const update = modelDownloadUpdate?.model === entry.model ? modelDownloadUpdate : null;
+    if (update?.phase === "downloading" || (entry.downloading && update === null)) {
+      const received = update?.receivedBytes ?? 0;
+      const total = update?.totalBytes ?? entry.totalBytes;
+      const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : 0;
+      modelDownloadStatus.textContent = t("modelDownloadProgress").replace("{percent}", String(percent));
+      modelDownloadAction.textContent = t("modelDownloadCancel");
+      modelDownloadProgress.hidden = false;
+      modelDownloadProgress.value = percent;
+      return;
+    }
+    if (update?.phase === "failed" && update.reason !== "cancelled") {
+      modelDownloadStatus.textContent = t(downloadFailureKey(update.reason));
+      modelDownloadAction.textContent = t("modelDownloadRetry");
+      return;
+    }
+    modelDownloadStatus.textContent = t("modelDownloadMissing");
+    modelDownloadAction.textContent = t("modelDownloadAction").replace(
+      "{size}",
+      (entry.totalBytes / 1_000_000_000).toFixed(1),
+    );
+  }
+
+  async function refreshModelDownloads() {
+    try {
+      modelDownloads = await backend.getModelDownloads();
+    } catch {
+      modelDownloads = [];
+    }
+    if (!disposed) renderModelDownload();
+  }
+
+  function acceptModelDownload(update: ModelDownloadUpdate) {
+    if (disposed) return;
+    modelDownloadUpdate = update;
+    if (update.phase === "ready") {
+      // A disponibilidade chega pelo refresh do backend; a lista local
+      // também é renovada para esconder o botão.
+      modelDownloadUpdate = null;
+      void refreshModelDownloads();
+    }
+    renderModelDownload();
+  }
+
   function render() {
     if (!state || disposed) return;
     overlay.dataset.mode = state.windowMode;
@@ -826,6 +908,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     shortcutStatus.hidden = state.shortcutAvailable;
     if (state.error) showError(errorMessage({ code: state.error }));
     renderOutputs();
+    renderModelDownload();
   }
 
   function accept(incoming: AppSnapshot) {
@@ -885,6 +968,27 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     const mode = item.dataset.value as CaptionMode;
     if (mode === state?.mode) return;
     void perform(() => backend.setMode(mode));
+  }, options);
+  modelDownloadAction.addEventListener("click", () => {
+    const entry = selectedEngineDownload();
+    if (!entry) return;
+    const downloading =
+      modelDownloadUpdate?.phase === "downloading" || (entry.downloading && !modelDownloadUpdate);
+    if (downloading) {
+      void backend.cancelModelDownload().catch(() => showError(t("errGeneric")));
+      return;
+    }
+    modelDownloadUpdate = null;
+    void backend.downloadModel(entry.model).catch(() => {
+      modelDownloadUpdate = {
+        model: entry.model,
+        phase: "failed",
+        receivedBytes: 0,
+        totalBytes: null,
+        reason: "network",
+      };
+      renderModelDownload();
+    });
   }, options);
   translationEngine.addEventListener("change", () => {
     if (!state || busy) return;
@@ -1059,6 +1163,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
       );
       if (disposed) { releaseDictation(); return; }
       unsubscribeDictation = releaseDictation;
+      const releaseModelDownloads = await backend.subscribeModelDownloads(acceptModelDownload);
+      if (disposed) { releaseModelDownloads(); return; }
+      unsubscribeModelDownloads = releaseModelDownloads;
+      await refreshModelDownloads();
       accept(await backend.getState());
     } catch {
       if (!disposed) {
@@ -1074,6 +1182,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     unsubscribe?.();
     unsubscribeCaptions?.();
     unsubscribeDictation?.();
+    unsubscribeModelDownloads?.();
     dictationIndicator.dispose();
     presenter.dispose();
   } };
