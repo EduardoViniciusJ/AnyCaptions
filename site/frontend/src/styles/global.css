@@ -34,21 +34,6 @@
   button, input, select { font: inherit; }
 }
 
-@font-face {
-  font-family: 'Geist Fallback';
-  src: local('Arial');
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Geist Fallback';
-  src: local('Arial Bold');
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
 :root {
   --primary: #FFFFFF;
   --accent: #FFFFFF;
@@ -58,7 +43,7 @@
   --text-primary: #FFFFFF;
   --text-secondary: #A3A3A3;
   --border: #272727;
-  --font: 'Geist', 'Geist Fallback', Arial, sans-serif;
+  --font: 'Chakra Petch', 'Segoe UI', Arial, sans-serif;
   --space: 8px;
   --gap: 16px;
   --card-padding: 24px;
@@ -73,6 +58,8 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 96px; }
 body { margin: 0; min-width: 320px; overflow-x: clip; }
+main { animation: page-enter 180ms ease-out; }
+@keyframes page-enter { from { opacity: 0; } to { opacity: 1; } }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -92,6 +79,11 @@ nav { display: flex; align-items: center; gap: 24px; color: var(--text-secondary
 nav a:hover, .text-link:hover { color: white; }
 .nav-account { display: inline-flex; align-items: center; gap: 8px; }
 .nav-account img { width: 22px; height: 22px; border-radius: 50%; }
+.nav-pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; min-height: 34px; }
+.nav-pill:hover { color: white; border-color: var(--text-secondary); }
+.lang-trigger { background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.lang-trigger:hover { color: white; }
+.lang-flag { display: block; width: 20px; height: 14px; object-fit: cover; border-radius: 2px; }
 .hero { position: relative; isolation: isolate; padding-block: 88px 64px; text-align: center; }
 .hero::before { content: ''; position: absolute; z-index: -1; pointer-events: none; inset: -89px -16vw 0; background: radial-gradient(ellipse at 50% 0, #ffffff08, transparent 64%); }
 .hero h1 { max-width: 100%; margin: 0 auto 24px; font-family: var(--font); font-size: 64px; font-weight: 500; line-height: 1.04; letter-spacing: 0; }
@@ -118,6 +110,7 @@ nav a:hover, .text-link:hover { color: white; }
 .preview-language-flag { width: 20px; height: 14px; flex-shrink: 0; border-radius: 2px; object-fit: cover; }
 .preview-stage { position: relative; aspect-ratio: 16 / 9; background: var(--background); border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; }
 .preview-video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.preview-skeleton { position: absolute; inset: 0; pointer-events: none; border-radius: 0; }
 .preview-caption-area { position: absolute; inset-inline: 64px; bottom: 32px; pointer-events: none; }
 .preview-caption { font-family: 'Segoe UI', Arial, sans-serif; font-weight: 700; font-size: clamp(18px, 3vw, 30px); line-height: 1.3; text-align: center; color: #FFFFFF; -webkit-text-stroke: 1.5px #000000; paint-order: stroke fill; text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 2px 4px #000000f2; }
 .caption-recent { color: var(--text-secondary); }
@@ -176,7 +169,7 @@ nav a:hover, .text-link:hover { color: white; }
 .contribute-page p { color: var(--text-secondary); }
 .contribute-issue { margin-top: 24px; }
 .contribute-repository { margin-top: 48px; }
-.contribute-repo-link { margin-top: 8px; padding-block: 8px; text-decoration: underline; text-underline-offset: 4px; }
+.contribute-repository h2 { font-size: 20px; font-weight: 500; line-height: 1.4; }
 @media (max-width: 850px) { nav { gap: 16px; } .hero h1 { font-size: 48px; } .preview-window > span:last-child { max-width: 160px; } .docs-layout { gap: 24px; grid-template-columns: 160px minmax(0, 1fr); } }
 @media (max-width: 600px) {
   :root { --section-padding: 56px; }

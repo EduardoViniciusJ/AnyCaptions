@@ -1,0 +1,8 @@
+---
+import ChangelogPage from '../../components/pages/ChangelogPage.astro';
+import { defaultLang, isLang } from '../../i18n';
+const { lang } = Astro.params;
+if (lang === defaultLang) return Astro.redirect('/changelog', 301);
+if (!lang || !isLang(lang)) return new Response(null, { status: 404 });
+---
+<ChangelogPage lang={lang} />

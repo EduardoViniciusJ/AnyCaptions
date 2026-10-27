@@ -1,0 +1,24 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { localePath, messages, type Lang } from '../../i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = messages[lang].docs;
+const repo = 'https://github.com/EduardoViniciusJ/AnyCaptions';
+---
+<Layout lang={lang} title={t.title} description={t.description}>
+  <div class="docs-layout container">
+    <aside class="docs-sidebar" aria-label={t.sidebarTitle}><h2>{t.sidebarTitle}</h2><a href="#instalacao">{t.nav.install}</a><a href="#primeiros-passos">{t.nav.firstSteps}</a><a href="#dispositivos">{t.nav.audio}</a><a href="#overlay">{t.nav.overlay}</a><a href="#modelos">{t.nav.models}</a><a href="#privacidade">{t.nav.privacy}</a><a href="#licencas">{t.nav.licenses}</a><a href="#solucao-problemas">{t.nav.trouble}</a></aside>
+    <article class="docs-content">
+      <p class="kicker">{t.kicker}</p><h1>{t.heading}</h1><p>{t.intro}</p>
+      <section id="instalacao"><h2>{t.install.heading}</h2><ol><li>{t.install.step1.before}<a class="text-link" href={localePath(lang, '/account')}>{t.install.step1.link} ↗</a>{t.install.step1.after}</li><li>{t.install.step2.before}<a class="text-link" href={`${localePath(lang, '/')}#download`}>{t.install.step2.link} ↗</a>{t.install.step2.after}</li><li>{t.install.step3}</li></ol><p>{t.install.requirements}</p></section>
+      <section id="primeiros-passos"><h2>{t.firstSteps.heading}</h2><ol>{t.firstSteps.steps.map(step => <li>{step}</li>)}</ol></section>
+      <section id="dispositivos"><h2>{t.audio.heading}</h2><p>{t.audio.body}</p></section>
+      <section id="overlay"><h2>{t.overlay.heading}</h2><p>{t.overlay.intro}</p><div class="docs-code">{t.overlay.shortcut}</div><p>{t.overlay.after}</p></section>
+      <section id="modelos"><h2>{t.models.heading}</h2><p>{t.models.intro}</p><ul>{t.models.items.map(item => <li><strong>{item.name}</strong>{item.desc}</li>)}</ul><p>{t.models.summary}</p></section>
+      <section id="privacidade"><h2>{t.privacy.heading}</h2><p><strong>{t.privacy.appLead}</strong>{t.privacy.appBody}</p><p><strong>{t.privacy.siteLead}</strong>{t.privacy.siteBody}</p><p>{t.privacy.deleteNote.before}<a class="text-link" href={localePath(lang, '/account')}>{t.privacy.deleteNote.link}</a>{t.privacy.deleteNote.after}</p></section>
+      <section id="licencas"><h2>{t.licenses.heading}</h2><p>{t.licenses.intro}</p><ul><li><strong>{t.licenses.nvidiaName}</strong>{t.licenses.nvidia.before}<a class="text-link" href="https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/" target="_blank" rel="noreferrer">{t.licenses.nvidia.link} ↗</a>{t.licenses.nvidia.after}</li><li><strong>{t.licenses.opusName}</strong>{t.licenses.opus.before}<a class="text-link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">{t.licenses.opus.link} ↗</a>{t.licenses.opus.after}</li></ul><p>{t.licenses.code.before}<a class="text-link" href={repo} target="_blank" rel="noreferrer">{t.licenses.code.link} ↗</a>{t.licenses.code.after}</p></section>
+      <section id="solucao-problemas"><h2>{t.trouble.heading}</h2><ul>{t.trouble.items.map(item => <li><strong>{item.lead}</strong>{item.rest}</li>)}<li>{t.trouble.last.before}<a class="text-link" href={`${repo}/issues`} target="_blank" rel="noreferrer">{t.trouble.last.link} ↗</a>{t.trouble.last.after}</li></ul></section>
+    </article>
+  </div>
+</Layout>

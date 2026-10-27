@@ -32,6 +32,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it('remove o skeleton ao carregar o vídeo ou falhar, mesmo sem autoplay', () => {
+  render(<><CaptionPreview /><DictationPreview /></>);
+  const captions = screen.getByRole('region', { name: 'Prévia de transcrição e tradução' });
+  const dictation = screen.getByRole('region', { name: 'Transcreva o áudio do seu microfone em texto onde você escreve.' });
+  const captionStage = captions.querySelector('.preview-stage')!;
+  const dictationStage = dictation.querySelector('.preview-stage')!;
+
+  expect(captionStage.getAttribute('aria-busy')).toBe('true');
+  expect(dictationStage.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+  expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+
+  fireEvent.loadedMetadata(captions.querySelector('video')!);
+  expect(captionStage.getAttribute('aria-busy')).toBe('false');
+  expect(captionStage.querySelector('[data-slot="skeleton"]')).toBeNull();
+  expect(dictationStage.getAttribute('aria-busy')).toBe('true');
+
+  fireEvent.error(dictation.querySelector('video')!);
+  expect(dictationStage.getAttribute('aria-busy')).toBe('false');
+  expect(dictationStage.querySelector('[data-slot="skeleton"]')).toBeNull();
+});
+
 it('começa em português e troca a legenda do vídeo usando o teclado', async () => {
   const { container } = render(<CaptionPreview />);
   expect(container.querySelector('.preview-caption')?.textContent).toBe('Eles estão rushando A!');

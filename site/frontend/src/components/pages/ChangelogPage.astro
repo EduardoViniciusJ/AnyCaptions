@@ -1,0 +1,21 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getReleases } from '../../lib/api/releases';
+import { htmlLang, messages, type Lang } from '../../i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = messages[lang].changelog;
+const releases = await getReleases();
+---
+<Layout lang={lang} title={t.title} description={t.description}>
+  <section class="container page-heading"><p class="kicker">{t.kicker}</p><h1>{t.heading}</h1><p>{t.sub}</p></section>
+  <section class="container release-list" aria-label={t.listLabel}>
+    {releases.length === 0 && <div class="empty-state">{t.empty}</div>}
+    {releases.map(release =>
+      <article class="release-entry">
+        <div><span class="platform-tag">{t.versionTag}</span><h2>{release.version}</h2><time datetime={release.publishedAt}>{new Date(release.publishedAt).toLocaleDateString(htmlLang[lang], { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}</time></div>
+        <p>{release.releaseNotes}</p>
+      </article>
+    )}
+  </section>
+</Layout>

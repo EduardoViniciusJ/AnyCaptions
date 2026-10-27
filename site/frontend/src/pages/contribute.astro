@@ -1,18 +1,4 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import { ButtonLink } from '../components/ButtonLink';
-import { Separator } from '../components/ui/separator';
-const repo = 'https://github.com/EduardoViniciusJ/AnyCaptions';
+import ContributePage from '../components/pages/ContributePage.astro';
 ---
-<Layout title="Contribuir" description="Crie uma issue com um problema ou sugestão e contribua pelo repositório do AnyCaptions.">
-  <section class="container contribute-page">
-    <h1>Encontrou um problema ou tem uma sugestão?</h1>
-    <p>Crie uma issue no GitHub.</p>
-    <ButtonLink variant="outline" className="contribute-issue h-12 px-5" href={`${repo}/issues/new/choose`} target="_blank" rel="noreferrer">Criar uma issue ↗</ButtonLink>
-    <div class="contribute-repository">
-      <Separator className="mb-6" />
-      <p>Quer contribuir com o projeto?</p>
-      <ButtonLink variant="link" className="contribute-repo-link h-auto justify-start px-0" href={repo} target="_blank" rel="noreferrer">Abrir o repositório no GitHub ↗</ButtonLink>
-    </div>
-  </section>
-</Layout>
+<ContributePage lang="pt-br" />

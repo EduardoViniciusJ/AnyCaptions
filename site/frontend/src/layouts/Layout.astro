@@ -1,22 +1,30 @@
 ---
 import Header from '../components/Header.astro';
 import '../styles/global.css';
-import '@fontsource/geist/400.css';
-import '@fontsource/geist/500.css';
-import '@fontsource/geist/600.css';
-import '@fontsource/geist/700.css';
-interface Props { title: string; description: string; }
-const { title, description } = Astro.props;
-const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://anycaptions.app');
+import '@fontsource/chakra-petch/latin-400.css';
+import '@fontsource/chakra-petch/latin-500.css';
+import '@fontsource/chakra-petch/latin-600.css';
+import '@fontsource/chakra-petch/latin-700.css';
+import { htmlLang, langs, localePath, messages, ogLocale, stripLang, type Lang } from '../i18n';
+interface Props { lang?: Lang; title: string; description: string; }
+const { lang = 'pt-br', title, description } = Astro.props;
+const t = messages[lang];
+const site = Astro.site ?? 'https://anycaptions.app';
+const canonical = new URL(Astro.url.pathname, site);
+// A mesma página em cada idioma, para os buscadores ligarem as versões.
+const basePath = stripLang(Astro.url.pathname);
+const alternates = langs.map(item => ({ lang: item, href: new URL(localePath(item, basePath), site) }));
 ---
 <!doctype html>
-<html lang="pt-BR">
+<html lang={htmlLang[lang]}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {alternates.map(alternate => <link rel="alternate" hreflang={htmlLang[alternate.lang]} href={alternate.href} />)}
+    <link rel="alternate" hreflang="x-default" href={new URL(basePath, site)} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="AnyCaptions" />
     <meta property="og:title" content={`${title} · AnyCaptions`} />
@@ -25,13 +33,13 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://anycaptions
     <meta property="og:image" content="https://anycaptions.app/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:locale" content={ogLocale[lang]} />
     <meta name="twitter:card" content="summary_large_image" />
     <title>{title} · AnyCaptions</title>
   </head>
   <body>
-    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
-    <Header />
+    <a class="skip-link" href="#conteudo">{t.layout.skipLink}</a>
+    <Header lang={lang} />
     <main id="conteudo"><slot /></main>
   </body>
 </html>

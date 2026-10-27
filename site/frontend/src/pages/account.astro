@@ -1,9 +1,4 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import { AccountPanel } from '../features/auth/AccountPanel';
+import AccountPage from '../components/pages/AccountPage.astro';
 ---
-<Layout title="Minha conta" description="Entre na sua conta AnyCaptions.">
-  <section class="container account-page">
-    <AccountPanel client:load />
-  </section>
-</Layout>
+<AccountPage lang="pt-br" />

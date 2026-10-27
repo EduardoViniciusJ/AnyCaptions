@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { messages, type Lang } from '@/i18n';
 import { captions } from './captions';
 import { usePreviewPlayback } from './usePreviewPlayback';
 
@@ -15,10 +17,21 @@ const languages = [
   { code: 'ru', name: 'Русский', flag: 'ru' },
 ] as const;
 
-export function CaptionPreview() {
-  const [language, setLanguage] = useState('pt-BR');
+// A legenda da demonstração abre no idioma da página do site.
+const initialCaption: Record<Lang, (typeof languages)[number]['code']> = {
+  'pt-br': 'pt-BR',
+  en: 'en',
+  es: 'es',
+  fr: 'fr',
+  ru: 'ru',
+  'zh-cn': 'zh',
+};
+
+export function CaptionPreview({ lang = 'pt-br' }: { lang?: Lang }) {
+  const t = messages[lang].preview;
+  const [language, setLanguage] = useState<string>(initialCaption[lang]);
   const [currentTime, setCurrentTime] = useState(0);
-  const { videoRef, playing, setPlaying, reducedMotion, togglePlayback } = usePreviewPlayback();
+  const { videoRef, playing, setPlaying, reducedMotion, loading, togglePlayback } = usePreviewPlayback();
   const selected = languages.find(item => item.code === language)!;
   const words = language === 'zh' ? [...captions[language]] : captions[language].split(' ');
   const separator = language === 'zh' ? '' : ' ';
@@ -34,18 +47,18 @@ export function CaptionPreview() {
   }
 
   return (
-    <section className="preview-section container" aria-label="Prévia de transcrição e tradução">
+    <section className="preview-section container" aria-label={t.sectionLabel}>
       <Card className="caption-preview gap-0 overflow-hidden py-0">
         <div className="preview-topbar">
           <div className="preview-window">
             <span className="window-dots" aria-hidden="true"><i /><i /><i /></span>
-            <span>AnyCaptions / Transcrição ao vivo</span>
+            <span>{t.windowTitle}</span>
           </div>
           <div className="preview-controls">
-            <span className="source-language">Áudio <strong>EN</strong></span>
+            <span className="source-language">{t.audio} <strong>EN</strong></span>
             <span className="language-arrow" aria-hidden="true">→</span>
             <Select value={language} onValueChange={changeLanguage}>
-              <SelectTrigger className="preview-language-trigger" aria-label={`Idioma da legenda: ${selected.name}`}>
+              <SelectTrigger className="preview-language-trigger" aria-label={`${t.captionLanguage} ${selected.name}`}>
                 <SelectValue>
                   <span className="flex items-center gap-2">
                     <img className="preview-language-flag" src={`/flags/${selected.flag}.svg`} alt="" width={20} height={14} />
@@ -66,7 +79,7 @@ export function CaptionPreview() {
             </Select>
           </div>
         </div>
-        <div className="preview-stage">
+        <div className="preview-stage" aria-busy={loading}>
           <video
             ref={videoRef}
             className="preview-video"
@@ -78,12 +91,13 @@ export function CaptionPreview() {
             loop
             playsInline
             preload="metadata"
-            aria-label="Demonstração de uma partida de Counter-Strike com legenda de exemplo"
+            aria-label={t.videoAria}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
             onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime)}
             onSeeked={event => setCurrentTime(event.currentTarget.currentTime)}
           />
+          {loading && <Skeleton className="preview-skeleton" aria-hidden="true" />}
           <div className="preview-caption-area">
             <p className="preview-caption" lang={language}>
               <span>{committed}{committed && recent ? separator : ''}</span>
@@ -96,8 +110,8 @@ export function CaptionPreview() {
             size="icon"
             className="preview-video-control"
             onClick={togglePlayback}
-            aria-label={playing ? 'Pausar demonstração' : 'Reproduzir demonstração'}
-            title={playing ? 'Pausar demonstração' : 'Reproduzir demonstração'}
+            aria-label={playing ? t.pause : t.play}
+            title={playing ? t.pause : t.play}
           >
             {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
           </Button>
