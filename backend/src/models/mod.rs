@@ -2,6 +2,7 @@
 //! Files live under one root, grouped by capability: `models/<kind>/<model>/<file>`.
 
 pub mod catalog;
+pub mod download;
 mod verify;
 
 use std::path::{Path, PathBuf};

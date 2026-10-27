@@ -318,6 +318,11 @@ impl CaptionSessionManager {
         }
     }
 
+    /// Whether `engine` has its library and model on disk right now.
+    pub fn translation_available(&self, engine: TranslationEngine) -> bool {
+        self.factory.translation_available(engine)
+    }
+
     /// Engine the app opens with: the saved choice, unless its model is
     /// missing while the default engine's is installed (the installer ships
     /// OPUS; Riva only exists after its separate download).

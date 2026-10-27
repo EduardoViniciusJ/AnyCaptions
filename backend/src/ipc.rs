@@ -8,13 +8,24 @@ use crate::audio::devices::{AudioDeviceError, DeviceSelection, InputService, Out
 use crate::dictation::{DictationError, DictationSettings, runtime as dictation_runtime};
 use crate::domain::{
     AppSnapshot, AppState, Appearance, CaptionMode, CaptureState, DomainError, Resources,
-    WindowMode,
+    TranslationEngine, WindowMode,
+};
+use crate::models::{
+    catalog,
+    download::{self, DownloadManager, DownloadSink, DownloadUpdate},
 };
 use crate::preferences::{PreferenceStore, Preferences};
 use crate::transcription::session::{CaptionSessionManager, SessionSink};
 
 pub const STATE_EVENT: &str = "app-state-changed";
 pub const CAPTION_EVENT: &str = "caption-updated";
+pub const MODEL_DOWNLOAD_EVENT: &str = "model-download-changed";
+
+impl<R: Runtime> DownloadSink for WebviewWindow<R> {
+    fn download_changed(&self, update: &DownloadUpdate) {
+        let _ = self.emit_to(self.label(), MODEL_DOWNLOAD_EVENT, update);
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +53,8 @@ pub enum CommandError {
     AudioDevice(AudioDeviceError),
     Dictation(DictationError),
     BrowserUnavailable,
+    DownloadBusy,
+    DownloadUnavailable,
 }
 
 impl From<DomainError> for CommandError {
@@ -679,6 +692,90 @@ pub fn open_project_page<R: Runtime>(window: WebviewWindow<R>) -> Result<(), Com
     crate::native::open_in_browser(PROJECT_PAGE_URL).map_err(|_| CommandError::BrowserUnavailable)
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownloadModelRequest {
+    pub model: String,
+}
+
+/// One downloadable catalog model, with its state for the settings panel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDownloadState {
+    pub model: &'static str,
+    pub engine: TranslationEngine,
+    pub installed: bool,
+    pub downloadable: bool,
+    pub downloading: bool,
+    pub total_bytes: u64,
+}
+
+#[tauri::command]
+pub fn get_model_downloads<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    downloads: State<'_, DownloadManager>,
+) -> Result<Vec<ModelDownloadState>, CommandError> {
+    authorize(window.label())?;
+    let installed = app
+        .try_state::<CaptionSessionManager>()
+        .is_some_and(|sessions| sessions.translation_available(TranslationEngine::Riva));
+    Ok(vec![ModelDownloadState {
+        model: catalog::RIVA_TRANSLATE_Q4.id,
+        engine: TranslationEngine::Riva,
+        installed,
+        downloadable: download::riva_source_configured(),
+        downloading: downloads.active_model() == Some(catalog::RIVA_TRANSLATE_Q4.id),
+        total_bytes: download::RIVA_DOWNLOAD_BYTES,
+    }])
+}
+
+#[tauri::command]
+pub fn download_model<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    downloads: State<'_, DownloadManager>,
+    request: DownloadModelRequest,
+) -> Result<(), CommandError> {
+    authorize(window.label())?;
+    let source = download::source_for(&request.model).ok_or(CommandError::DownloadUnavailable)?;
+    let on_installed = {
+        let app = app.clone();
+        Box::new(move || refresh_after_install(&app))
+    };
+    downloads
+        .start(
+            source,
+            crate::models::models_root(),
+            Arc::new(window),
+            on_installed,
+        )
+        .map_err(|_| CommandError::DownloadBusy)
+}
+
+#[tauri::command]
+pub fn cancel_model_download<R: Runtime>(
+    window: WebviewWindow<R>,
+    downloads: State<'_, DownloadManager>,
+) -> Result<(), CommandError> {
+    authorize(window.label())?;
+    downloads.cancel();
+    Ok(())
+}
+
+/// A freshly installed model changes availability; re-probe so the translate
+/// options enable without a restart.
+fn refresh_after_install<R: Runtime>(app: &AppHandle<R>) {
+    if let (Some(sessions), Some(outputs), Some(window)) = (
+        app.try_state::<CaptionSessionManager>(),
+        app.try_state::<Arc<OutputService>>(),
+        app.get_webview_window("overlay"),
+    ) {
+        let controller = app.state::<Controller>();
+        let _ = sessions.refresh_resources(&controller, &outputs, &window);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,6 +894,32 @@ mod tests {
         assert_eq!(snapshot["appearance"]["fontSize"], 32);
         assert_eq!(snapshot["appearance"]["color"], "#FFFFFF");
         assert_eq!(snapshot["appearance"]["partialColor"], "#B8B8B8");
+
+        let download = serde_json::to_value(DownloadUpdate {
+            model: "riva-translate-4b-instruct-v2-q4_k_m",
+            phase: crate::models::download::DownloadPhase::Failed,
+            received_bytes: 10,
+            total_bytes: Some(20),
+            reason: Some(crate::models::download::DownloadFailure::Network),
+        })
+        .unwrap();
+        assert_eq!(
+            download,
+            serde_json::json!({"model":"riva-translate-4b-instruct-v2-q4_k_m","phase":"failed","receivedBytes":10,"totalBytes":20,"reason":"network"})
+        );
+        let state = serde_json::to_value(ModelDownloadState {
+            model: "riva-translate-4b-instruct-v2-q4_k_m",
+            engine: TranslationEngine::Riva,
+            installed: false,
+            downloadable: true,
+            downloading: false,
+            total_bytes: 2_759_302_368,
+        })
+        .unwrap();
+        assert_eq!(
+            state,
+            serde_json::json!({"model":"riva-translate-4b-instruct-v2-q4_k_m","engine":"riva","installed":false,"downloadable":true,"downloading":false,"totalBytes":2_759_302_368_u64})
+        );
     }
 
     #[test]

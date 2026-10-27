@@ -84,6 +84,27 @@ export interface DictationEvent {
   maxDurationSecs: number;
 }
 
+/** Um modelo do catálogo que o app oferece para baixar nas configurações. */
+export interface ModelDownloadState {
+  model: string;
+  engine: TranslationEngine;
+  installed: boolean;
+  downloadable: boolean;
+  downloading: boolean;
+  totalBytes: number;
+}
+
+export type ModelDownloadPhase = "downloading" | "ready" | "failed";
+export type ModelDownloadFailure = "network" | "disk" | "corrupted" | "cancelled";
+
+export interface ModelDownloadUpdate {
+  model: string;
+  phase: ModelDownloadPhase;
+  receivedBytes: number;
+  totalBytes: number | null;
+  reason: ModelDownloadFailure | null;
+}
+
 export interface Backend {
   getState(): Promise<AppSnapshot>;
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
@@ -99,9 +120,13 @@ export interface Backend {
   selectAudioOutput(id: string): Promise<OutputSelection>;
   getDictation(): Promise<DictationSnapshot>;
   setDictation(settings: DictationSettings): Promise<DictationSnapshot>;
+  getModelDownloads(): Promise<ModelDownloadState[]>;
+  downloadModel(model: string): Promise<void>;
+  cancelModelDownload(): Promise<void>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
   subscribeDictation(listener: (event: DictationEvent) => void): Promise<() => void>;
+  subscribeModelDownloads(listener: (update: ModelDownloadUpdate) => void): Promise<() => void>;
   resize(direction: ResizeDirection): Promise<void>;
   close(): Promise<void>;
   openProjectPage(): Promise<void>;

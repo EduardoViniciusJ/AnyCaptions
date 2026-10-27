@@ -111,6 +111,10 @@ select { padding: 0 6px; }
 .setting-row input[type="range"] { width: 100%; margin: 0; accent-color: #60a5fa; }
 .setting-row output { color: #bfbfbf; padding-left: 8px; font-variant-numeric: tabular-nums; }
 .setting-row select { min-width: 0; width: 100%; max-width: 100%; text-overflow: ellipsis; }
+/* Download do modelo do mecanismo (Riva): aviso + ação e barra de progresso. */
+#model-download { grid-template-columns: minmax(0, 1fr) auto; }
+#model-download button { white-space: nowrap; }
+#model-download-progress { width: 100%; height: 6px; margin: 2px 0 6px; accent-color: #60a5fa; }
 .settings-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 12px; }
 .settings-footer button { min-width: 88px; }
 .settings-credit { margin-right: auto; min-width: 0; padding: 0; border: none; background: none; color: #8a8a8a; font-size: 11px; cursor: pointer; }

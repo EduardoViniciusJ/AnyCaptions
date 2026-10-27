@@ -17,6 +17,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "get_dictation",
             "set_dictation",
             "open_project_page",
+            "get_model_downloads",
+            "download_model",
+            "cancel_model_download",
         ]),
     ))?;
     Ok(())

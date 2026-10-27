@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOverlay } from "./overlay";
-import type { AppSnapshot, Backend, CaptionUpdate } from "./contracts";
+import type { AppSnapshot, Backend, CaptionUpdate, ModelDownloadUpdate } from "./contracts";
+
+const RIVA_MODEL = "riva-translate-4b-instruct-v2-q4_k_m";
+const RIVA_BYTES = 2_759_302_368;
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", translationEngine: "opus", sourceLanguage: null, capture: "stopped", windowMode: "edit",
@@ -16,6 +19,7 @@ function setup(initial = snapshot()) {
   document.body.append(root);
   let listener: ((state: AppSnapshot) => void) | undefined;
   let captionListener: ((caption: CaptionUpdate) => void) | undefined;
+  let modelDownloadListener: ((update: ModelDownloadUpdate) => void) | undefined;
   const release = vi.fn();
   const backend: Backend = {
     getState: vi.fn().mockResolvedValue(initial),
@@ -58,6 +62,12 @@ function setup(initial = snapshot()) {
       inputs: { devices: [], selectedId: null, selectedAvailable: false },
     })),
     subscribeDictation: vi.fn(async () => vi.fn()),
+    getModelDownloads: vi.fn().mockResolvedValue([
+      { model: RIVA_MODEL, engine: "riva", installed: false, downloadable: true, downloading: false, totalBytes: RIVA_BYTES },
+    ]),
+    downloadModel: vi.fn().mockResolvedValue(undefined),
+    cancelModelDownload: vi.fn().mockResolvedValue(undefined),
+    subscribeModelDownloads: vi.fn(async (callback) => { modelDownloadListener = callback; return vi.fn(); }),
   };
   const overlay = createOverlay(root, backend);
   disposers.push(overlay.dispose);
@@ -67,7 +77,8 @@ function setup(initial = snapshot()) {
     return element;
   }
   return { root, backend, overlay, release, get, emit: (state: AppSnapshot) => listener?.(state),
-    emitCaption: (caption: CaptionUpdate) => captionListener?.(caption) };
+    emitCaption: (caption: CaptionUpdate) => captionListener?.(caption),
+    emitModelDownload: (update: ModelDownloadUpdate) => modelDownloadListener?.(update) };
 }
 
 describe("overlay controls", () => {
@@ -413,5 +424,73 @@ describe("overlay controls", () => {
     app.get("#resize-right").dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
     expect(app.backend.resize).toHaveBeenNthCalledWith(1, "West");
     expect(app.backend.resize).toHaveBeenNthCalledWith(2, "East");
+  });
+});
+
+describe("model download", () => {
+  it("offers the download only while the selected engine's model is missing", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    await app.overlay.ready;
+    const row = app.get("#model-download");
+    expect(row.hidden).toBe(false);
+    expect(app.get("#model-download-status").textContent).toBe(
+      "O modelo deste mecanismo ainda não foi baixado.",
+    );
+    expect(app.get("#model-download-action").textContent).toBe("Baixar (2.8 GB)");
+    app.emit(snapshot({ revision: 1, translationEngine: "opus" }));
+    expect(row.hidden).toBe(true);
+  });
+
+  it("starts the download, shows progress and lets the user cancel", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    await app.overlay.ready;
+    app.get<HTMLButtonElement>("#model-download-action").click();
+    expect(app.backend.downloadModel).toHaveBeenCalledWith(RIVA_MODEL);
+    app.emitModelDownload({
+      model: RIVA_MODEL,
+      phase: "downloading",
+      receivedBytes: RIVA_BYTES / 2,
+      totalBytes: RIVA_BYTES,
+      reason: null,
+    });
+    expect(app.get("#model-download-status").textContent).toBe("Baixando… 50%");
+    const progress = app.get<HTMLProgressElement>("#model-download-progress");
+    expect(progress.hidden).toBe(false);
+    expect(progress.value).toBe(50);
+    app.get<HTMLButtonElement>("#model-download-action").click();
+    expect(app.backend.cancelModelDownload).toHaveBeenCalled();
+  });
+
+  it("explains a failure and offers a retry", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    await app.overlay.ready;
+    app.emitModelDownload({
+      model: RIVA_MODEL,
+      phase: "failed",
+      receivedBytes: 0,
+      totalBytes: null,
+      reason: "corrupted",
+    });
+    expect(app.get("#model-download-status").textContent).toBe(
+      "O arquivo baixado não passou na verificação. Tente de novo.",
+    );
+    expect(app.get("#model-download-action").textContent).toBe("Tentar de novo");
+    expect(app.get<HTMLProgressElement>("#model-download-progress").hidden).toBe(true);
+  });
+
+  it("hides the offer once the installed model arrives", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    await app.overlay.ready;
+    vi.mocked(app.backend.getModelDownloads).mockResolvedValue([
+      { model: RIVA_MODEL, engine: "riva", installed: true, downloadable: true, downloading: false, totalBytes: RIVA_BYTES },
+    ]);
+    app.emitModelDownload({
+      model: RIVA_MODEL,
+      phase: "ready",
+      receivedBytes: RIVA_BYTES,
+      totalBytes: RIVA_BYTES,
+      reason: null,
+    });
+    await vi.waitFor(() => expect(app.get("#model-download").hidden).toBe(true));
   });
 });
