@@ -1,0 +1,21 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ButtonLink } from '../ButtonLink';
+import { Card } from '../ui/card';
+import { messages, type Lang } from '../../i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = messages[lang].contribute;
+const repo = 'https://github.com/EduardoViniciusJ/AnyCaptions';
+---
+<Layout lang={lang} title={t.title} description={t.description}>
+  <section class="container contribute-page">
+    <h1>{t.heading}</h1>
+    <p>{t.sub}</p>
+    <ButtonLink variant="outline" className="contribute-issue h-12 px-5" href={`${repo}/issues/new/choose`} target="_blank" rel="noreferrer">{t.issueButton} ↗</ButtonLink>
+    <Card className="contribute-repository flex-row items-center justify-between gap-6 rounded-lg p-6 max-sm:flex-col max-sm:items-start">
+      <h2>{t.repoHeading}</h2>
+      <ButtonLink variant="outline" className="h-12 px-5" href={repo} target="_blank" rel="noreferrer">{t.repoButton} ↗</ButtonLink>
+    </Card>
+  </section>
+</Layout>

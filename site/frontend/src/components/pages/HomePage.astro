@@ -1,0 +1,55 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { CaptionPreview } from '../../features/preview/CaptionPreview';
+import { DictationPreview } from '../../features/preview/DictationPreview';
+import { Button } from '../ui/button';
+import { ButtonLink } from '../ButtonLink';
+import { getLatestRelease } from '../../lib/api/releases';
+import { localePath, messages, type Lang } from '../../i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = messages[lang];
+const release = await getLatestRelease();
+const hasInstaller = release?.hasInstaller ?? false;
+---
+<Layout lang={lang} title={t.home.title} description={t.home.description}>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'AnyCaptions',
+    operatingSystem: 'Windows 11',
+    applicationCategory: 'UtilitiesApplication',
+    description: t.home.jsonLd,
+    url: 'https://anycaptions.app',
+    image: 'https://anycaptions.app/og.png',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'BRL' },
+    author: { '@type': 'Person', name: 'Eduardo Vinicius', url: 'https://github.com/EduardoViniciusJ' },
+  })} />
+  <section class="hero container">
+    <h1>{t.home.heroTitle}</h1>
+    <p class="hero-copy">
+      {t.home.heroLines.map((line, index) => (
+        <>
+          <strong>{line.lead}</strong>{line.rest}
+          {index < t.home.heroLines.length - 1 && <br class="desktop-break" />}
+        </>
+      ))}
+    </p>
+    <div class="hero-actions" id="download">
+      {hasInstaller
+        ? <ButtonLink variant="outline" className="hero-download h-12 px-5" id="download-link" href={localePath(lang, '/account')} title={t.home.downloadSignInHint}>{t.home.download}</ButtonLink>
+        : <Button variant="outline" className="hero-download h-12 px-5" type="button" disabled title={t.home.downloadUnavailable}>{t.home.download}</Button>}
+    </div>
+  </section>
+  <script>
+    import { currentAccount } from '../../features/auth/auth-api';
+    const link = document.getElementById('download-link');
+    if (link instanceof HTMLAnchorElement && await currentAccount()) {
+      const api = (import.meta.env.PUBLIC_API_URL || '/api').replace(/\/$/, '');
+      link.href = `${api}/releases/latest/download`;
+      link.removeAttribute('title');
+    }
+  </script>
+  <CaptionPreview client:load lang={lang} />
+  <DictationPreview client:visible lang={lang} />
+</Layout>

@@ -1,0 +1,8 @@
+---
+import HomePage from '../../components/pages/HomePage.astro';
+import { defaultLang, isLang } from '../../i18n';
+const { lang } = Astro.params;
+if (lang === defaultLang) return Astro.redirect('/', 301);
+if (!lang || !isLang(lang)) return new Response(null, { status: 404 });
+---
+<HomePage lang={lang} />

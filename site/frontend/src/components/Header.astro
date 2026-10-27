@@ -1,10 +1,21 @@
+---
+import { LanguagePicker } from './LanguagePicker';
+import { langFromUrl, langs, localePath, messages, stripLang, type Lang } from '../i18n';
+interface Props { lang?: Lang }
+const { lang = langFromUrl(Astro.url) } = Astro.props;
+const t = messages[lang];
+// Cada idioma aponta para a mesma página na sua própria URL.
+const basePath = stripLang(Astro.url.pathname);
+const targets = Object.fromEntries(langs.map(item => [item, localePath(item, basePath)])) as Record<Lang, string>;
+---
 <header class="site-header">
   <div class="container nav-row">
-    <a class="brand" href="/" aria-label="AnyCaptions, início"><span class="brand-icon">CC</span> AnyCaptions<span class="brand-dot"></span></a>
+    <a class="brand" href={localePath(lang, '/')} aria-label="AnyCaptions"><img class="brand-icon" src="/app-icon.svg" alt="" width="24" height="24" /> AnyCaptions</a>
     <nav aria-label="Principal">
-      <a href="/docs">Docs</a>
-      <a href="/contribute">Contribuir</a>
-      <span id="header-account"><a class="nav-account" href="/account">Entrar</a></span>
+      <a class="nav-pill" href={localePath(lang, '/docs')}>{t.nav.docs}</a>
+      <a class="nav-pill" href={localePath(lang, '/contribute')}>{t.nav.contribute}</a>
+      <LanguagePicker client:load lang={lang} targets={targets} label={t.nav.language} />
+      <span id="header-account" data-href={localePath(lang, '/account')} data-label={t.nav.signIn}><a class="nav-account nav-pill" href={localePath(lang, '/account')}>{t.nav.signIn}</a></span>
     </nav>
   </div>
 </header>

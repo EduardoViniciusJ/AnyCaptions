@@ -1,0 +1,13 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { AccountPanel } from '../../features/auth/AccountPanel';
+import { messages, type Lang } from '../../i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = messages[lang].account;
+---
+<Layout lang={lang} title={t.title} description={t.description}>
+  <section class="container account-page">
+    <AccountPanel client:load lang={lang} />
+  </section>
+</Layout>
