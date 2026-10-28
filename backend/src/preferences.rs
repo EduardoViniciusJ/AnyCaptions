@@ -324,6 +324,7 @@ mod tests {
             font_size: 44,
             color: CaptionColor::YELLOW,
             partial_color: CaptionColor::DEFAULT_PARTIAL,
+            background: true,
         };
         snapshot.shortcut = "Ctrl+Alt+K".into();
         store.sync_snapshot(&snapshot).unwrap();
@@ -347,6 +348,7 @@ mod tests {
             restored.appearance.partial_color,
             CaptionColor::DEFAULT_PARTIAL
         );
+        assert!(restored.appearance.background);
         assert_eq!(restored.geometry.unwrap().relative_x, 0.3);
         fs::remove_file(path).unwrap();
         fs::remove_dir(dir).unwrap();

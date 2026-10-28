@@ -9,6 +9,7 @@ export interface Appearance {
   fontSize: number;
   color: CaptionColor;
   partialColor: CaptionColor;
+  background: boolean;
 }
 
 export interface AppSnapshot {

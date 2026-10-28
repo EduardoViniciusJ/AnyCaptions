@@ -6,6 +6,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   fontSize: 32,
   color: "#FFFFFF",
   partialColor: "#B8B8B8",
+  background: false,
 };
 
 const HEX_COLOR = /^#[0-9A-F]{6}$/u;
@@ -18,11 +19,13 @@ export function normalizeCaptionColor(value: string): CaptionColor | undefined {
 export function sameAppearance(left: Appearance, right: Appearance): boolean {
   return left.fontSize === right.fontSize
     && left.color === right.color
-    && left.partialColor === right.partialColor;
+    && left.partialColor === right.partialColor
+    && left.background === right.background;
 }
 
 export function applyAppearance(element: HTMLElement, appearance: Appearance): void {
   element.style.setProperty("--caption-base-size", `${appearance.fontSize}px`);
   element.style.setProperty("--caption-color", appearance.color);
   element.style.setProperty("--caption-partial-color", appearance.partialColor);
+  element.toggleAttribute("data-background", appearance.background);
 }

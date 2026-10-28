@@ -115,6 +115,10 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
             </div>
           </div>
           <div class="setting-row">
+            <label for="caption-background" data-i18n="captionBackground">Fundo escuro</label>
+            <input id="caption-background" type="checkbox" disabled />
+          </div>
+          <div class="setting-row">
             <label for="ui-language" data-i18n="uiLanguage">Idioma da interface</label>
             <div class="language-picker">
               <button id="ui-language" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="ui-language-label"></span></button>
@@ -586,6 +590,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   const fontColorValue = get<HTMLInputElement>("#font-color-value");
   const partialColor = get<HTMLInputElement>("#partial-color");
   const partialColorValue = get<HTMLInputElement>("#partial-color-value");
+  const captionBackground = get<HTMLInputElement>("#caption-background");
   const appearancePreview = get<HTMLElement>("#appearance-preview");
   const resetAppearance = get<HTMLButtonElement>("#reset-appearance");
   const saveSettings = get<HTMLButtonElement>("#save-settings");
@@ -701,6 +706,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     fontColorValue.value = appearance.color;
     partialColor.value = appearance.partialColor;
     partialColorValue.value = appearance.partialColor;
+    captionBackground.checked = appearance.background;
     fontColorValue.removeAttribute("aria-invalid");
     partialColorValue.removeAttribute("aria-invalid");
     appearanceValid = true;
@@ -721,6 +727,7 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
     fontColorValue.disabled = disabled;
     partialColor.disabled = disabled;
     partialColorValue.disabled = disabled;
+    captionBackground.disabled = disabled;
     resetAppearance.disabled = disabled;
     shortcut.disabled = disabled;
     translationEngine.disabled = disabled;
@@ -1105,6 +1112,11 @@ export function createOverlay(root: HTMLElement, backend: Backend) {
   fontSize.addEventListener("input", () => {
     if (!appearanceDraft) return;
     appearanceDraft.fontSize = Number(fontSize.value);
+    renderAppearancePreview();
+  }, options);
+  captionBackground.addEventListener("change", () => {
+    if (!appearanceDraft) return;
+    appearanceDraft.background = captionBackground.checked;
     renderAppearancePreview();
   }, options);
   fontColor.addEventListener("input", () => {

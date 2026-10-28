@@ -27,6 +27,7 @@ export const en: Messages = {
   fontSize: "Size",
   confirmedText: "Confirmed text",
   recentWords: "Recent words",
+  captionBackground: "Dark background",
   pickConfirmedColor: "Pick the confirmed text color",
   confirmedColorHex: "Confirmed text hex color",
   pickRecentColor: "Pick the recent words color",

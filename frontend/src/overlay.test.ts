@@ -7,7 +7,7 @@ const RIVA_BYTES = 2_759_302_368;
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return { revision: 0, sessionId: 0, uiLanguage: "pt-br", mode: "auto", translationEngine: "opus", sourceLanguage: null, capture: "stopped", windowMode: "edit",
-    appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8" }, resources: { audioCapture: false, transcription: false, translation: false },
+    appearance: { fontSize: 32, color: "#FFFFFF", partialColor: "#B8B8B8", background: false }, resources: { audioCapture: false, transcription: false, translation: false },
     canStart: false, canLock: false, shortcut: "Ctrl+Alt+L", shortcutAvailable: false, error: null, ...overrides };
 }
 
@@ -270,11 +270,16 @@ describe("overlay controls", () => {
     color.dispatchEvent(new Event("input"));
     partialColor.value = "#ff77aa";
     partialColor.dispatchEvent(new Event("input"));
+    const background = app.get<HTMLInputElement>("#caption-background");
+    background.checked = true;
+    background.dispatchEvent(new Event("change"));
 
     const preview = app.get<HTMLElement>("#appearance-preview");
     expect(preview.style.getPropertyValue("--caption-base-size")).toBe("72px");
     expect(preview.style.getPropertyValue("--caption-color")).toBe("#33CCFF");
     expect(preview.style.getPropertyValue("--caption-partial-color")).toBe("#FF77AA");
+    expect(preview.hasAttribute("data-background")).toBe(true);
+    expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(false);
     expect(app.backend.setAppearance).not.toHaveBeenCalled();
 
     await vi.waitFor(() => expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false));
@@ -283,13 +288,15 @@ describe("overlay controls", () => {
       fontSize: 72,
       color: "#33CCFF",
       partialColor: "#FF77AA",
+      background: true,
     }));
     await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
     expect(app.get<HTMLElement>("#caption-preview").style.getPropertyValue("--caption-color")).toBe("#33CCFF");
+    expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(true);
   });
 
   it("validates hexadecimal colors and restores the visual defaults", async () => {
-    const app = setup(snapshot({ appearance: { fontSize: 48, color: "#00FF00", partialColor: "#0088FF" } }));
+    const app = setup(snapshot({ appearance: { fontSize: 48, color: "#00FF00", partialColor: "#0088FF", background: true } }));
     await app.overlay.ready;
     app.get<HTMLButtonElement>("#settings-toggle").click();
     const value = app.get<HTMLInputElement>("#font-color-value");
@@ -303,6 +310,7 @@ describe("overlay controls", () => {
     expect(app.get<HTMLInputElement>("#font-size").value).toBe("32");
     expect(value.value).toBe("#FFFFFF");
     expect(app.get<HTMLInputElement>("#partial-color-value").value).toBe("#B8B8B8");
+    expect(app.get<HTMLInputElement>("#caption-background").checked).toBe(false);
     expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false);
   });
 

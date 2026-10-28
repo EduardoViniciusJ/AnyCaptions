@@ -27,6 +27,7 @@ export const ru: Messages = {
   fontSize: "Размер",
   confirmedText: "Подтверждённый текст",
   recentWords: "Недавние слова",
+  captionBackground: "Тёмный фон",
   pickConfirmedColor: "Выбрать цвет подтверждённого текста",
   confirmedColorHex: "HEX-цвет подтверждённого текста",
   pickRecentColor: "Выбрать цвет недавних слов",
