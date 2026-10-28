@@ -26,6 +26,7 @@ export const ptBR = {
   fontSize: "Tamanho",
   confirmedText: "Texto confirmado",
   recentWords: "Palavras recentes",
+  captionBackground: "Fundo escuro",
   pickConfirmedColor: "Escolher cor do texto confirmado",
   confirmedColorHex: "Cor hexadecimal do texto confirmado",
   pickRecentColor: "Escolher cor das palavras recentes",

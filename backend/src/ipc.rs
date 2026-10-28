@@ -826,6 +826,7 @@ mod tests {
                     font_size: 100,
                     color: CaptionColor::WHITE,
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
+                    background: false,
                 }))
                 .is_err()
         );
@@ -890,7 +891,7 @@ mod tests {
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");
         assert_eq!(snapshot["translationEngine"], "opus");
-        assert_eq!(snapshot["uiLanguage"], "pt-br");
+        assert_eq!(snapshot["uiLanguage"], "en");
         assert_eq!(snapshot["appearance"]["fontSize"], 32);
         assert_eq!(snapshot["appearance"]["color"], "#FFFFFF");
         assert_eq!(snapshot["appearance"]["partialColor"], "#B8B8B8");

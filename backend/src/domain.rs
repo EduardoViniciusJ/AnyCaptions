@@ -178,7 +178,7 @@ impl UiLanguage {
 
 impl Default for UiLanguage {
     fn default() -> Self {
-        UiLanguage("pt-br")
+        UiLanguage("en")
     }
 }
 
@@ -352,6 +352,10 @@ pub struct Appearance {
     pub color: CaptionColor,
     #[serde(default = "default_partial_color")]
     pub partial_color: CaptionColor,
+    /// Dark translucent band behind the captions. Defaults to off so
+    /// preferences saved before this option keep their look.
+    #[serde(default)]
+    pub background: bool,
 }
 
 fn default_partial_color() -> CaptionColor {
@@ -364,6 +368,7 @@ impl Default for Appearance {
             font_size: 32,
             color: CaptionColor::WHITE,
             partial_color: CaptionColor::DEFAULT_PARTIAL,
+            background: false,
         }
     }
 }
@@ -832,6 +837,7 @@ mod tests {
                     font_size: size,
                     color: CaptionColor::YELLOW,
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
+                    background: false,
                 }),
                 Err(DomainError::InvalidFontSize)
             );
@@ -843,6 +849,7 @@ mod tests {
                     font_size: size,
                     color: CaptionColor::YELLOW,
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
+                    background: false,
                 })
                 .unwrap();
             assert_eq!(state.snapshot().appearance.font_size, size);

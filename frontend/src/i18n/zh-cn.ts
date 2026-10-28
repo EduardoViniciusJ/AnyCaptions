@@ -27,6 +27,7 @@ export const zhCN: Messages = {
   fontSize: "大小",
   confirmedText: "已确认文本",
   recentWords: "最近词语",
+  captionBackground: "深色背景",
   pickConfirmedColor: "选择已确认文本的颜色",
   confirmedColorHex: "已确认文本的十六进制颜色",
   pickRecentColor: "选择最近词语的颜色",
