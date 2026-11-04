@@ -107,7 +107,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
   text-shadow: none;
 }
 /* Modo frases (tradução): o texto flui preenchendo a largura, quebra em até
-   3 linhas e, ao encher, limpa e recomeça do zero. */
+   3 linhas e, ao encher, o mais antigo sai por cima. */
 .caption[data-lines="multi"] {
   white-space: normal;
   height: auto;

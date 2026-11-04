@@ -187,10 +187,13 @@ describe("speaker labels in the caption engine", () => {
     presenter.accept(sentence(3, 2, "E funciona bem."));
     expect(last().sentenceSpeakers).toEqual([1, 2, undefined]);
     expect(last().sentences.length).toBe(3);
-    // Each turn counts its own lines: a fourth speaker overflows and restarts.
+    // Each turn counts its own lines: a long fourth turn pushes the oldest text out.
     presenter.accept(sentence(4, 3, "Provavelmente não, só terminar o trabalho."));
-    expect(last().sentences).toEqual(["Provavelmente não, só terminar o trabalho."]);
-    expect(last().sentenceSpeakers).toEqual([3]);
+    expect(last().sentences).toEqual([
+      "E funciona bem.",
+      "Provavelmente não, só terminar o trabalho.",
+    ]);
+    expect(last().sentenceSpeakers?.at(-1)).toBe(3);
   });
 
   it("formats the generic label in the interface language", () => {

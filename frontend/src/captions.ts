@@ -310,8 +310,8 @@ export class CaptionPresenter {
     this.activeFinal = update.isFinal;
 
     // Translate mode: each update is one translated sentence, shown
-    // immediately. The text flows over up to SENTENCE_LINES lines and, once
-    // full, the screen clears and restarts with the newest sentence.
+    // immediately. As in the speaker-label layout, a speaker's text flows
+    // together over up to SENTENCE_LINES lines and the oldest text leaves first.
     if (this.mode !== "auto") {
       const sentence = update.text.trim();
       // A translated sentence belongs to one speaker (the stage translates
@@ -363,6 +363,7 @@ export class CaptionPresenter {
     const rendered = turnsOf(sentences, (sentence) => sentence.speaker).map((turn) =>
       renderSentences(turn.items),
     );
+    if (rendered.length === 1) return this.fitsCaption(rendered[0]!, SENTENCE_LINES);
     return keepRecentTurns(rendered, this.fitsCaption, SENTENCE_LINES) === 0;
   }
 
@@ -375,14 +376,10 @@ export class CaptionPresenter {
 
   private layoutSentences(): void {
     const fitsLines = (text: string) => this.fitsCaption(text, SENTENCE_LINES);
-    if (this.shownSentences().length > 1 && !this.sentencesFit(this.shownSentences())) {
-      // Encheu as linhas: a tela limpa e recomeça do zero com a sentença nova,
-      // em vez de ir empurrando as antigas para cima. A provisória conta como
-      // a mais nova e sobrevive; se nem assim couber, fica só ela.
-      this.sentences = this.sentences.slice(-1);
-      if (this.shownSentences().length > 1 && !this.sentencesFit(this.shownSentences())) {
-        this.sentences = [];
-      }
+    // Encheu as linhas: as sentenças mais antigas saem por cima, como os turnos
+    // do modo por pessoa. A provisória conta como a mais nova e sempre fica.
+    while (this.shownSentences().length > 1 && !this.sentencesFit(this.shownSentences())) {
+      this.sentences.shift();
     }
     let text = this.shownSentences().map((sentence) => sentence.text).join(" ");
     if (text && !fitsLines(renderSentences(this.shownSentences()))) {
