@@ -149,7 +149,7 @@ export function App({ backend }: { backend: Backend }) {
           />
         )}
       </div>
-      <DictationIndicator backend={backend} onError={setError} />
+      <DictationIndicator backend={backend} onError={setError} feedbackOnly />
       <p
         id="error"
         className="error"

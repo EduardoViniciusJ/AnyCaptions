@@ -65,7 +65,7 @@ fn initial_geometry(x: f64, y: f64, width: f64, height: f64) -> Geometry {
     }
 }
 
-fn navigation_allowed(url: &tauri::Url) -> bool {
+pub(crate) fn navigation_allowed(url: &tauri::Url) -> bool {
     if url.scheme() != "http" || !url.username().is_empty() || url.password().is_some() {
         return false;
     }

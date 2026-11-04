@@ -142,6 +142,7 @@ fn emit<R: Runtime>(
         show_live_text: settings.show_live_text,
         max_duration_secs: settings.max_duration_secs,
     };
+    crate::dictation_window::publish(app, &payload);
     let _ = app.emit_to("overlay", DICTATION_EVENT, payload);
 }
 

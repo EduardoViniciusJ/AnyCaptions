@@ -8,8 +8,10 @@ import {
 export function DictationIndicator({
   backend,
   onError,
+  feedbackOnly = false,
 }: {
-  backend: Backend;
+  backend: Pick<Backend, "subscribeDictation">;
+  feedbackOnly?: boolean;
   onError(message: string): void;
 }) {
   const [frame, setFrame] = useState<DictationFrame>();
@@ -42,6 +44,7 @@ export function DictationIndicator({
       indicator.dispose();
     };
   }, [backend]);
+  if (feedbackOnly) return null;
   return (
     <div
       id="dictation-indicator"

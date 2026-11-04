@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "dictation-indicator",
+  "description": "Read-only local dictation indicator. No capture, window or settings commands.",
+  "windows": ["dictation-indicator"],
+  "local": true,
+  "permissions": ["allow-get-dictation-indicator", "core:event:allow-listen", "core:event:allow-unlisten"]
+}
