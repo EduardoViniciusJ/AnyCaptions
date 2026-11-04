@@ -81,6 +81,11 @@ export interface CaptionUpdate {
    * palavras da legenda). Vazio com os rótulos desligados ou indisponíveis.
    */
   speakers: SpeakerSpan[];
+  /**
+   * Modo tradução: tradução provisória da frase ainda sendo falada; a
+   * tradução final do mesmo segmento a substitui.
+   */
+  provisional?: boolean;
 }
 
 export interface OutputSelection {

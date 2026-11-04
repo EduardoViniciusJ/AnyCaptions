@@ -556,9 +556,15 @@ fn deliver(
 ) -> bool {
     if !update.is_final {
         let _ = controller.transition_session(session_id, CaptureState::Processing, sink);
-        // Translate mode shows only Portuguese, so the original partials stay off screen.
-        if matches!(route, CaptionRoute::Direct) {
-            let _ = sink.caption_updated(&update);
+        match route {
+            CaptionRoute::Direct => {
+                let _ = sink.caption_updated(&update);
+            }
+            // Translate mode never shows the source text: the interim feeds a
+            // provisional translation instead (newest text wins, never fatal).
+            CaptionRoute::Translate(stage) => {
+                let _ = stage.submit_partial(update);
+            }
         }
         return true;
     }

@@ -8,6 +8,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 use super::{Translator, TranslatorError};
@@ -26,6 +27,38 @@ const MAX_CONSECUTIVE_FAILURES: usize = 3;
 const QUEUE_CAPACITY: usize = 8;
 /// Captions without a detected language assume English, the dominant case.
 const DEFAULT_SOURCE: &str = "en-US";
+
+/// Provisional translation of the utterance being spoken: the interim text
+/// is translated again as it grows, so the viewer reads the translation while
+/// the person is still talking instead of only after the pause. The newest
+/// word of an interim is left out (it is the one the recognizer still
+/// revises), and the refresh pace follows the translator: twice its last
+/// call, between these bounds, so a fast CPU model refreshes often and a GPU
+/// model sharing the card with the recognizer never queues up.
+const MIN_PROVISIONAL_WORDS: usize = 3;
+const PROVISIONAL_MIN_INTERVAL: Duration = Duration::from_millis(350);
+const PROVISIONAL_MAX_INTERVAL: Duration = Duration::from_millis(2_000);
+
+/// The part of an interim transcript worth translating provisionally: at
+/// least [`MIN_PROVISIONAL_WORDS`], without the still-unstable last word
+/// unless the text already ends a sentence.
+pub(crate) fn provisional_text(text: &str) -> Option<String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.len() < MIN_PROVISIONAL_WORDS {
+        return None;
+    }
+    let closed = words
+        .last()
+        .is_some_and(|word| word.ends_with(['.', '!', '?', '…']));
+    let keep = if closed { words.len() } else { words.len() - 1 };
+    Some(words[..keep].join(" "))
+}
+
+/// How long to wait before the next provisional translation after one that
+/// took `elapsed`.
+pub(crate) fn provisional_interval(elapsed: Duration) -> Duration {
+    (elapsed * 2).clamp(PROVISIONAL_MIN_INTERVAL, PROVISIONAL_MAX_INTERVAL)
+}
 
 /// Minimum whatlang confidence to trust a detection; caption-sized sentences
 /// rarely reach the crate's own `is_reliable` bar, but 0.5 over the allowlist
@@ -160,6 +193,19 @@ impl SourceTracker {
         self.last = None;
     }
 
+    /// The source a provisional translation should use, without touching the
+    /// session memory: the recognizer tag when present, else the language the
+    /// finals settled on, else a best guess from the interim text itself.
+    fn peek(&self, update: &CaptionUpdate) -> String {
+        if let Some(tag) = update.language.as_deref().filter(|tag| !tag.is_empty()) {
+            return tag.to_owned();
+        }
+        self.last
+            .clone()
+            .or_else(|| guess_source(&update.text).map(str::to_owned))
+            .unwrap_or_else(|| DEFAULT_SOURCE.to_owned())
+    }
+
     fn resolve(&mut self, update: &CaptionUpdate) -> String {
         if let Some(tag) = update.language.as_deref().filter(|tag| !tag.is_empty()) {
             // The recognizer knows best; restart the window in the new language.
@@ -280,7 +326,18 @@ struct StageQueue {
 
 struct QueueState {
     pending: VecDeque<CaptionUpdate>,
+    /// The newest interim text of the open utterance, awaiting a provisional
+    /// translation. A newer interim replaces it; a final of its segment (or a
+    /// later one) drops it, since the final translation supersedes it.
+    partial: Option<CaptionUpdate>,
     closed: bool,
+}
+
+/// What the worker takes next: finals first, in order; otherwise the pending
+/// interim once the provisional throttle allows.
+enum Job {
+    Final(CaptionUpdate),
+    Partial(CaptionUpdate),
 }
 
 impl StageQueue {
@@ -288,10 +345,22 @@ impl StageQueue {
         Arc::new(Self {
             state: Mutex::new(QueueState {
                 pending: VecDeque::new(),
+                partial: None,
                 closed: false,
             }),
             available: Condvar::new(),
         })
+    }
+
+    /// Replaces the pending interim: only the newest text is worth translating.
+    fn push_partial(&self, update: CaptionUpdate) -> Result<(), StageError> {
+        let mut state = self.state.lock().map_err(|_| StageError::Overloaded)?;
+        if state.closed {
+            return Err(StageError::Overloaded);
+        }
+        state.partial = Some(update);
+        self.available.notify_one();
+        Ok(())
     }
 
     /// Queues one final. When full, the oldest pending final gives way so the
@@ -311,15 +380,36 @@ impl StageQueue {
         Ok(())
     }
 
-    /// Blocks until a final is available; `None` once closed and drained.
-    fn pop(&self) -> Option<CaptionUpdate> {
+    /// Blocks until there is work: a final, or the pending interim once
+    /// `partial_not_before` has passed. `None` once closed and the finals are
+    /// drained (a leftover interim is not worth translating then).
+    fn pop(&self, partial_not_before: Instant) -> Option<Job> {
         let mut state = self.state.lock().ok()?;
         loop {
             if let Some(update) = state.pending.pop_front() {
-                return Some(update);
+                if state
+                    .partial
+                    .as_ref()
+                    .is_some_and(|partial| partial.segment_id <= update.segment_id)
+                {
+                    state.partial = None;
+                }
+                return Some(Job::Final(update));
             }
             if state.closed {
                 return None;
+            }
+            if state.partial.is_some() {
+                let now = Instant::now();
+                if now >= partial_not_before {
+                    return state.partial.take().map(Job::Partial);
+                }
+                let (guard, _) = self
+                    .available
+                    .wait_timeout(state, partial_not_before - now)
+                    .ok()?;
+                state = guard;
+                continue;
             }
             state = self.available.wait(state).ok()?;
         }
@@ -362,10 +452,84 @@ impl TranslationStage {
             .spawn(move || {
                 let mut source_tracker = SourceTracker::default();
                 let mut failures_in_a_row = 0_usize;
-                while let Some(update) = worker_queue.pop() {
+                let mut partial_not_before = Instant::now();
+                // Segment and input of the last provisional translation, so an
+                // interim that only changed in its newest word is not redone.
+                let mut last_partial: Option<(u32, String)> = None;
+                while let Some(job) = worker_queue.pop(partial_not_before) {
                     if stop_flag.load(Ordering::Acquire) {
                         return;
                     }
+                    let update = match job {
+                        Job::Final(update) => update,
+                        Job::Partial(update) => {
+                            let Some(input) = provisional_text(&update.text) else {
+                                continue;
+                            };
+                            if last_partial
+                                .as_ref()
+                                .is_some_and(|(segment, text)| {
+                                    *segment == update.segment_id && *text == input
+                                })
+                            {
+                                continue;
+                            }
+                            let source = match fixed_source {
+                                Some(tag) => tag.to_owned(),
+                                None => source_tracker.peek(&update),
+                            };
+                            let start = Instant::now();
+                            let result = translator.translate(&input, &source, target.tag());
+                            partial_not_before = Instant::now() + provisional_interval(start.elapsed());
+                            match result {
+                                Ok(text) => {
+                                    // Timing only; caption text never reaches logs.
+                                    eprintln!(
+                                        "[nmt] provisional_ms={} chars_in={} chars_out={}",
+                                        start.elapsed().as_millis(),
+                                        input.chars().count(),
+                                        text.chars().count(),
+                                    );
+                                    last_partial = Some((update.segment_id, input));
+                                    if text.is_empty() {
+                                        continue;
+                                    }
+                                    // The whole interim is one unit; label it with
+                                    // whoever is speaking its newest words.
+                                    let speakers = update
+                                        .speakers
+                                        .last()
+                                        .map(|span| {
+                                            vec![SpeakerSpan {
+                                                speaker: span.speaker,
+                                                text: text.clone(),
+                                            }]
+                                        })
+                                        .unwrap_or_default();
+                                    let provisional = CaptionUpdate {
+                                        text,
+                                        language: Some(target.tag().to_owned()),
+                                        is_final: false,
+                                        provisional: true,
+                                        speakers,
+                                        ..update.clone()
+                                    };
+                                    if !emit(StageEvent::Translated(provisional)) {
+                                        return;
+                                    }
+                                }
+                                Err(error) => {
+                                    // Best effort: the final still gets translated,
+                                    // and only finals decide whether the session fails.
+                                    eprintln!(
+                                        "[nmt] provisional failed ({error:?}) source={source} target={}",
+                                        target.tag()
+                                    );
+                                }
+                            }
+                            continue;
+                        }
+                    };
                     let source = match fixed_source {
                         Some(tag) => tag.to_owned(),
                         None => source_tracker.resolve(&update),
@@ -451,6 +615,12 @@ impl TranslationStage {
         self.queue.push(update)
     }
 
+    /// Offers the newest interim text of the open utterance for a provisional
+    /// translation; it replaces any interim still waiting.
+    pub fn submit_partial(&self, update: CaptionUpdate) -> Result<(), StageError> {
+        self.queue.push_partial(update)
+    }
+
     /// Closes the queue and waits for the worker to drain it.
     pub fn finish(mut self) {
         self.close_and_join();
@@ -493,7 +663,171 @@ mod tests {
             is_final: true,
             language: language.map(str::to_owned),
             speakers: Vec::new(),
+            provisional: false,
         }
+    }
+
+    fn interim_update(segment_id: u32, revision: u32, text: &str) -> CaptionUpdate {
+        CaptionUpdate {
+            revision,
+            is_final: false,
+            ..final_update(segment_id, text, None)
+        }
+    }
+
+    #[test]
+    fn provisional_text_drops_the_unstable_last_word_and_tiny_interims() {
+        assert_eq!(provisional_text("Did you"), None);
+        assert_eq!(
+            provisional_text("Did you manage to").as_deref(),
+            Some("Did you manage")
+        );
+        assert_eq!(
+            provisional_text("Did you manage to finish it?").as_deref(),
+            Some("Did you manage to finish it?")
+        );
+        assert_eq!(
+            provisional_interval(Duration::from_millis(90)),
+            PROVISIONAL_MIN_INTERVAL
+        );
+        assert_eq!(
+            provisional_interval(Duration::from_millis(400)),
+            Duration::from_millis(800)
+        );
+        assert_eq!(
+            provisional_interval(Duration::from_secs(5)),
+            PROVISIONAL_MAX_INTERVAL
+        );
+    }
+
+    #[test]
+    fn interim_text_is_translated_provisionally_and_the_final_replaces_it() {
+        let mut translator = MockTranslator::new();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&calls);
+        translator
+            .expect_translate()
+            .returning(move |text, source, target| {
+                seen.lock().unwrap().push(text.to_owned());
+                assert_eq!((source, target), ("en-US", "pt-br"));
+                Ok(match text {
+                    "Did you manage" => "Você conseguiu".to_owned(),
+                    "Did you manage to finish it?" => "Você conseguiu terminar?".to_owned(),
+                    other => format!("PT {other}"),
+                })
+            });
+
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            Some("en-US"),
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
+                }
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
+
+        // Too short: nothing is translated yet.
+        stage
+            .submit_partial(interim_update(1, 1, "Did you"))
+            .unwrap();
+        // Long enough: translated without its newest word, shown as provisional.
+        stage
+            .submit_partial(interim_update(1, 2, "Did you manage to"))
+            .unwrap();
+        wait_until(|| !emitted.lock().unwrap().is_empty());
+        {
+            let emitted = emitted.lock().unwrap();
+            assert_eq!(emitted.len(), 1);
+            assert_eq!(emitted[0].text, "Você conseguiu");
+            assert!(emitted[0].provisional && !emitted[0].is_final);
+            assert_eq!((emitted[0].segment_id, emitted[0].revision), (1, 2));
+            assert_eq!(emitted[0].language.as_deref(), Some("pt-br"));
+        }
+        // The throttle holds the next interim; a final of the same segment
+        // arriving meanwhile drops it, so that interim is never translated.
+        stage
+            .submit_partial(interim_update(1, 3, "Did you manage to finish"))
+            .unwrap();
+        stage
+            .submit(final_update(
+                1,
+                "Did you manage to finish it?",
+                Some("en-US"),
+            ))
+            .unwrap();
+        stage.finish();
+
+        let emitted = emitted.lock().unwrap();
+        assert_eq!(emitted.len(), 2);
+        assert_eq!(emitted[1].text, "Você conseguiu terminar?");
+        assert!(emitted[1].is_final && !emitted[1].provisional);
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            *calls,
+            vec![
+                "Did you manage".to_owned(),
+                "Did you manage to finish it?".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_provisional_translation_never_fails_the_session() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "this will not")
+            .times(1)
+            .returning(|_, _, _| Err(TranslatorError::TranslationFailed));
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "this will not fail the final.")
+            .times(1)
+            .returning(|_, _, _| Ok("isto não falha a final.".to_owned()));
+        let failed = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&failed);
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            Some("en-US"),
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update.text);
+                    true
+                }
+                StageEvent::Failed => {
+                    flag.store(true, Ordering::Release);
+                    false
+                }
+            },
+        )
+        .unwrap();
+        stage
+            .submit_partial(interim_update(2, 1, "this will not fail"))
+            .unwrap();
+        wait_until(|| false);
+        stage
+            .submit(final_update(
+                2,
+                "this will not fail the final.",
+                Some("en-US"),
+            ))
+            .unwrap();
+        stage.finish();
+        assert!(!failed.load(Ordering::Acquire));
+        assert_eq!(
+            *emitted.lock().unwrap(),
+            vec!["isto não falha a final.".to_owned()]
+        );
     }
 
     #[test]
