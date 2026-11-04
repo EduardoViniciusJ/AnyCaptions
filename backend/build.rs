@@ -3,6 +3,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "get_state",
+            "get_dictation_indicator",
             "set_caption_mode",
             "set_translation_engine",
             "set_source_language",

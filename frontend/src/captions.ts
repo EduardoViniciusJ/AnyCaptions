@@ -23,7 +23,10 @@ const CLEAR_FADE_MS = 120;
 // Espelhado no CSS de `.caption[data-lines="multi"]`.
 const SENTENCE_LINES = 3;
 
-function splitTrailingWords(text: string, trailingWords = 1): { leading: string; trailing: string } {
+function splitTrailingWords(
+  text: string,
+  trailingWords = 1,
+): { leading: string; trailing: string } {
   const words = text.trim().split(/\s+/u).filter(Boolean);
   if (words.length === 0) return { leading: "", trailing: "" };
   const splitAt = Math.max(0, words.length - trailingWords);
@@ -31,6 +34,17 @@ function splitTrailingWords(text: string, trailingWords = 1): { leading: string;
     leading: words.slice(0, splitAt).join(" "),
     trailing: words.slice(splitAt).join(" "),
   };
+}
+
+export interface CaptionFrame {
+  text: string;
+  committedText?: string;
+  livePartialText?: string;
+  sentences: string[];
+  animateNewest: boolean;
+  lines: "multi" | "single";
+  state: "final" | "partial";
+  opacity: number;
 }
 
 interface Block {
@@ -62,14 +76,16 @@ export class CaptionPresenter {
   private finalizedLiveWords: string[] = [];
   private activeLiveSegment: ActiveLiveSegment | undefined;
   private current: Block | undefined;
+  private displayedText = "";
+  private lastFrame: CaptionFrame | undefined;
   private fadeTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly measurer: CaptionMeasurer | undefined;
   private readonly fitsCaption: CaptionFits;
 
   constructor(
-    private readonly element: HTMLElement,
+    element: HTMLElement,
     private readonly clock: CaptionClock = browserClock,
-    private readonly onChange: () => void = () => {},
+    private readonly onChange: (frame: CaptionFrame) => void = () => {},
     fitsCaption?: CaptionFits,
   ) {
     this.measurer = fitsCaption ? undefined : new CaptionMeasurer(element);
@@ -91,10 +107,16 @@ export class CaptionPresenter {
       update.segmentId < 1
     )
       return false;
-    if (!Number.isSafeInteger(update.revision) || update.revision < 0 || update.text.length > 4000) return false;
+    if (
+      !Number.isSafeInteger(update.revision) ||
+      update.revision < 0 ||
+      update.text.length > 4000
+    )
+      return false;
     if (
       update.segmentId < this.activeSegmentId ||
-      (update.segmentId === this.activeSegmentId && (this.activeFinal || update.revision <= this.activeRevision))
+      (update.segmentId === this.activeSegmentId &&
+        (this.activeFinal || update.revision <= this.activeRevision))
     )
       return false;
 
@@ -164,7 +186,9 @@ export class CaptionPresenter {
   private commitActiveLiveSegment(): void {
     if (!this.activeLiveSegment) return;
     this.finalizedLiveWords.push(
-      ...this.activeLiveSegment.words.slice(this.activeLiveSegment.consumedWords),
+      ...this.activeLiveSegment.words.slice(
+        this.activeLiveSegment.consumedWords,
+      ),
     );
     this.activeLiveSegment = undefined;
   }
@@ -190,7 +214,8 @@ export class CaptionPresenter {
     if (discardedWords > 0) this.consumeLiveWords(discardedWords);
 
     const activeVisibleWords = this.activeLiveSegment
-      ? this.activeLiveSegment.words.length - this.activeLiveSegment.consumedWords
+      ? this.activeLiveSegment.words.length -
+        this.activeLiveSegment.consumedWords
       : 0;
     const { leading, trailing } = this.activeFinal
       ? { leading: visible, trailing: "" }
@@ -218,10 +243,11 @@ export class CaptionPresenter {
   }
 
   private render(immediate = false): void {
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    if (!this.current && !immediate && !reducedMotion && this.element.textContent) {
+    const reducedMotion =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (!this.current && !immediate && !reducedMotion && this.displayedText) {
       if (this.fadeTimer !== undefined) return;
-      this.element.style.opacity = "0";
+      if (this.lastFrame) this.onChange({ ...this.lastFrame, opacity: 0 });
       this.fadeTimer = this.clock.set(() => {
         this.fadeTimer = undefined;
         this.render(true);
@@ -230,63 +256,19 @@ export class CaptionPresenter {
     }
     if (this.fadeTimer !== undefined) this.clock.clear(this.fadeTimer);
     this.fadeTimer = undefined;
-    this.element.style.transition = "none";
-    this.element.style.opacity = "1";
-
-    if (!this.current) {
-      this.element.replaceChildren();
-      this.element.hidden = true;
-      void this.element.offsetWidth;
-      this.element.style.transition = "";
-      this.onChange();
-      return;
-    }
-
-    this.element.dataset.lines = this.mode !== "auto" ? "multi" : "single";
-    const content = document.createElement("span");
-    content.className = "caption-content";
-
-    if (this.current.livePartialText) {
-      const committedSpan = document.createElement("span");
-      committedSpan.className = "caption-final";
-      committedSpan.textContent = this.current.committedText ? `${this.current.committedText} ` : "";
-
-      const partialSpan = document.createElement("span");
-      partialSpan.className = "caption-partial";
-      partialSpan.textContent = this.current.livePartialText;
-
-      if (committedSpan.textContent) {
-        content.replaceChildren(committedSpan, partialSpan);
-      } else {
-        content.replaceChildren(partialSpan);
-      }
-    } else if (this.mode !== "auto" && this.sentences.length > 0) {
-      // Uma `span` por sentença: só a recém-chegada ganha o fade de entrada,
-      // as anteriores ficam paradas (estabilidade acima de decoração).
-      this.sentences.forEach((sentence, index) => {
-        if (index > 0) content.append(" ");
-        const span = document.createElement("span");
-        span.className = "caption-sentence";
-        if (this.animateNewestSentence && index === this.sentences.length - 1) {
-          span.classList.add("caption-sentence-in");
-        }
-        span.textContent = sentence;
-        content.append(span);
-      });
-      this.animateNewestSentence = false;
-    } else {
-      content.textContent = this.current.text;
-    }
-    this.element.replaceChildren(content);
-
-    // Blocks always render in the confirmed style; the live stream marks
-    // in-progress revisions as partial.
-    this.element.dataset.state = this.mode !== "auto" || this.activeFinal ? "final" : "partial";
-    this.element.hidden = false;
-    void this.element.offsetWidth;
-    this.element.style.transition = "";
-
-    this.onChange();
+    this.displayedText = this.current?.text ?? "";
+    this.lastFrame = {
+      text: this.displayedText,
+      committedText: this.current?.committedText,
+      livePartialText: this.current?.livePartialText,
+      sentences: this.mode !== "auto" ? [...this.sentences] : [],
+      animateNewest: this.animateNewestSentence,
+      lines: this.mode !== "auto" ? "multi" : "single",
+      state: this.mode !== "auto" || this.activeFinal ? "final" : "partial",
+      opacity: 1,
+    };
+    this.animateNewestSentence = false;
+    this.onChange(this.lastFrame);
   }
 
   clear(immediate = false): void {

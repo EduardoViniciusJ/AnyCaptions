@@ -1,9 +1,39 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CaptionPresenter } from "./captions";
+import { CaptionPresenter as Engine } from "./captions";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { createElement } from "react";
+import { CaptionText } from "./components/CaptionText";
+const roots: ReturnType<typeof createRoot>[] = [];
+// Exercise the unchanged streaming scenarios with the production React renderer.
+class CaptionPresenter extends Engine {
+  constructor(
+    element: HTMLElement,
+    clock?: ConstructorParameters<typeof Engine>[1],
+    _unused?: undefined,
+    fits?: ConstructorParameters<typeof Engine>[3],
+  ) {
+    const root = createRoot(element);
+    roots.push(root);
+    super(
+      element,
+      clock,
+      (frame) => {
+        element.hidden = !frame.text;
+        element.dataset.lines = frame.lines;
+        element.dataset.state = frame.state;
+        element.style.opacity = String(frame.opacity);
+        flushSync(() => root.render(createElement(CaptionText, { frame })));
+      },
+      fits,
+    );
+  }
+}
 import { captionWords, paginateCaption } from "./caption-layout";
 import type { CaptionUpdate } from "./contracts";
 
 afterEach(() => {
+  roots.splice(0).forEach((root) => root.unmount());
   vi.useRealTimers();
   document.body.replaceChildren();
 });
@@ -19,7 +49,12 @@ function setup(mode: CaptionUpdate["mode"] = "auto", wordsPerPage = 20) {
     (text) => captionWords(text).length <= wordsPerPage,
   );
   presenter.setContext(7, mode);
-  const update = (segmentId: number, revision: number, text: string, isFinal: boolean): CaptionUpdate => ({
+  const update = (
+    segmentId: number,
+    revision: number,
+    text: string,
+    isFinal: boolean,
+  ): CaptionUpdate => ({
     sessionId: 7,
     mode,
     segmentId,
@@ -34,13 +69,25 @@ function setup(mode: CaptionUpdate["mode"] = "auto", wordsPerPage = 20) {
 describe("caption presenter", () => {
   it("marks the two trailing live words as partial", () => {
     const { element, presenter, update } = setup();
-    expect(presenter.accept(update(1, 1, "what we have you're launching like the", false))).toBe(true);
-    expect(element.querySelector(".caption-final")?.textContent).toBe("what we have you're launching ");
-    expect(element.querySelector(".caption-partial")?.textContent).toBe("like the");
+    expect(
+      presenter.accept(
+        update(1, 1, "what we have you're launching like the", false),
+      ),
+    ).toBe(true);
+    expect(element.querySelector(".caption-final")?.textContent).toBe(
+      "what we have you're launching ",
+    );
+    expect(element.querySelector(".caption-partial")?.textContent).toBe(
+      "like the",
+    );
     expect(element.textContent).toBe("what we have you're launching like the");
 
     // Once finalized, the trailing word turns white too:
-    expect(presenter.accept(update(1, 2, "what we have you're launching like the", true))).toBe(true);
+    expect(
+      presenter.accept(
+        update(1, 2, "what we have you're launching like the", true),
+      ),
+    ).toBe(true);
     expect(element.querySelector(".caption-partial")).toBeNull();
     expect(element.textContent).toBe("what we have you're launching like the");
 
@@ -49,7 +96,6 @@ describe("caption presenter", () => {
     expect(element.textContent).toBe("");
     expect(presenter.accept(update(1, 3, "Late", true))).toBe(false);
   });
-
 
   it("fills the measured width before starting a new block without repeating old words", () => {
     const { element, presenter, update } = setup("auto", 5);
@@ -63,8 +109,12 @@ describe("caption presenter", () => {
 
     presenter.accept(update(2, 1, "After a pause", false));
     expect(element.textContent).toBe("six seven After a pause");
-    expect(element.querySelector(".caption-final")?.textContent).toBe("six seven After ");
-    expect(element.querySelector(".caption-partial")?.textContent).toBe("a pause");
+    expect(element.querySelector(".caption-final")?.textContent).toBe(
+      "six seven After ",
+    );
+    expect(element.querySelector(".caption-partial")?.textContent).toBe(
+      "a pause",
+    );
   });
 
   it("flows translated sentences across the width and restarts from zero on overflow", () => {
@@ -80,7 +130,13 @@ describe("caption presenter", () => {
     );
     presenter.setContext(7, "translate-pt-br");
     const update = (segmentId: number, text: string): CaptionUpdate => ({
-      sessionId: 7, mode: "translate-pt-br", segmentId, revision: 1, text, language: "pt-br", isFinal: true,
+      sessionId: 7,
+      mode: "translate-pt-br",
+      segmentId,
+      revision: 1,
+      text,
+      language: "pt-br",
+      isFinal: true,
     });
     presenter.accept(update(1, "Primeira frase."));
     expect(element.textContent).toBe("Primeira frase.");
@@ -91,12 +147,18 @@ describe("caption presenter", () => {
     presenter.accept(update(2, "Segunda frase."));
     expect(element.textContent).toBe("Primeira frase. Segunda frase.");
     presenter.accept(update(3, "Terceira frase."));
-    expect(element.textContent).toBe("Primeira frase. Segunda frase. Terceira frase.");
+    expect(element.textContent).toBe(
+      "Primeira frase. Segunda frase. Terceira frase.",
+    );
     // Só a sentença recém-chegada ganha o fade de entrada.
     const spans = [...element.querySelectorAll(".caption-sentence")];
     expect(spans.length).toBe(3);
     expect(spans.at(-1)?.classList.contains("caption-sentence-in")).toBe(true);
-    expect(spans.slice(0, -1).every((span) => !span.classList.contains("caption-sentence-in"))).toBe(true);
+    expect(
+      spans
+        .slice(0, -1)
+        .every((span) => !span.classList.contains("caption-sentence-in")),
+    ).toBe(true);
     // A quarta estoura as 3 linhas: a tela limpa e recomeça do zero.
     presenter.accept(update(4, "Quarta frase."));
     expect(element.textContent).toBe("Quarta frase.");
@@ -138,7 +200,10 @@ describe("caption presenter", () => {
   it("continues long translations without losing or splitting words", () => {
     const text =
       "Uma tradução extensa deve continuar em blocos ordenados com todas as palavras preservadas sem criar histórico infinito";
-    const blocks = paginateCaption(text, (candidate) => captionWords(candidate).length <= 6);
+    const blocks = paginateCaption(
+      text,
+      (candidate) => captionWords(candidate).length <= 6,
+    );
     expect(blocks.length).toBeGreaterThan(1);
     expect(blocks.join(" ").replace(/\s+/gu, " ")).toBe(text);
     expect(blocks.every((block) => captionWords(block).length <= 6)).toBe(true);
@@ -198,10 +263,16 @@ describe("caption presenter", () => {
     expect(presenter.accept(update(1, 5, "Old final", true))).toBe(false);
     expect(element.textContent).toBe("Current speech");
     for (let segment = 4; segment < 150; segment++) {
-      expect(presenter.accept(update(segment, 1, `Phrase ${segment} with words`, false))).toBe(true);
+      expect(
+        presenter.accept(
+          update(segment, 1, `Phrase ${segment} with words`, false),
+        ),
+      ).toBe(true);
     }
     expect(element.textContent).toMatch(/Phrase 149 with words$/u);
-    expect(captionWords(element.textContent ?? "").length).toBeLessThanOrEqual(20);
+    expect(captionWords(element.textContent ?? "").length).toBeLessThanOrEqual(
+      20,
+    );
     expect(element.textContent).not.toContain("Old final");
   });
 

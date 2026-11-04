@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod dictation;
+mod dictation_window;
 pub mod domain;
 pub mod ipc;
 pub mod models;
@@ -14,9 +15,11 @@ mod window;
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .manage(ipc::Controller::default())
+        .manage(dictation_window::IndicatorState::default())
         .manage(models::download::DownloadManager::default())
         .invoke_handler(tauri::generate_handler![
             ipc::get_state,
+            dictation_window::get_dictation_indicator,
             ipc::set_caption_mode,
             ipc::set_translation_engine,
             ipc::set_source_language,
@@ -71,6 +74,7 @@ pub fn run() -> tauri::Result<()> {
                 .map_err(|_| std::io::Error::other("Cannot restore preferences"))?;
             app.manage(store);
             window::setup(app)?;
+            dictation_window::setup(app)?;
             if let Some(window) = app.get_webview_window("overlay") {
                 let _ =
                     sessions.refresh_resources(&app.state::<ipc::Controller>(), &outputs, &window);
