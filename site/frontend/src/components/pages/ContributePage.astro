@@ -1,7 +1,5 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { ButtonLink } from '../ButtonLink';
-import { Card } from '../ui/card';
 import { messages, type Lang } from '../../i18n';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
@@ -12,10 +10,10 @@ const repo = 'https://github.com/EduardoViniciusJ/AnyCaptions';
   <section class="container contribute-page">
     <h1>{t.heading}</h1>
     <p>{t.sub}</p>
-    <ButtonLink variant="outline" className="contribute-issue h-12 px-5" href={`${repo}/issues/new/choose`} target="_blank" rel="noreferrer">{t.issueButton} ↗</ButtonLink>
-    <Card className="contribute-repository flex-row items-center justify-between gap-6 rounded-lg p-6 max-sm:flex-col max-sm:items-start">
+    <a class="btn btn-outline contribute-issue h-12 px-5" href={`${repo}/issues/new/choose`} target="_blank" rel="noreferrer">{t.issueButton} ↗</a>
+    <div class="contribute-repository card card-border bg-base-200 flex-row items-center justify-between gap-6 p-6 max-sm:flex-col max-sm:items-start">
       <h2>{t.repoHeading}</h2>
-      <ButtonLink variant="outline" className="h-12 px-5" href={repo} target="_blank" rel="noreferrer">{t.repoButton} ↗</ButtonLink>
-    </Card>
+      <a class="btn btn-outline h-12 px-5" href={repo} target="_blank" rel="noreferrer">{t.repoButton} ↗</a>
+    </div>
   </section>
 </Layout>

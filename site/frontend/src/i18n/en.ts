@@ -1,8 +1,18 @@
 import type { SiteMessages } from './types';
 
 export const en: SiteMessages = {
-  layout: { skipLink: 'Skip to content' },
-  nav: { docs: 'Docs', contribute: 'Contribute', signIn: 'Sign in', language: 'Site language' },
+  layout: {
+    skipLink: 'Skip to content',
+    footer: {
+      product: 'Product',
+      legal: 'Legal',
+      changelog: 'Changelog',
+      docs: 'Documentation',
+      privacy: 'Privacy',
+      licenses: 'Licenses',
+      },
+  },
+  nav: { docs: 'Docs', contribute: 'Contribute', changelog: 'Changelog', signIn: 'Sign in', language: 'Site language' },
   home: {
     title: 'Live captions',
     description: 'Transcribe and translate the audio of games, videos and calls on Windows. Speak instead of typing with local dictation.',
@@ -13,27 +23,25 @@ export const en: SiteMessages = {
       { lead: 'Speak instead of typing.', rest: ' Your words become text.' },
       { lead: 'Offline', rest: ' on your computer.' },
     ],
-    download: 'Download',
+    download: 'Download for Windows',
     downloadSignInHint: 'Sign in with Google, GitHub or Discord to download.',
     downloadUnavailable: 'The installer will be available once a version is published.',
-  },
-  preview: {
-    sectionLabel: 'Transcription and translation preview',
-    windowTitle: 'AnyCaptions / Live transcription',
-    audio: 'Audio',
-    captionLanguage: 'Caption language:',
-    videoAria: 'Demo of a Counter-Strike match with a sample caption',
-    play: 'Play demo',
-    pause: 'Pause demo',
-  },
-  dictation: {
-    heading: 'Turn your microphone audio into text wherever you type.',
-    windowTitle: 'AnyCaptions / Voice dictation',
-    mic: 'Microphone',
-    text: 'Text',
-    videoAria: 'Demo of voice dictation into a text field',
-    play: 'Play dictation demo',
-    pause: 'Pause dictation demo',
+    videos: {
+      amongUs: 'Among Us with translated captions',
+      youtube: 'YouTube video with captions',
+      game: 'Game with live captions',
+      prev: 'Previous video',
+      next: 'Next video',
+      goTo: 'Go to video {n}',
+    },
+    github: {
+      title: 'GitHub',
+      sub: 'Follow development, open an issue or contribute.',
+      repo: 'View repository',
+      issues: 'Report a problem',
+      copy: 'Copy',
+      copied: 'Copied',
+    },
   },
   docs: {
     title: 'Documentation',

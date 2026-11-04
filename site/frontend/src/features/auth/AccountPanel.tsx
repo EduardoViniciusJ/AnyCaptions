@@ -1,9 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
 import { localePath, messages, type Lang } from '@/i18n';
 import { currentAccount, deleteAccount, loginUrl, logout, type Account } from './auth-api';
 
@@ -62,19 +57,17 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
   }
 
   return (
-    <Card className="account-panel">
-      <CardHeader>
-        <CardDescription>{t.kicker}</CardDescription>
-        <CardTitle><h1>{account ? t.profile : t.welcome}</h1></CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="account-panel card card-border bg-base-200">
+      <div className="card-body">
+        <p className="kicker">{t.kicker}</p>
+        <h1>{account ? t.profile : t.welcome}</h1>
         <div id="account-content" aria-live="polite" aria-busy={loading}>
           {loading ? <div role="status">
             <span className="sr-only">{t.checking}</span>
             <div className="grid gap-3" aria-hidden="true">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+              <div className="skeleton h-12 w-full" />
+              <div className="skeleton h-12 w-full" />
+              <div className="skeleton h-12 w-full" />
             </div>
           </div> : account ? (
             <>
@@ -87,31 +80,29 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
               </div>
               <p className="account-news">{t.news}</p>
               <div className="account-actions">
-                <Button asChild variant="outline" size="lg">
-                  <a href={`${homePath}#download`}>{t.download}</a>
-                </Button>
-                <Button variant="outline" size="lg" disabled={signingOut} onClick={() => void signOut()}>
+                <a className="btn btn-outline btn-lg" href={`${homePath}#download`}>{t.download}</a>
+                <button type="button" className="btn btn-outline btn-lg" disabled={signingOut} onClick={() => void signOut()}>
                   {signingOut ? t.signingOut : t.signOut}
-                </Button>
+                </button>
               </div>
-              <Separator className="my-6" />
+              <div className="divider my-6" />
               <div className="account-danger">
                 {confirmingDelete ? (
                   <>
                     <p>{t.deleteWarning}</p>
                     <div className="account-actions">
-                      <Button variant="destructive" size="lg" disabled={deleting} onClick={() => void removeAccount()}>
+                      <button type="button" className="btn btn-error btn-lg" disabled={deleting} onClick={() => void removeAccount()}>
                         {deleting ? t.deleting : t.deleteConfirm}
-                      </Button>
-                      <Button variant="outline" size="lg" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
+                      </button>
+                      <button type="button" className="btn btn-outline btn-lg" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
                         {t.cancel}
-                      </Button>
+                      </button>
                     </div>
                   </>
                 ) : (
-                  <Button variant="ghost" size="sm" className="account-delete-link" onClick={() => setConfirmingDelete(true)}>
+                  <button type="button" className="btn btn-ghost btn-sm account-delete-link" onClick={() => setConfirmingDelete(true)}>
                     {t.deleteLink}
-                  </Button>
+                  </button>
                 )}
               </div>
             </>
@@ -119,12 +110,10 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
             <>
               <div className="login-options">
                 {providers.map(provider => (
-                  <Button key={provider.id} asChild variant="outline" className={`login-button login-${provider.id}`}>
-                    <a href={loginUrl(provider.id)}>
-                      <img className="provider-icon" src={provider.icon} alt="" width={20} height={20} />
-                      <span>{t.signInWith.replace('{provider}', provider.label)}</span>
-                    </a>
-                  </Button>
+                  <a key={provider.id} className={`btn btn-outline login-button login-${provider.id}`} href={loginUrl(provider.id)}>
+                    <img className="provider-icon" src={provider.icon} alt="" width={20} height={20} />
+                    <span>{t.signInWith.replace('{provider}', provider.label)}</span>
+                  </a>
                 ))}
               </div>
               <p className="login-consent">
@@ -135,8 +124,8 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
             </>
           )}
         </div>
-        {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
-      </CardContent>
-    </Card>
+        {error && <div role="alert" className="alert alert-error alert-soft mt-6"><span>{error}</span></div>}
+      </div>
+    </div>
   );
 }
