@@ -188,7 +188,8 @@ nav a:hover, .text-link:hover { color: white; }
 .hero-copy svg { flex-shrink: 0; color: #fff; }
 .hero-copy strong { color: var(--text-primary); font-weight: 700; }
 /* Cada palavra entra como numa legenda ao vivo: desfocada, depois nítida. */
-.home-hero .w { display: inline-block; animation: caption-cycle 11s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.home-hero .w, .github .w { display: inline-block; animation: caption-cycle 11s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.github a.w { display: grid; }
 /* Legenda ao vivo em loop: as palavras aparecem em sequência, ficam um tempo e somem na mesma ordem. */
 @keyframes caption-cycle {
   0% { opacity: 0; filter: blur(8px); translate: 0 4px; }

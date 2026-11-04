@@ -23,6 +23,12 @@ const heroLines = t.heroLines.map((line, index) => ({
 }));
 const caretDelay = 0.2 + 0.09 * wordIndex;
 
+// A seção do GitHub usa o mesmo efeito de legenda, com a própria sequência: ícone, título e frase.
+wordIndex = 0;
+const githubIconDelay = 0.2 + 0.09 * wordIndex++;
+const githubTitleWords = toWords(t.github.title, false);
+const githubSubWords = toWords(t.github.sub, false);
+
 // Cada demonstração espera um arquivo em public/media. Enquanto a gravação
 // definitiva não existe, o vídeo provisório entra no lugar.
 type Demo = { label: string; file: string; fallback: string };
@@ -163,9 +169,9 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
   </script>
 
   <section class="github container" aria-labelledby="github-title">
-    <a class="github-mark" href={repo} target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/icons/github.svg" alt="" width="40" height="40" /></a>
-    <h2 id="github-title">{t.github.title}</h2>
-    <p class="section-sub">{t.github.sub}</p>
+    <a class="github-mark w" style={`--d:${githubIconDelay}s`} href={repo} target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/icons/github.svg" alt="" width="40" height="40" /></a>
+    <h2 id="github-title">{githubTitleWords.map((item, index) => <>{index > 0 && ' '}<span class="w" style={`--d:${item.delay}s`}>{item.word}</span></>)}</h2>
+    <p class="section-sub">{githubSubWords.map((item, index) => <>{index > 0 && ' '}<span class="w" style={`--d:${item.delay}s`}>{item.word}</span></>)}</p>
     <div class="code-box">
       <div class="mockup-code">
         {cloneCommands.map(command => <pre data-prefix="$"><code>{command}</code></pre>)}

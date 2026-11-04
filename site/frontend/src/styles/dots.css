@@ -43,14 +43,14 @@ html.theme-dots {
 .theme-dots .login-button { border-radius: 10px; transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
 .theme-dots .login-button:hover, .theme-dots .login-button:focus-visible { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255, 255, 255, .25), 0 12px 36px -10px rgba(255, 255, 255, .45); }
 
-/* Skeleton ao carregar a home: cada bloco fica coberto por uma barra com brilho e depois é revelado.
+/* Skeleton ao carregar o rodapé da home: cada bloco fica coberto por uma barra com brilho e depois é revelado.
    Fica dentro de no-preference porque, sem a animação, a barra não sairia de cima do conteúdo. */
 .theme-dots .github h2, .theme-dots .github .section-sub, .theme-dots .footer-tagline, .theme-dots .footer-lines li { width: fit-content; max-width: 100%; }
 .theme-dots .github h2, .theme-dots .github .section-sub { margin-inline: auto; }
 .theme-dots .footer-lines { justify-items: start; }
 @media (prefers-reduced-motion: no-preference) {
-  .theme-dots:has(.home-hero) :is(.github-mark, .github h2, .github .section-sub, .github .hero-alt, .footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a) { position: relative; }
-  .theme-dots:has(.home-hero) :where(.github-mark, .github h2, .github .section-sub, .github .hero-alt, .footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a, .code-box)::after {
+  .theme-dots:has(.home-hero) :is(.footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a) { position: relative; }
+  .theme-dots:has(.home-hero) :where(.footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a)::after {
     content: '';
     position: absolute;
     inset: 0;
