@@ -63,3 +63,108 @@ fn opus_translates_both_directions_quickly() {
         Err(TranslatorError::UnsupportedLanguagePair)
     ));
 }
+
+/// Live translation: the interim text of an utterance is translated
+/// provisionally as it grows, then the final replaces it. Prints when each
+/// translation reached the sink relative to the interim that triggered it.
+#[test]
+#[ignore = "requires the opus_ct2_c build and the converted OPUS-MT models"]
+fn provisional_translations_follow_the_interim_text() {
+    use anycaptions_lib::{
+        domain::{CaptionMode, PT_BR},
+        ipc::CaptionUpdate,
+        translation::stage::{StageEvent, TranslationStage},
+    };
+    use std::{
+        sync::{Arc, Mutex},
+        thread,
+        time::Duration,
+    };
+
+    let translator =
+        NativeOpusTranslator::load(&OpusPaths::resolve()).expect("opus library and models");
+    let started = Instant::now();
+    let emitted = Arc::new(Mutex::new(Vec::<(u128, CaptionUpdate)>::new()));
+    let sink = Arc::clone(&emitted);
+    let stage =
+        TranslationStage::spawn(
+            Box::new(translator),
+            PT_BR,
+            Some("en-US"),
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock()
+                        .unwrap()
+                        .push((started.elapsed().as_millis(), update));
+                    true
+                }
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
+    let update = |revision: u32, text: &str, is_final: bool| CaptionUpdate {
+        session_id: 1,
+        segment_id: 1,
+        revision,
+        mode: CaptionMode::Translate(PT_BR),
+        text: text.into(),
+        is_final,
+        language: Some("en-US".into()),
+        speakers: Vec::new(),
+        provisional: false,
+    };
+    // The recognizer's interim text, growing every 300 ms like live speech.
+    let interims = [
+        "Ask not",
+        "Ask not what your",
+        "Ask not what your country can",
+        "Ask not what your country can do for",
+        "Ask not what your country can do for you",
+    ];
+    let mut submitted = Vec::new();
+    for (index, text) in interims.iter().enumerate() {
+        submitted.push((started.elapsed().as_millis(), *text));
+        stage
+            .submit_partial(update(index as u32 + 1, text, false))
+            .unwrap();
+        thread::sleep(Duration::from_millis(300));
+    }
+    submitted.push((started.elapsed().as_millis(), "FINAL"));
+    stage
+        .submit(update(
+            10,
+            "Ask not what your country can do for you.",
+            true,
+        ))
+        .unwrap();
+    stage.finish();
+
+    let emitted = emitted.lock().unwrap();
+    for (at, text) in &submitted {
+        eprintln!("[live] t={at:>5} ms  interim  {text}");
+    }
+    for (at, update) in emitted.iter() {
+        eprintln!(
+            "[live] t={at:>5} ms  {}  {}",
+            if update.provisional {
+                "provisional"
+            } else {
+                "FINAL      "
+            },
+            update.text
+        );
+    }
+    let provisional: Vec<_> = emitted.iter().filter(|(_, u)| u.provisional).collect();
+    assert!(
+        provisional.len() >= 2,
+        "expected several provisional translations"
+    );
+    assert!(
+        provisional
+            .iter()
+            .all(|(_, u)| !u.text.trim().is_empty() && !u.is_final)
+    );
+    let last = &emitted.last().unwrap().1;
+    assert!(last.is_final && !last.provisional);
+    assert!(last.text.to_lowercase().contains("pa"), "{}", last.text);
+}

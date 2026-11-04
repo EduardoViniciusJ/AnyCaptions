@@ -358,3 +358,5 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .language-picker ul li.picker-footer:hover { background: transparent; }
 .language-picker ul li.picker-footer button { display: block; width: 100%; max-width: 100%; min-width: 0; height: auto; min-height: 0; padding: 4px 6px; text-align: left; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; color: #c4c4c4; font-size: 11px; }
 .controls .language-picker ul:has(.picker-footer) { min-width: 300px; }
+/* Tradução provisória (modo Traduzir): mesma cor das palavras recentes. */
+.caption-provisional { font-weight: 700; }
