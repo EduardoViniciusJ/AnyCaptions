@@ -186,6 +186,7 @@ impl<R: StreamingRecognizer> StreamingProcessor<R> {
                     is_final: result.is_final,
                     language: result.language.clone(),
                     speakers: speakers.clone(),
+                    provisional: false,
                 });
                 self.last_text = text.to_owned();
                 self.last_speakers = speakers;

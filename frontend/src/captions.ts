@@ -194,6 +194,10 @@ export interface CaptionFrame {
   parts?: CaptionPart[];
   /** Modo tradução: falante rotulado antes de cada sentença (alinhado a `sentences`). */
   sentenceSpeakers?: (number | undefined)[];
+  /** Modo tradução: tradução provisória da frase em andamento, depois das sentenças. */
+  provisionalText?: string;
+  /** Rótulo da provisória quando o falante muda em relação à sentença anterior. */
+  provisionalSpeaker?: number;
   animateNewest: boolean;
   lines: "multi" | "single";
   state: "final" | "partial";
@@ -228,6 +232,13 @@ export class CaptionPresenter {
    */
   private speakerLabelsMode = false;
   private sentences: Sentence[] = [];
+  /**
+   * Modo tradução: tradução provisória da frase em andamento, mostrada como
+   * "palavras recentes" depois das sentenças fechadas e substituída pela
+   * tradução final do segmento.
+   */
+  private provisional: Sentence | undefined;
+  private activeProvisional = false;
   /** Anima (fade 120 ms) só a sentença recém-chegada no próximo render. */
   private animateNewestSentence = false;
   private activeSegmentId = 0;
@@ -283,7 +294,11 @@ export class CaptionPresenter {
     if (
       update.segmentId < this.activeSegmentId ||
       (update.segmentId === this.activeSegmentId &&
-        (this.activeFinal || update.revision <= this.activeRevision))
+        (this.activeFinal ||
+          (update.revision <= this.activeRevision &&
+            // A tradução final chega com numeração própria, menor que a dos
+            // parciais que ela substitui.
+            !(this.activeProvisional && !update.provisional))))
     )
       return false;
 
@@ -295,17 +310,24 @@ export class CaptionPresenter {
     this.activeFinal = update.isFinal;
 
     // Translate mode: each update is one translated sentence, shown
-    // immediately. The text flows over up to SENTENCE_LINES lines and, once
-    // full, the screen clears and restarts with the newest sentence.
+    // immediately. As in the speaker-label layout, a speaker's text flows
+    // together over up to SENTENCE_LINES lines and the oldest text leaves first.
     if (this.mode !== "auto") {
       const sentence = update.text.trim();
-      if (sentence) {
-        // A translated sentence belongs to one speaker (the stage translates
-        // each speaker's span on its own); several spans mean no safe label.
-        const spans = update.speakers ?? [];
-        const speaker = spans.length === 1 ? (spans[0]?.speaker ?? 0) : 0;
-        this.sentences.push({ text: sentence, speaker });
-        this.animateNewestSentence = true;
+      // A translated sentence belongs to one speaker (the stage translates
+      // each speaker's span on its own); several spans mean no safe label.
+      const spans = update.speakers ?? [];
+      const speaker = spans.length === 1 ? (spans[0]?.speaker ?? 0) : 0;
+      this.activeProvisional = !!update.provisional;
+      if (update.provisional) {
+        this.provisional = sentence ? { text: sentence, speaker } : undefined;
+      } else {
+        // The final translation supersedes whatever was provisional.
+        this.provisional = undefined;
+        if (sentence) {
+          this.sentences.push({ text: sentence, speaker });
+          this.animateNewestSentence = true;
+        }
       }
       this.layoutSentences();
       this.render();
@@ -341,22 +363,34 @@ export class CaptionPresenter {
     const rendered = turnsOf(sentences, (sentence) => sentence.speaker).map((turn) =>
       renderSentences(turn.items),
     );
+    if (rendered.length === 1) return this.fitsCaption(rendered[0]!, SENTENCE_LINES);
     return keepRecentTurns(rendered, this.fitsCaption, SENTENCE_LINES) === 0;
+  }
+
+  /** Sentenças fechadas mais a provisória, na ordem em que aparecem. */
+  private shownSentences(): Sentence[] {
+    return this.provisional
+      ? [...this.sentences, this.provisional]
+      : [...this.sentences];
   }
 
   private layoutSentences(): void {
     const fitsLines = (text: string) => this.fitsCaption(text, SENTENCE_LINES);
-    if (this.sentences.length > 1 && !this.sentencesFit(this.sentences)) {
-      // Encheu as linhas: a tela limpa e recomeça do zero com a sentença nova,
-      // em vez de ir empurrando as antigas para cima.
-      this.sentences = this.sentences.slice(-1);
+    // Encheu as linhas: as sentenças mais antigas saem por cima, como os turnos
+    // do modo por pessoa. A provisória conta como a mais nova e sempre fica.
+    while (this.shownSentences().length > 1 && !this.sentencesFit(this.shownSentences())) {
+      this.sentences.shift();
     }
-    let text = this.sentences.map((sentence) => sentence.text).join(" ");
-    if (text && !fitsLines(renderSentences(this.sentences))) {
+    let text = this.shownSentences().map((sentence) => sentence.text).join(" ");
+    if (text && !fitsLines(renderSentences(this.shownSentences()))) {
       // A single sentence taller than the area keeps only its tail.
-      const speaker = this.sentences[0]?.speaker ?? 0;
-      text = paginateCaption(text, fitsLines).at(-1) ?? text;
-      this.sentences = [{ text, speaker }];
+      const only = this.shownSentences()[0]!;
+      text = paginateCaption(only.text, fitsLines).at(-1) ?? only.text;
+      if (this.provisional && this.sentences.length === 0) {
+        this.provisional = { text, speaker: only.speaker };
+      } else {
+        this.sentences = [{ text, speaker: only.speaker }];
+      }
     }
     this.current = text ? { text, segmentId: this.activeSegmentId } : undefined;
   }
@@ -457,7 +491,7 @@ export class CaptionPresenter {
 
   refreshLayout(): void {
     if (this.mode !== "auto") {
-      if (this.sentences.length === 0) return;
+      if (this.shownSentences().length === 0) return;
       this.layoutSentences();
       this.render();
       return;
@@ -483,9 +517,9 @@ export class CaptionPresenter {
     this.fadeTimer = undefined;
     this.displayedText = this.current?.text ?? "";
     const sentenceMode = this.mode !== "auto";
-    const sentenceStarts = labelStarts(
-      this.sentences.map((sentence) => sentence.speaker),
-    );
+    const shown = this.shownSentences();
+    const sentenceStarts = labelStarts(shown.map((sentence) => sentence.speaker));
+    const provisionalIndex = shown.length - 1;
     this.lastFrame = {
       text: this.displayedText,
       committedText: this.current?.committedText,
@@ -499,6 +533,11 @@ export class CaptionPresenter {
           ? this.sentences.map((sentence, index) =>
               sentenceStarts.has(index) ? sentence.speaker : undefined,
             )
+          : undefined,
+      provisionalText: sentenceMode ? this.provisional?.text : undefined,
+      provisionalSpeaker:
+        sentenceMode && this.provisional && sentenceStarts.has(provisionalIndex)
+          ? this.provisional.speaker
           : undefined,
       animateNewest: this.animateNewestSentence,
       lines: sentenceMode || this.speakerLabelsMode ? "multi" : "single",
@@ -516,6 +555,8 @@ export class CaptionPresenter {
     this.finalizedLiveWords = [];
     this.activeLiveSegment = undefined;
     this.sentences = [];
+    this.provisional = undefined;
+    this.activeProvisional = false;
     this.animateNewestSentence = false;
     this.current = undefined;
     this.render(immediate);
