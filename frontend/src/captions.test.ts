@@ -118,7 +118,7 @@ describe("caption presenter", () => {
     );
   });
 
-  it("flows translated sentences across the width and restarts from zero on overflow", () => {
+  it("flows translated sentences across the width and drops the oldest on overflow", () => {
     vi.useFakeTimers();
     const element = document.createElement("p");
     document.body.append(element);
@@ -161,16 +161,18 @@ describe("caption presenter", () => {
         .slice(0, -1)
         .every((span) => !span.classList.contains("caption-sentence-in")),
     ).toBe(true);
-    // A quarta estoura as 3 linhas: a tela limpa e recomeça do zero.
+    // A quarta estoura as 3 linhas: a mais antiga sai por cima.
     presenter.accept(update(4, "Quarta frase."));
-    expect(element.textContent).toBe("Quarta frase.");
-    // E o acúmulo recomeça normalmente a partir dela.
+    expect(element.textContent).toBe(
+      "Segunda frase. Terceira frase. Quarta frase.",
+    );
     presenter.accept(update(5, "Quinta frase."));
-    expect(element.textContent).toBe("Quarta frase. Quinta frase.");
+    const rolled = "Terceira frase. Quarta frase. Quinta frase.";
+    expect(element.textContent).toBe(rolled);
     // A legenda fica na tela até a próxima chegar; nada some sozinho.
     vi.advanceTimersByTime(60_000);
     expect(element.hidden).toBe(false);
-    expect(element.textContent).toBe("Quarta frase. Quinta frase.");
+    expect(element.textContent).toBe(rolled);
     presenter.dispose();
   });
 

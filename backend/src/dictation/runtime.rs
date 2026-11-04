@@ -690,6 +690,7 @@ mod tests {
             is_final,
             language: None,
             speakers: Vec::new(),
+            provisional: false,
         };
         apply_update(update("Hel", false), &mut finals, &mut partial);
         apply_update(update("Hello", false), &mut finals, &mut partial);
