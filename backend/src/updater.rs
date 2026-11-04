@@ -281,21 +281,35 @@ pub fn cleanup_leftovers(install_dir: &Path) {
     }
 }
 
-/// Keeps "Installed apps" showing the right version. Cosmetic, so best effort.
-fn record_installed_version(version: &str) {
+/// Whether `reg query` output for `InstallLocation` names this folder.
+fn location_matches(query_output: &str, install_dir: &Path) -> bool {
+    let dir = install_dir.to_string_lossy().to_ascii_lowercase();
+    let dir = dir.trim_end_matches('\\');
+    query_output.lines().any(|line| {
+        line.to_ascii_lowercase()
+            .split_once("reg_sz")
+            .is_some_and(|(_, value)| value.trim().trim_matches('"').trim_end_matches('\\') == dir)
+    })
+}
+
+/// Keeps "Installed apps" showing the right version, only when this copy is
+/// the installed one. Cosmetic, so best effort.
+fn record_installed_version(version: &str, install_dir: &Path) {
     use std::os::windows::process::CommandExt;
-    use std::process::{Command, Stdio};
+    use std::process::Command;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let reg = |args: &[&str]| {
         Command::new("reg")
             .args(args)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
             .creation_flags(CREATE_NO_WINDOW)
-            .status()
-            .is_ok_and(|status| status.success())
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
     };
-    if reg(&["query", UNINSTALL_KEY, "/v", "DisplayVersion"]) {
+    let installed_here = reg(&["query", UNINSTALL_KEY, "/v", "InstallLocation"])
+        .is_some_and(|output| location_matches(&output, install_dir));
+    if installed_here {
         reg(&[
             "add",
             UNINSTALL_KEY,
@@ -415,7 +429,7 @@ pub fn run(sink: &dyn UpdateSink) -> Result<(), UpdateFailure> {
     );
     match result {
         Ok(version) => {
-            record_installed_version(&version);
+            record_installed_version(&version, install_dir);
             sink.update_changed(&UpdateProgress {
                 phase: UpdatePhase::Restarting,
                 received_bytes: 0,
@@ -759,6 +773,15 @@ mod tests {
             Err(UpdateFailure::Network)
         );
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn only_the_installed_copy_updates_the_registry_version() {
+        let output = "\r\nHKEY_CURRENT_USER\\Software\\AnyCaptions\r\n    InstallLocation    REG_SZ    \"D:\\AnyCaptions\"\r\n";
+        assert!(location_matches(output, Path::new(r"D:\AnyCaptions")));
+        assert!(location_matches(output, Path::new(r"d:\anycaptions\")));
+        assert!(!location_matches(output, Path::new(r"C:\Temp\e2e-install")));
+        assert!(!location_matches("", Path::new(r"D:\AnyCaptions")));
     }
 
     #[test]
