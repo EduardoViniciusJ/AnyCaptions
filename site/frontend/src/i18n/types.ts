@@ -7,8 +7,15 @@ export interface LinkedSentence {
 }
 
 export interface SiteMessages {
-  layout: { skipLink: string };
-  nav: { docs: string; contribute: string; signIn: string; language: string };
+  layout: {
+    skipLink: string;
+    footer: {
+      product: string; legal: string;
+      changelog: string; docs: string;
+      privacy: string; licenses: string;
+    };
+  };
+  nav: { docs: string; contribute: string; changelog: string; signIn: string; language: string };
   home: {
     title: string;
     description: string;
@@ -18,24 +25,11 @@ export interface SiteMessages {
     download: string;
     downloadSignInHint: string;
     downloadUnavailable: string;
-  };
-  preview: {
-    sectionLabel: string;
-    windowTitle: string;
-    audio: string;
-    captionLanguage: string;
-    videoAria: string;
-    play: string;
-    pause: string;
-  };
-  dictation: {
-    heading: string;
-    windowTitle: string;
-    mic: string;
-    text: string;
-    videoAria: string;
-    play: string;
-    pause: string;
+    videos: {
+      amongUs: string; youtube: string; game: string;
+      prev: string; next: string; goTo: string;
+    };
+    github: { title: string; sub: string; repo: string; issues: string; copy: string; copied: string };
   };
   docs: {
     title: string;

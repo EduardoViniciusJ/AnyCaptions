@@ -1,39 +1,40 @@
 import type { SiteMessages } from './types';
 
 export const zhCn: SiteMessages = {
-  layout: { skipLink: '跳到内容' },
-  nav: { docs: '文档', contribute: '参与贡献', signIn: '登录', language: '网站语言' },
+  layout: {
+    skipLink: '跳到内容',
+    footer: {
+      product: '产品',
+      legal: '法律',
+      changelog: '更新日志',
+      docs: '文档',
+      privacy: '隐私',
+      licenses: '许可证',
+      },
+  },
+  nav: { docs: '文档', contribute: '参与贡献', changelog: '更新日志', signIn: '登录', language: '网站语言' },
   home: {
     title: '实时字幕',
-    description: '在 Windows 上转写并翻译游戏、视频和通话的声音。借助本地听写，用说话代替打字。',
-    jsonLd: '为电脑上的任何声音提供实时字幕，语音识别和翻译全部在本地运行。还包括可粘贴到任何应用的语音听写。',
+    description: '在 Windows 上转写并翻译游戏、视频和通话的音频。用本地听写代替打字。',
+    jsonLd: '为电脑上的任何音频生成实时字幕，语音识别和翻译完全在本地运行。包含可粘贴到任何应用的语音听写。',
     heroTitle: '实时字幕',
     heroLines: [
       { lead: '转写并翻译', rest: '游戏、视频和通话的声音。' },
       { lead: '用说话代替打字。', rest: '你的话语变成文字。' },
       { lead: '离线', rest: '在你的电脑上运行。' },
     ],
-    download: '下载',
+    download: '下载 Windows 版',
     downloadSignInHint: '使用 Google、GitHub 或 Discord 登录后即可下载。',
     downloadUnavailable: '版本发布后即可下载安装程序。',
-  },
-  preview: {
-    sectionLabel: '转写与翻译预览',
-    windowTitle: 'AnyCaptions / 实时转写',
-    audio: '音频',
-    captionLanguage: '字幕语言：',
-    videoAria: '一场 Counter-Strike 比赛的示例字幕演示',
-    play: '播放演示',
-    pause: '暂停演示',
-  },
-  dictation: {
-    heading: '把麦克风的声音变成文字，输入到你正在写的地方。',
-    windowTitle: 'AnyCaptions / 语音听写',
-    mic: '麦克风',
-    text: '文字',
-    videoAria: '向文本框进行语音听写的演示',
-    play: '播放听写演示',
-    pause: '暂停听写演示',
+    videos: {
+      amongUs: 'Among Us 翻译字幕',
+      youtube: 'YouTube 视频字幕',
+      game: '游戏实时字幕',
+      prev: '上一个视频',
+      next: '下一个视频',
+      goTo: '转到第 {n} 个视频',
+    },
+    github: { title: 'GitHub', sub: '关注开发进度、提交 issue 或参与贡献。', repo: '查看仓库', issues: '报告问题', copy: '复制', copied: '已复制' },
   },
   docs: {
     title: '文档',

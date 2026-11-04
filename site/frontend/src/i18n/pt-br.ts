@@ -1,8 +1,24 @@
 import type { SiteMessages } from './types';
 
 export const ptBr: SiteMessages = {
-  layout: { skipLink: 'Ir para o conteúdo' },
-  nav: { docs: 'Docs', contribute: 'Contribuir', signIn: 'Entrar', language: 'Idioma do site' },
+  layout: {
+    skipLink: 'Ir para o conteúdo',
+    footer: {
+      product: 'Produto',
+      legal: 'Legal',
+      changelog: 'Atualizações',
+      docs: 'Documentação',
+      privacy: 'Privacidade',
+      licenses: 'Licenças',
+      },
+  },
+  nav: {
+    docs: 'Docs',
+    contribute: 'Contribuir',
+    changelog: 'Atualizações',
+    signIn: 'Entrar',
+    language: 'Idioma do site',
+  },
   home: {
     title: 'Legendas em tempo real',
     description: 'Transcreva e traduza o áudio de jogos, vídeos e chamadas no Windows. Fale em vez de digitar com ditado local.',
@@ -13,27 +29,25 @@ export const ptBr: SiteMessages = {
       { lead: 'Fale em vez de digitar.', rest: ' Suas palavras viram texto.' },
       { lead: 'Offline', rest: ' no seu computador.' },
     ],
-    download: 'Baixar',
+    download: 'Baixar para Windows',
     downloadSignInHint: 'Entre com Google, GitHub ou Discord para baixar.',
     downloadUnavailable: 'O instalador estará disponível após a publicação da versão.',
-  },
-  preview: {
-    sectionLabel: 'Prévia de transcrição e tradução',
-    windowTitle: 'AnyCaptions / Transcrição ao vivo',
-    audio: 'Áudio',
-    captionLanguage: 'Idioma da legenda:',
-    videoAria: 'Demonstração de uma partida de Counter-Strike com legenda de exemplo',
-    play: 'Reproduzir demonstração',
-    pause: 'Pausar demonstração',
-  },
-  dictation: {
-    heading: 'Transcreva o áudio do seu microfone em texto onde você escreve.',
-    windowTitle: 'AnyCaptions / Ditado por voz',
-    mic: 'Microfone',
-    text: 'Texto',
-    videoAria: 'Demonstração de ditado por voz em um campo de texto',
-    play: 'Reproduzir demonstração de ditado',
-    pause: 'Pausar demonstração de ditado',
+    videos: {
+      amongUs: 'Among Us com legenda traduzida',
+      youtube: 'Vídeo do YouTube com legenda',
+      game: 'Jogo com legenda ao vivo',
+      prev: 'Vídeo anterior',
+      next: 'Próximo vídeo',
+      goTo: 'Ir para o vídeo {n}',
+    },
+    github: {
+      title: 'GitHub',
+      sub: 'Acompanhe o desenvolvimento, abra uma issue ou contribua.',
+      repo: 'Ver repositório',
+      issues: 'Reportar um problema',
+      copy: 'Copiar',
+      copied: 'Copiado',
+    },
   },
   docs: {
     title: 'Documentação',

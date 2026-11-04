@@ -1,5 +1,5 @@
 ---
-import { LanguagePicker } from './LanguagePicker';
+import LanguagePicker from './LanguagePicker.astro';
 import { langFromUrl, langs, localePath, messages, stripLang, type Lang } from '../i18n';
 interface Props { lang?: Lang }
 const { lang = langFromUrl(Astro.url) } = Astro.props;
@@ -10,13 +10,18 @@ const targets = Object.fromEntries(langs.map(item => [item, localePath(item, bas
 ---
 <header class="site-header">
   <div class="container nav-row">
-    <a class="brand" href={localePath(lang, '/')} aria-label="AnyCaptions"><img class="brand-icon" src="/app-icon.svg" alt="" width="24" height="24" /> AnyCaptions</a>
-    <nav aria-label="Principal">
-      <a class="nav-pill" href={localePath(lang, '/docs')}>{t.nav.docs}</a>
-      <a class="nav-pill" href={localePath(lang, '/contribute')}>{t.nav.contribute}</a>
-      <LanguagePicker client:load lang={lang} targets={targets} label={t.nav.language} />
+    <div class="nav-left">
+      <a class="brand" href={localePath(lang, '/')} aria-label="AnyCaptions"><img class="brand-icon" src="/app-icon.svg" alt="" width="28" height="28" /> AnyCaptions</a>
+      <nav class="nav-main" aria-label="Principal">
+        <a class="nav-link" href={localePath(lang, '/docs')}>{t.nav.docs}</a>
+        <a class="nav-link" href={localePath(lang, '/changelog')}>{t.nav.changelog}</a>
+        <a class="nav-link" href={localePath(lang, '/contribute')}>{t.nav.contribute}</a>
+      </nav>
+    </div>
+    <div class="nav-right">
+      <LanguagePicker lang={lang} targets={targets} label={t.nav.language} />
       <span id="header-account" data-href={localePath(lang, '/account')} data-label={t.nav.signIn}><a class="nav-account nav-pill" href={localePath(lang, '/account')}>{t.nav.signIn}</a></span>
-    </nav>
+    </div>
   </div>
 </header>
 <script>

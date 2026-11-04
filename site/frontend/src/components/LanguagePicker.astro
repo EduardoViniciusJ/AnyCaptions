@@ -1,0 +1,39 @@
+---
+import { langNames, langs, type Lang } from '../i18n';
+interface Props { lang: Lang; targets: Record<Lang, string>; label: string }
+const { lang, targets, label } = Astro.props;
+const flags: Record<Lang, string> = { 'pt-br': 'br', en: 'us', es: 'es', fr: 'fr', ru: 'ru', 'zh-cn': 'cn' };
+const short: Record<Lang, string> = { 'pt-br': 'PT', en: 'EN', es: 'ES', fr: 'FR', ru: 'RU', 'zh-cn': '中文' };
+---
+<!-- Menu sem JavaScript obrigatório: cada idioma é um link para a mesma página na sua URL.
+     O botão mostra só a bandeira e a sigla; o nome completo fica na lista. -->
+<details class="lang dropdown dropdown-end">
+  <summary class="lang-trigger" aria-label={`${label}: ${langNames[lang]}`} title={langNames[lang]}>
+    <img class="lang-flag" src={`/flags/${flags[lang]}.svg`} alt="" width="20" height="14" />
+    <span>{short[lang]}</span>
+    <svg class="lang-chevron" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+  </summary>
+  <ul class="lang-menu dropdown-content menu z-50 mt-2 w-56 rounded-box p-1.5" aria-label={label}>
+    {langs.map(item => (
+      <li>
+        <a href={targets[item]} hreflang={item} aria-current={item === lang ? 'true' : undefined}>
+          <img class="lang-flag" src={`/flags/${flags[item]}.svg`} alt="" width="20" height="14" />
+          <span class="lang-name">{langNames[item]}</span>
+          {item === lang && <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>}
+        </a>
+      </li>
+    ))}
+  </ul>
+</details>
+<script>
+  // Fecha o menu ao clicar fora ou apertar Esc; sem isso, <details> só fecha no próprio botão.
+  const picker = document.querySelector<HTMLDetailsElement>('details.lang');
+  if (picker) {
+    document.addEventListener('click', event => {
+      if (picker.open && !picker.contains(event.target as Node)) picker.open = false;
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && picker.open) { picker.open = false; picker.querySelector('summary')?.focus(); }
+    });
+  }
+</script>

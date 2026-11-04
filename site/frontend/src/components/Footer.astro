@@ -1,0 +1,29 @@
+---
+import { localePath, messages, type Lang } from '../i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = messages[lang].layout.footer;
+// O rodapé repete a mensagem do topo da página: título e as três linhas.
+const home = messages[lang].home;
+---
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href={localePath(lang, '/')} aria-label="AnyCaptions"><img class="brand-icon" src="/app-icon.svg" alt="" width="24" height="24" /> AnyCaptions</a>
+      <p class="footer-tagline">{home.heroTitle}</p>
+      <ul class="footer-lines">
+        {home.heroLines.map(line => <li><strong>{line.lead}</strong>{line.rest}</li>)}
+      </ul>
+    </div>
+    <nav aria-label={t.product}>
+      <h2>{t.product}</h2>
+      <a href={localePath(lang, '/changelog')}>{t.changelog}</a>
+      <a href={localePath(lang, '/docs')}>{t.docs}</a>
+    </nav>
+    <nav aria-label={t.legal}>
+      <h2>{t.legal}</h2>
+      <a href={`${localePath(lang, '/docs')}#privacidade`}>{t.privacy}</a>
+      <a href={`${localePath(lang, '/docs')}#licencas`}>{t.licenses}</a>
+    </nav>
+  </div>
+</footer>
