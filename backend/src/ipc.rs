@@ -21,6 +21,13 @@ use crate::update::{self, UpdateCheck, UpdateError};
 pub const STATE_EVENT: &str = "app-state-changed";
 pub const CAPTION_EVENT: &str = "caption-updated";
 pub const MODEL_DOWNLOAD_EVENT: &str = "model-download-changed";
+pub const APP_UPDATE_EVENT: &str = "app-update-changed";
+
+impl<R: Runtime> crate::updater::UpdateSink for WebviewWindow<R> {
+    fn update_changed(&self, progress: &crate::updater::UpdateProgress) {
+        let _ = self.emit_to(self.label(), APP_UPDATE_EVENT, progress);
+    }
+}
 
 impl<R: Runtime> DownloadSink for WebviewWindow<R> {
     fn download_changed(&self, update: &DownloadUpdate) {
@@ -74,6 +81,8 @@ pub enum CommandError {
     BrowserUnavailable,
     DownloadBusy,
     DownloadUnavailable,
+    UpdateBusy,
+    UpdateUnavailable,
     Update(UpdateError),
 }
 
@@ -783,6 +792,36 @@ pub async fn check_for_updates<R: Runtime>(
         .map_err(CommandError::Update)
 }
 
+/// Downloads, verifies and installs the latest release on a worker thread,
+/// then restarts. Only the user's click reaches here. Models are not touched.
+#[tauri::command]
+pub fn install_update<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    downloads: State<'_, DownloadManager>,
+    installer: State<'_, crate::updater::UpdateInstaller>,
+) -> Result<(), CommandError> {
+    authorize(window.label())?;
+    if !crate::updater::installable() {
+        return Err(CommandError::UpdateUnavailable);
+    }
+    // A restart would interrupt the model being downloaded.
+    if downloads.active_model().is_some() {
+        return Err(CommandError::DownloadBusy);
+    }
+    if !installer.begin() {
+        return Err(CommandError::UpdateBusy);
+    }
+    std::thread::spawn(move || {
+        let installed = crate::updater::run(&window).is_ok();
+        if installed {
+            app.restart();
+        }
+        app.state::<crate::updater::UpdateInstaller>().finish();
+    });
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_update_check<R: Runtime>(
     window: WebviewWindow<R>,
@@ -1033,10 +1072,11 @@ mod tests {
             serde_json::to_value(UpdateCheck {
                 current: "0.1.1".into(),
                 latest: "0.2.0".into(),
-                available: true
+                available: true,
+                installable: true,
             })
             .unwrap(),
-            serde_json::json!({"current":"0.1.1","latest":"0.2.0","available":true})
+            serde_json::json!({"current":"0.1.1","latest":"0.2.0","available":true,"installable":true})
         );
         assert!(serde_json::from_str::<UpdateCheckRequest>(r#"{"enabled":true}"#).is_ok());
         assert!(serde_json::from_str::<UpdateCheckRequest>(r#"{"enabled":1}"#).is_err());

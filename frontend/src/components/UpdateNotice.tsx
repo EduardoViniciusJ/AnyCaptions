@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppSnapshot, Backend, UpdateCheck } from "../contracts";
 import { t } from "../i18n";
+import { UpdateAction } from "./UpdateAction";
 
 /**
  * Aviso de nova versão ao abrir o app, só quando o usuário ligou a
@@ -40,14 +41,7 @@ export function UpdateNotice({
   return (
     <p id="update-notice" className="notice" role="status">
       <span>{t("updateAvailable").replace("{version}", check.latest)}</span>
-      <button
-        className="btn btn-xs btn-primary"
-        id="update-notice-download"
-        type="button"
-        onClick={() => void backend.openReleasesPage().catch(report)}
-      >
-        {t("updateDownload")}
-      </button>
+      <UpdateAction backend={backend} check={check} id="update-notice-download" compact report={report} />
       <button
         className="btn btn-xs btn-ghost"
         id="update-notice-dismiss"

@@ -22,3 +22,15 @@ npm.cmd --prefix frontend run typecheck
 npm.cmd --prefix frontend test -- --run
 npm.cmd --prefix frontend run build
 ```
+
+## Publishing a release
+
+Release notes are always written in English. They are shown on GitHub and on the site's changelog.
+
+1. Bump the version in `backend/Cargo.toml`, `backend/tauri.conf.json` and `frontend/package.json`.
+2. Build the installer: `npm run tauri -- build`.
+3. Build the self-update assets: `node scripts/package-update.mjs`. The signing key is read from `ANYCAPTIONS_UPDATE_KEY` or `~/.anycaptions/updater.key` and never enters the repository.
+4. Create the GitHub release `vX.Y.Z` with the installer and everything in `backend/target/release/update-package/`.
+5. Add the version to the site's `Releases` table (see `site/README.md`).
+
+Installed apps verify `update.json` against the public key in `backend/src/updater.rs`. Losing the private key means installed apps can no longer update by themselves, so keep a backup. The package contains only the executable and its DLLs, so models are never downloaded again.
