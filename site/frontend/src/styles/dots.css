@@ -43,14 +43,14 @@ html.theme-dots {
 .theme-dots .login-button { border-radius: 10px; transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
 .theme-dots .login-button:hover, .theme-dots .login-button:focus-visible { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255, 255, 255, .25), 0 12px 36px -10px rgba(255, 255, 255, .45); }
 
-/* Skeleton ao carregar a página: cada bloco fica coberto por uma barra com brilho e depois é revelado.
+/* Skeleton ao carregar a home: cada bloco fica coberto por uma barra com brilho e depois é revelado.
    Fica dentro de no-preference porque, sem a animação, a barra não sairia de cima do conteúdo. */
 .theme-dots .github h2, .theme-dots .github .section-sub, .theme-dots .footer-tagline, .theme-dots .footer-lines li { width: fit-content; max-width: 100%; }
 .theme-dots .github h2, .theme-dots .github .section-sub { margin-inline: auto; }
 .theme-dots .footer-lines { justify-items: start; }
 @media (prefers-reduced-motion: no-preference) {
-  .theme-dots :is(.github-mark, .github h2, .github .section-sub, .github .hero-alt, .footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a, .page-heading > *, .release-entry, .empty-state, .contribute-page h1, .contribute-page p, .contribute-page .btn, .contribute-repository, .docs-sidebar h2, .docs-sidebar a, .docs-content h1, .docs-content > p, .docs-content section > *) { position: relative; }
-  .theme-dots :where(.github-mark, .github h2, .github .section-sub, .github .hero-alt, .code-box, .footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a, .page-heading > *, .release-entry, .empty-state, .contribute-page h1, .contribute-page p, .contribute-page .btn, .contribute-repository, .docs-sidebar h2, .docs-sidebar a, .docs-content h1, .docs-content > p, .docs-content section > *)::after {
+  .theme-dots:has(.home-hero) :is(.github-mark, .github h2, .github .section-sub, .github .hero-alt, .footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a) { position: relative; }
+  .theme-dots:has(.home-hero) :where(.github-mark, .github h2, .github .section-sub, .github .hero-alt, .footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a, .code-box)::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -60,9 +60,6 @@ html.theme-dots {
     background: linear-gradient(100deg, #171717 30%, #2a2a2a 50%, #171717 70%) 0 0 / 220% 100%;
     animation: load-shimmer .45s linear both, load-reveal .5s ease-out both;
   }
-  /* Texto em sequência: um respiro entre as barras, e as listas cobrem também os números. */
-  .theme-dots :is(.docs-content h1, .docs-content > p, .docs-content section > *, .page-heading > *, .contribute-page h1, .contribute-page p)::after { inset-block: 3px 0; }
-  .theme-dots :is(.docs-content section > ol, .docs-content section > ul)::after { inset-inline-start: -28px; }
 }
 @keyframes load-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 @keyframes load-reveal { 0%, 55% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
