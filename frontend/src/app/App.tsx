@@ -8,6 +8,7 @@ import { CaptionView } from "../components/CaptionView";
 import { DictationIndicator } from "../components/DictationIndicator";
 import { LanguagePicker } from "../components/LanguagePicker";
 import { SettingsPanel } from "../components/SettingsPanel";
+import { UpdateNotice } from "../components/UpdateNotice";
 export function App({ backend }: { backend: Backend }) {
   const { state, busy, error, perform, report, setError } =
     useApplication(backend);
@@ -69,7 +70,7 @@ export function App({ backend }: { backend: Backend }) {
             value={state?.mode ?? "auto"}
             disabled={busy || !state || state.windowMode === "locked"}
             options={[
-              { value: "auto", label: t("autoMode"), name: t("autoModeHint") },
+              { value: "auto", label: t("transcribeMode"), name: t("autoModeHint") },
               ...TRANSLATION_TARGETS.map((target) => ({
                 value: target.mode,
                 label: `${t("translateTo")} ${target.short}`,
@@ -82,6 +83,23 @@ export function App({ backend }: { backend: Backend }) {
                 ),
               })),
             ]}
+            footer={
+              // OPUS only serves English and Portuguese: tell the user where
+              // the other languages come from, until Riva is the engine.
+              state?.translationEngine === "opus"
+                ? {
+                    label: t("moreLanguagesRiva"),
+                    onSelect: () => {
+                      setSettings(true);
+                      requestAnimationFrame(() =>
+                        document
+                          .querySelector<HTMLElement>("#translation-engine")
+                          ?.focus(),
+                      );
+                    },
+                  }
+                : undefined
+            }
             onChange={(mode) => {
               if (mode !== state?.mode)
                 void perform(() => backend.setMode(mode as CaptionMode));
@@ -149,7 +167,16 @@ export function App({ backend }: { backend: Backend }) {
           />
         )}
       </div>
-      <DictationIndicator backend={backend} onError={setError} feedbackOnly />
+      <DictationIndicator backend={backend} onError={setError} feedbackOnly />
+      <UpdateNotice backend={backend} state={state} report={report} />
+      <p
+        id="notice"
+        className="notice"
+        role="status"
+        hidden={!state?.speakerLabels || state.resources.speakerLabels}
+      >
+        {t("speakerLabelsUnavailable")}
+      </p>
       <p
         id="error"
         className="error"

@@ -11,7 +11,10 @@ use std::{
 };
 
 use super::{Translator, TranslatorError};
-use crate::{domain::TargetLanguage, ipc::CaptionUpdate};
+use crate::{
+    domain::TargetLanguage,
+    ipc::{CaptionUpdate, SpeakerSpan},
+};
 
 /// One failed call skips only its caption; this many in a row means the
 /// translator is really gone and the session must surface the error.
@@ -231,6 +234,28 @@ pub(crate) fn split_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
+/// The units one final is translated in, with the speaker each belongs to:
+/// every speaker span is translated on its own (so a label never straddles
+/// two people's words), split into sentences like a plain caption. Without
+/// speaker spans the whole text is one unlabeled unit, exactly as before.
+pub(crate) fn translation_units(update: &CaptionUpdate) -> Vec<(Option<u32>, String)> {
+    if update.speakers.is_empty() {
+        return split_sentences(&update.text)
+            .into_iter()
+            .map(|sentence| (None, sentence))
+            .collect();
+    }
+    update
+        .speakers
+        .iter()
+        .flat_map(|span| {
+            split_sentences(&span.text)
+                .into_iter()
+                .map(move |sentence| (Some(span.speaker), sentence))
+        })
+        .collect()
+}
+
 /// What the stage reports back to the session coordinator.
 pub enum StageEvent {
     /// A caption finished translating; the text is already in the target language.
@@ -349,10 +374,11 @@ impl TranslationStage {
                     // Long finals translate sentence by sentence, and each
                     // translated sentence is shown as its own block (the next
                     // one replaces it): literal, stable text instead of a line
-                    // that keeps rewriting itself.
-                    let sentences = split_sentences(&update.text);
-                    let total = sentences.len();
-                    for (index, sentence) in sentences.into_iter().enumerate() {
+                    // that keeps rewriting itself. Speaker spans are units of
+                    // their own, so the label travels with its translation.
+                    let units = translation_units(&update);
+                    let total = units.len();
+                    for (index, (speaker, sentence)) in units.into_iter().enumerate() {
                         if stop_flag.load(Ordering::Acquire) {
                             return;
                         }
@@ -370,11 +396,20 @@ impl TranslationStage {
                                 if text.is_empty() {
                                     continue;
                                 }
+                                let speakers = speaker
+                                    .map(|speaker| {
+                                        vec![SpeakerSpan {
+                                            speaker,
+                                            text: text.clone(),
+                                        }]
+                                    })
+                                    .unwrap_or_default();
                                 let translated = CaptionUpdate {
                                     text,
                                     language: Some(target.tag().to_owned()),
                                     revision: (index + 1) as u32,
                                     is_final: index + 1 == total,
+                                    speakers,
                                     ..update.clone()
                                 };
                                 if !emit(StageEvent::Translated(translated)) {
@@ -457,7 +492,94 @@ mod tests {
             text: text.into(),
             is_final: true,
             language: language.map(str::to_owned),
+            speakers: Vec::new(),
         }
+    }
+
+    #[test]
+    fn speaker_labels_follow_each_translated_sentence() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|_, source, target| source == "en-US" && target == "pt-br")
+            .times(3)
+            .returning(|text, _, _| {
+                Ok(match text {
+                    "Did you manage to finish it?" => "Você conseguiu terminar?",
+                    "Yes, I finished it just now." => "Sim, terminei agora.",
+                    "And it works fine on my side." => "E funciona bem aqui.",
+                    _ => "?",
+                }
+                .to_owned())
+            });
+
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            None,
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
+                }
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
+        let mut update = final_update(
+            4,
+            "Did you manage to finish it? Yes, I finished it just now. And it works fine on my side.",
+            Some("en-US"),
+        );
+        update.speakers = vec![
+            SpeakerSpan {
+                speaker: 1,
+                text: "Did you manage to finish it?".into(),
+            },
+            SpeakerSpan {
+                speaker: 2,
+                text: "Yes, I finished it just now. And it works fine on my side.".into(),
+            },
+        ];
+        stage.submit(update).unwrap();
+        stage.finish();
+
+        let emitted = emitted.lock().unwrap();
+        assert_eq!(emitted.len(), 3);
+        let labeled: Vec<(u32, &str, bool)> = emitted
+            .iter()
+            .map(|update| {
+                assert_eq!(update.speakers.len(), 1);
+                assert_eq!(update.speakers[0].text, update.text);
+                (
+                    update.speakers[0].speaker,
+                    update.text.as_str(),
+                    update.is_final,
+                )
+            })
+            .collect();
+        assert_eq!(
+            labeled,
+            vec![
+                (1, "Você conseguiu terminar?", false),
+                (2, "Sim, terminei agora.", false),
+                (2, "E funciona bem aqui.", true),
+            ]
+        );
+        assert_eq!(
+            emitted
+                .iter()
+                .map(|update| update.revision)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        // Without spans, the units are the plain sentences, unlabeled.
+        assert_eq!(
+            translation_units(&final_update(1, "Short. Ok.", None)),
+            vec![(None, "Short. Ok.".to_owned())]
+        );
     }
 
     fn wait_until(check: impl Fn() -> bool) {

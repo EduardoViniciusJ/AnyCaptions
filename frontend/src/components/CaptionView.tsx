@@ -68,6 +68,10 @@ export function CaptionView({
     if (!state) return;
     applyAppearance(live.current!, state.appearance);
     presenter.current?.setContext(state.sessionId, state.mode);
+    // Rótulos de falante ligados e disponíveis: um falante por linha.
+    presenter.current?.setSpeakerLabels(
+      state.speakerLabels && state.resources.speakerLabels,
+    );
     if (state.capture === "stopped") presenter.current?.clear();
     presenter.current?.refreshLayout();
   }, [
@@ -75,6 +79,8 @@ export function CaptionView({
     state?.mode,
     state?.capture,
     state?.appearance,
+    state?.speakerLabels,
+    state?.resources.speakerLabels,
     hidden,
   ]);
   return (

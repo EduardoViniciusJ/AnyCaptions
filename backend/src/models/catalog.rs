@@ -48,6 +48,24 @@ pub const OPUS_MT_PT_EN: ModelProfile = ModelProfile {
     max_bytes: 512 * 1024 * 1024,
 };
 
+/// Streaming Sortformer (V3, eight speaker slots, 10 ms output frames) that
+/// tags each recognized word with a generic speaker number. NVIDIA publishes
+/// this GGUF already converted for NeMo-Speech.cpp (commit "add: q8_0 GGUF for
+/// NeMo-Speech.cpp" in the model repository); the SHA-256 below is the Git
+/// LFS object hash of that file, re-hashed locally on 2026-11-04. The model
+/// knows no identities: it only separates voices into numbered slots.
+pub const NEMOTRON_3_DIARIZATION_Q8: ModelProfile = ModelProfile {
+    kind: ModelKind::Diarization,
+    id: "nemotron-3-diarization-q8_0",
+    directory: "nemotron-3-diarization",
+    filename: "Nemotron-3-Diarization.q8_0.gguf",
+    revision: "f667ed73aee57d40cc39428eb768b4fd87a0a29e",
+    source: "https://huggingface.co/nvidia/Nemotron-3-Diarization",
+    license: "OpenMDW-1.1",
+    sha256: "08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1",
+    max_bytes: 256 * 1024 * 1024,
+};
+
 pub const NEMOTRON_STREAMING_Q8: ModelProfile = ModelProfile {
     kind: ModelKind::Asr,
     id: "nemotron-3.5-asr-streaming-0.6b-q8_0",

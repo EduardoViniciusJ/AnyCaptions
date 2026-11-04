@@ -22,9 +22,19 @@ use super::{ModelProfile, catalog};
 /// Exact size of the Riva GGUF, shown on the download button before it starts.
 pub const RIVA_DOWNLOAD_BYTES: u64 = 2_759_302_368;
 
+/// Exact size of the Nemotron 3 Diarization GGUF (the `Content-Length` of the
+/// pinned revision), shown on its download button.
+pub const DIARIZATION_DOWNLOAD_BYTES: u64 = 107_012_128;
+
 /// Where the Riva GGUF is served from; `ANYCAPTIONS_RIVA_URL` overrides it
 /// during development.
 const RIVA_DOWNLOAD_URL: &str = "https://huggingface.co/EduardoVinicius/anycaptions-riva-translate/resolve/main/riva-translate-4b-instruct-v2.q4_k_m.gguf";
+
+/// Where the diarization GGUF is served from: NVIDIA's own model repository,
+/// pinned to the revision the catalog hash was taken from, so a later upload
+/// can never change what the app installs. `ANYCAPTIONS_DIARIZATION_URL`
+/// overrides it during development.
+const DIARIZATION_DOWNLOAD_URL: &str = "https://huggingface.co/nvidia/Nemotron-3-Diarization/resolve/f667ed73aee57d40cc39428eb768b4fd87a0a29e/Nemotron-3-Diarization.q8_0.gguf";
 
 /// A catalog model the app offers for download, with its pinned source.
 pub struct DownloadSource {
@@ -32,27 +42,57 @@ pub struct DownloadSource {
     pub url: String,
 }
 
+/// Every model the app can fetch: the catalog profile, its download size and
+/// the environment variable that overrides its URL during development.
+struct DownloadableModel {
+    profile: &'static ModelProfile,
+    url: &'static str,
+    url_override: &'static str,
+}
+
+const DOWNLOADABLE_MODELS: &[DownloadableModel] = &[
+    DownloadableModel {
+        profile: &catalog::RIVA_TRANSLATE_Q4,
+        url: RIVA_DOWNLOAD_URL,
+        url_override: "ANYCAPTIONS_RIVA_URL",
+    },
+    DownloadableModel {
+        profile: &catalog::NEMOTRON_3_DIARIZATION_Q8,
+        url: DIARIZATION_DOWNLOAD_URL,
+        url_override: "ANYCAPTIONS_DIARIZATION_URL",
+    },
+];
+
 /// Resolves a model id the frontend asked for; only catalog models with a
 /// configured source are downloadable, so the webview never supplies a URL.
 pub fn source_for(model_id: &str) -> Option<DownloadSource> {
-    if model_id != catalog::RIVA_TRANSLATE_Q4.id {
-        return None;
-    }
-    riva_url().map(|url| DownloadSource {
-        profile: &catalog::RIVA_TRANSLATE_Q4,
+    let model = DOWNLOADABLE_MODELS
+        .iter()
+        .find(|model| model.profile.id == model_id)?;
+    model.url().map(|url| DownloadSource {
+        profile: model.profile,
         url,
     })
 }
 
-pub fn riva_source_configured() -> bool {
-    riva_url().is_some()
+/// Whether `model_id` has a download URL (built in or from its override).
+pub fn source_configured(model_id: &str) -> bool {
+    DOWNLOADABLE_MODELS
+        .iter()
+        .any(|model| model.profile.id == model_id && model.url().is_some())
 }
 
-fn riva_url() -> Option<String> {
-    std::env::var("ANYCAPTIONS_RIVA_URL")
-        .ok()
-        .filter(|url| !url.is_empty())
-        .or_else(|| (!RIVA_DOWNLOAD_URL.is_empty()).then(|| RIVA_DOWNLOAD_URL.to_owned()))
+pub fn riva_source_configured() -> bool {
+    source_configured(catalog::RIVA_TRANSLATE_Q4.id)
+}
+
+impl DownloadableModel {
+    fn url(&self) -> Option<String> {
+        std::env::var(self.url_override)
+            .ok()
+            .filter(|url| !url.is_empty())
+            .or_else(|| (!self.url.is_empty()).then(|| self.url.to_owned()))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -385,10 +425,38 @@ mod tests {
     #[test]
     fn only_catalog_models_with_a_source_are_downloadable() {
         assert!(source_for("unknown-model").is_none());
+        // The ASR model ships with the installer and is never downloaded.
+        assert!(source_for(catalog::NEMOTRON_STREAMING_Q8.id).is_none());
+        assert!(!source_configured(catalog::NEMOTRON_STREAMING_Q8.id));
         // Riva only becomes downloadable once a URL is configured.
         assert_eq!(
             source_for(catalog::RIVA_TRANSLATE_Q4.id).is_some(),
             riva_source_configured()
         );
+        // The diarization model is pinned to the revision the catalog hash
+        // was taken from, straight from NVIDIA's repository.
+        let diarization = source_for(catalog::NEMOTRON_3_DIARIZATION_Q8.id).unwrap();
+        assert_eq!(
+            diarization.profile.id,
+            catalog::NEMOTRON_3_DIARIZATION_Q8.id
+        );
+        assert!(source_configured(catalog::NEMOTRON_3_DIARIZATION_Q8.id));
+        if std::env::var_os("ANYCAPTIONS_DIARIZATION_URL").is_none() {
+            assert!(
+                diarization
+                    .url
+                    .contains(catalog::NEMOTRON_3_DIARIZATION_Q8.revision)
+            );
+            assert!(
+                diarization
+                    .url
+                    .starts_with("https://huggingface.co/nvidia/")
+            );
+            assert!(
+                diarization
+                    .url
+                    .ends_with(catalog::NEMOTRON_3_DIARIZATION_Q8.filename)
+            );
+        }
     }
 }

@@ -190,7 +190,7 @@ fn warm_up<R: Runtime>(app: &AppHandle<R>, state: &DictationState) {
     let _ = thread::Builder::new()
         .name("dictation-warmup".into())
         .spawn(move || {
-            let _ = factory.create(0, CaptionMode::Auto, None);
+            let _ = factory.create(0, CaptionMode::Auto, None, false);
             if translates {
                 let _ = factory.create_translator(engine);
             }
@@ -689,6 +689,7 @@ mod tests {
             text: text.into(),
             is_final,
             language: None,
+            speakers: Vec::new(),
         };
         apply_update(update("Hel", false), &mut finals, &mut partial);
         apply_update(update("Hello", false), &mut finals, &mut partial);
