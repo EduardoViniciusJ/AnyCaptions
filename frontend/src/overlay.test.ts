@@ -154,6 +154,8 @@ function setup(initial = snapshot()) {
     ]),
     downloadModel: vi.fn().mockResolvedValue(undefined),
     cancelModelDownload: vi.fn().mockResolvedValue(undefined),
+    installUpdate: vi.fn().mockResolvedValue(undefined),
+    subscribeUpdateProgress: vi.fn().mockResolvedValue(vi.fn()),
     subscribeModelDownloads: vi.fn(async (callback) => {
       modelDownloadListener = callback;
       return vi.fn();

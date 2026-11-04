@@ -55,6 +55,16 @@ export interface UpdateCheck {
   current: string;
   latest: string;
   available: boolean;
+  /** Este build consegue instalar a versão nova sozinho. */
+  installable: boolean;
+}
+
+/** Andamento da instalação iniciada pelo botão "Atualizar". */
+export interface UpdateProgress {
+  phase: "downloading" | "installing" | "restarting" | "failed";
+  receivedBytes: number;
+  totalBytes: number;
+  reason?: "network" | "signature" | "corrupted" | "disk" | null;
 }
 
 /**
@@ -165,6 +175,8 @@ export interface Backend {
   setUpdateCheck(enabled: boolean): Promise<AppSnapshot>;
   checkForUpdates(): Promise<UpdateCheck>;
   openReleasesPage(): Promise<void>;
+  installUpdate(): Promise<void>;
+  subscribeUpdateProgress(listener: (progress: UpdateProgress) => void): Promise<() => void>;
   setUiLanguage(language: string): Promise<AppSnapshot>;
   start(): Promise<AppSnapshot>;
   stop(): Promise<AppSnapshot>;

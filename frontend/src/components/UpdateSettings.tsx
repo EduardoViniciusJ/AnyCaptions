@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { AppSnapshot, Backend, UpdateCheck } from "../contracts";
 import { t } from "../i18n";
 import { Field } from "./Field";
+import { UpdateAction } from "./UpdateAction";
 
 type Status =
   | { kind: "idle" }
@@ -14,7 +15,7 @@ type Status =
  * botão "Verificar agora", a chave de verificar ao abrir, e uma linha de
  * oferta (texto + botão) quando há versão nova, como a do download de
  * modelos. A consulta vai só à página de versões do projeto no GitHub e nada
- * é instalado sozinho; baixar abre o navegador.
+ * é instalado sem o clique em "Atualizar".
  */
 export function UpdateSettings({
   backend,
@@ -86,15 +87,8 @@ export function UpdateSettings({
         <p id="update-status" className="muted" role="status">
           {message}
         </p>
-        {available && (
-          <button
-            className="btn btn-sm btn-primary"
-            id="update-download"
-            type="button"
-            onClick={() => void backend.openReleasesPage().catch(report)}
-          >
-            {t("updateDownload")}
-          </button>
+        {available && status.kind === "result" && (
+          <UpdateAction backend={backend} check={status.check} id="update-download" report={report} />
         )}
       </div>
     </>

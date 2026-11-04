@@ -1,8 +1,8 @@
 //! Update notice: compares the running version with the latest GitHub release
 //! of the project. It runs only when the user asks (the button in the
 //! settings) or opted into the check at startup; the request carries nothing
-//! but the version in its user agent, and nothing is downloaded or installed:
-//! the user opens the releases page in the browser.
+//! but the version in its user agent. Installing is a separate step the user
+//! starts (see `updater`); nothing is downloaded on its own.
 
 use std::time::Duration;
 
@@ -26,6 +26,8 @@ pub struct UpdateCheck {
     pub current: String,
     pub latest: String,
     pub available: bool,
+    /// Whether this build can install the update by itself.
+    pub installable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -79,6 +81,7 @@ pub(crate) fn check_at(url: &str) -> Result<UpdateCheck, UpdateError> {
     Ok(UpdateCheck {
         current: CURRENT_VERSION.to_owned(),
         available: newer(&latest, CURRENT_VERSION),
+        installable: crate::updater::installable(),
         latest,
     })
 }
