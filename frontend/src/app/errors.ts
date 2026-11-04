@@ -9,6 +9,7 @@ export function errorMessage(error: unknown): string {
     typeof error === "object" && error !== null && "kind" in error
       ? error.kind
       : null;
+  if (kind === "update") return t("updateFailed");
   if (kind === "dictation") {
     switch (code) {
       case "invalid-shortcut":

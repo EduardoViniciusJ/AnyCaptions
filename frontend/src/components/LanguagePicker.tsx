@@ -9,12 +9,18 @@ export interface LanguageOption {
   disabled?: boolean;
   hidden?: boolean;
 }
+/** Linha final do menu que não é uma opção: uma dica com ação (ex.: baixar outro modelo). */
+export interface PickerFooter {
+  label: string;
+  onSelect(): void;
+}
 export function LanguagePicker({
   id,
   label,
   value,
   options,
   disabled,
+  footer,
   onChange,
 }: {
   id: string;
@@ -22,6 +28,7 @@ export function LanguagePicker({
   value: string;
   options: LanguageOption[];
   disabled?: boolean;
+  footer?: PickerFooter;
   onChange(value: string): void;
 }) {
   const [open, setOpen] = useState(false);
@@ -133,6 +140,21 @@ export function LanguagePicker({
             <span>{option.label}</span>
           </li>
         ))}
+        {footer && (
+          <li className="picker-footer" role="presentation">
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              id={`${id}-footer`}
+              onClick={() => {
+                close();
+                footer.onSelect();
+              }}
+            >
+              {footer.label}
+            </button>
+          </li>
+        )}
       </ul>
     </div>
   );

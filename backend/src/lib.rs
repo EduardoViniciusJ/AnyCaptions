@@ -10,6 +10,7 @@ mod preferences;
 mod recovery;
 pub mod transcription;
 pub mod translation;
+mod update;
 mod window;
 
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
@@ -23,6 +24,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::set_caption_mode,
             ipc::set_translation_engine,
             ipc::set_source_language,
+            ipc::set_speaker_labels,
             ipc::set_ui_language,
             ipc::start_capture,
             ipc::stop_capture,
@@ -34,6 +36,9 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::get_dictation,
             ipc::set_dictation,
             ipc::open_project_page,
+            ipc::open_releases_page,
+            ipc::check_for_updates,
+            ipc::set_update_check,
             ipc::get_model_downloads,
             ipc::download_model,
             ipc::cancel_model_download,

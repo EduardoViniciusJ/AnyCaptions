@@ -43,6 +43,13 @@ pub struct Preferences {
     /// Idioma falado fixado para o reconhecimento; `None` = detecção automática.
     #[serde(default)]
     pub source_language: Option<crate::domain::SourceLanguage>,
+    /// Rótulos genéricos de falante ("Pessoa 1", "Pessoa 2") nas legendas;
+    /// desligado por padrão (precisa do modelo de diarização instalado).
+    #[serde(default)]
+    pub speaker_labels: bool,
+    /// Verificar nova versão ao abrir o app; desligado por padrão.
+    #[serde(default)]
+    pub update_check: bool,
     #[serde(default)]
     pub ui_language: crate::domain::UiLanguage,
     pub output_id: Option<String>,
@@ -59,6 +66,8 @@ impl Default for Preferences {
             mode: CaptionMode::Auto,
             translation_engine: TranslationEngine::default(),
             source_language: None,
+            speaker_labels: false,
+            update_check: false,
             ui_language: crate::domain::UiLanguage::default(),
             output_id: None,
             appearance: Appearance::default(),
@@ -134,6 +143,8 @@ impl PreferenceStore {
         state.mode = snapshot.mode;
         state.translation_engine = snapshot.translation_engine;
         state.source_language = snapshot.source_language;
+        state.speaker_labels = snapshot.speaker_labels;
+        state.update_check = snapshot.update_check;
         state.ui_language = snapshot.ui_language;
         state.appearance = snapshot.appearance;
         state.shortcut = snapshot.shortcut.clone();
@@ -325,8 +336,11 @@ mod tests {
             color: CaptionColor::YELLOW,
             partial_color: CaptionColor::DEFAULT_PARTIAL,
             background: true,
+            font: crate::domain::CaptionFont::from_id("georgia").unwrap(),
         };
         snapshot.shortcut = "Ctrl+Alt+K".into();
+        snapshot.speaker_labels = true;
+        snapshot.update_check = true;
         store.sync_snapshot(&snapshot).unwrap();
         store
             .save_geometry(SavedGeometry {
@@ -349,7 +363,22 @@ mod tests {
             CaptionColor::DEFAULT_PARTIAL
         );
         assert!(restored.appearance.background);
+        assert!(restored.speaker_labels);
+        assert!(restored.update_check);
+        assert_eq!(restored.appearance.font.id(), "georgia");
         assert_eq!(restored.geometry.unwrap().relative_x, 0.3);
+        // Files written before the option existed restore it as off.
+        fs::write(
+            &path,
+            br##"{"mode":"auto","outputId":null,"appearance":{"fontSize":32,"color":"#FFFFFF"},"shortcut":"Ctrl+Alt+L","geometry":null}"##,
+        )
+        .unwrap();
+        assert!(
+            !PreferenceStore::load(path.clone())
+                .snapshot()
+                .unwrap()
+                .speaker_labels
+        );
         fs::remove_file(path).unwrap();
         fs::remove_dir(dir).unwrap();
     }
