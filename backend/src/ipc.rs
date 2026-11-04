@@ -54,6 +54,9 @@ pub struct CaptionUpdate {
     /// space are the caption's words. Empty when speaker labels are off (or the
     /// diarizer is unavailable), which leaves the caption exactly as before.
     pub speakers: Vec<SpeakerSpan>,
+    /// Translate mode only: a provisional translation of the utterance still
+    /// being spoken. The final translation of the same segment replaces it.
+    pub provisional: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1006,11 +1009,12 @@ mod tests {
                 speaker: 2,
                 text: "<b>texto</b>".into(),
             }],
+            provisional: false,
         };
         let json = serde_json::to_value(update).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt-br","text":"<b>texto</b>","isFinal":true,"language":"en-US","speakers":[{"speaker":2,"text":"<b>texto</b>"}]})
+            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt-br","text":"<b>texto</b>","isFinal":true,"language":"en-US","speakers":[{"speaker":2,"text":"<b>texto</b>"}],"provisional":false})
         );
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");
