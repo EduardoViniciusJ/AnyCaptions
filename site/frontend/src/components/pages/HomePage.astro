@@ -23,6 +23,12 @@ const heroLines = t.heroLines.map((line, index) => ({
 }));
 const caretDelay = 0.2 + 0.09 * wordIndex;
 
+// A seção do GitHub usa o mesmo efeito de legenda, com a própria sequência: ícone, título e frase.
+wordIndex = 0;
+const githubIconDelay = 0.2 + 0.09 * wordIndex++;
+const githubTitleWords = toWords(t.github.title, false);
+const githubSubWords = toWords(t.github.sub, false);
+
 // Cada demonstração espera um arquivo em public/media. Enquanto a gravação
 // definitiva não existe, o vídeo provisório entra no lugar.
 type Demo = { label: string; file: string; fallback: string };
@@ -67,7 +73,7 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
     <ul class="hero-copy">
       {heroLines.map(({ Icon, words }, lineIndex) => (
         <li>
-          <Icon size={18} aria-hidden="true" />
+          <Icon class="w" style={`--d:${words[0]?.delay ?? 0}s`} size={18} aria-hidden="true" />
           <span>
             {words.map((item, index) => (
               <>
@@ -105,7 +111,7 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
       {demos.map((demo, index) => (
         <figure class:list={['reel-slide', { 'is-active': index === startAt }]} aria-roledescription="slide" aria-label={demo.label} data-index={index}>
           <div class="demo-frame">
-            <video controls muted loop playsinline preload={index === startAt ? 'metadata' : 'none'} {...(index === startAt ? {} : lazy)} src={demo.src} poster={demo.poster} width="1920" height="1080" aria-label={demo.label}></video>
+            <video class="skeleton" controls muted loop playsinline preload={index === startAt ? 'metadata' : 'none'} {...(index === startAt ? {} : lazy)} src={demo.src} poster={demo.poster} width="1920" height="1080" aria-label={demo.label}></video>
             <button type="button" class="reel-pick" data-go={index} aria-label={t.videos.goTo.replace('{n}', String(index + 1))}></button>
           </div>
         </figure>
@@ -137,18 +143,35 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
         if (event.key === 'ArrowRight') { event.preventDefault(); goTo(active + 1); }
         if (event.key === 'ArrowLeft') { event.preventDefault(); goTo(active - 1); }
       });
-      const watcher = new IntersectionObserver(entries => {
-        for (const entry of entries) if (entry.isIntersecting) setActive(Number((entry.target as HTMLElement).dataset.index));
-      }, { root: track, threshold: 0.6 });
-      slides.forEach(slide => watcher.observe(slide));
+      // O ativo vem da posição no trilho, sem contar transformações: o giro 3D distorce a área visível dos vizinhos.
+      const updateActive = () => {
+        const center = track.scrollLeft + track.clientWidth / 2;
+        let nearest = 0;
+        slides.forEach((slide, i) => {
+          const distance = (el: HTMLElement) => Math.abs(el.offsetLeft - track.offsetLeft + el.clientWidth / 2 - center);
+          if (distance(slide) < distance(slides[nearest]!)) nearest = i;
+        });
+        if (nearest !== active || !slides[nearest]?.classList.contains('is-active')) setActive(nearest);
+      };
+      let frame = 0;
+      track.addEventListener('scroll', () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(updateActive); }, { passive: true });
+      // Skeleton atrás de cada vídeo até o poster carregar.
+      track.querySelectorAll('video').forEach(video => {
+        const done = () => video.classList.remove('skeleton');
+        const poster = new Image();
+        poster.onload = done;
+        poster.onerror = done;
+        poster.src = video.poster;
+      });
       goTo(active, 'instant');
+      updateActive();
     }
   </script>
 
   <section class="github container" aria-labelledby="github-title">
-    <a class="github-mark" href={repo} target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/icons/github.svg" alt="" width="40" height="40" /></a>
-    <h2 id="github-title">{t.github.title}</h2>
-    <p class="section-sub">{t.github.sub}</p>
+    <a class="github-mark w" style={`--d:${githubIconDelay}s`} href={repo} target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/icons/github.svg" alt="" width="40" height="40" /></a>
+    <h2 id="github-title">{githubTitleWords.map((item, index) => <>{index > 0 && ' '}<span class="w" style={`--d:${item.delay}s`}>{item.word}</span></>)}</h2>
+    <p class="section-sub">{githubSubWords.map((item, index) => <>{index > 0 && ' '}<span class="w" style={`--d:${item.delay}s`}>{item.word}</span></>)}</p>
     <div class="code-box">
       <div class="mockup-code">
         {cloneCommands.map(command => <pre data-prefix="$"><code>{command}</code></pre>)}

@@ -12,7 +12,7 @@ export const en: SiteMessages = {
       licenses: 'Licenses',
       },
   },
-  nav: { docs: 'Docs', contribute: 'Contribute', changelog: 'Changelog', signIn: 'Sign in', language: 'Site language' },
+  nav: { docs: 'Docs', changelog: 'Changelog', signIn: 'Sign in', language: 'Site language' },
   home: {
     title: 'Live captions',
     description: 'Transcribe and translate the audio of games, videos and calls on Windows. Speak instead of typing with local dictation.',

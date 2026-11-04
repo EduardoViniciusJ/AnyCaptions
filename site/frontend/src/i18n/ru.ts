@@ -14,7 +14,6 @@ export const ru: SiteMessages = {
   },
   nav: {
     docs: 'Документация',
-    contribute: 'Участвовать',
     changelog: 'Обновления',
     signIn: 'Войти',
     language: 'Язык сайта',

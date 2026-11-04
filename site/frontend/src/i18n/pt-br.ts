@@ -14,7 +14,6 @@ export const ptBr: SiteMessages = {
   },
   nav: {
     docs: 'Docs',
-    contribute: 'Contribuir',
     changelog: 'Atualizações',
     signIn: 'Entrar',
     language: 'Idioma do site',

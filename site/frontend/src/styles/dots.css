@@ -1,0 +1,68 @@
+/* Fonte Fira Code e fundo com pontinhos brancos sobre o tema preto.
+   Tamanhos e formatos continuam vindo de global.css. */
+html.theme-dots {
+  --font-mono: 'Fira Code Variable', ui-monospace, Consolas, monospace;
+  --font: var(--font-mono);
+  scroll-padding-top: 16px; /* a navbar não acompanha a rolagem */
+}
+/* Um ponto branco bem pequeno a cada 21 px, na página inteira */
+.theme-dots body { background: radial-gradient(circle, rgba(255, 255, 255, .3) .6px, transparent .85px) 0 0 / 21px 21px #000; }
+
+/* Navbar e rodapé fazem parte do mesmo fundo; só uma linha os separa do conteúdo */
+.theme-dots .site-header { position: relative; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--line); }
+.theme-dots .site-footer { background: transparent; }
+
+/* Vídeos sem moldura. Sem suporte a animação por rolagem (ou com movimento reduzido),
+   os vizinhos só escurecem, de forma sólida, para os pontos não aparecerem através deles. */
+.theme-dots .demo-frame, .theme-dots .reel-slide:hover .demo-frame { padding: 0; border: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.theme-dots .demo-frame video { border-radius: 14px; }
+.theme-dots .reel-slide { opacity: 1; scale: none; filter: brightness(.3) blur(2px); }
+.theme-dots .reel-slide.is-active { opacity: 1; scale: none; filter: none; }
+
+/* Troca do carrossel: vídeos retos e alinhados; o brilho acompanha a posição no trilho
+   durante o clique ou o arrasto. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: view()) and (animation-range: entry)) {
+    .theme-dots .reel-slide, .theme-dots .reel-slide.is-active { filter: none; transition: none; view-timeline: --reel-slide inline; }
+    .theme-dots .reel-slide .demo-frame { animation: reel-focus-dots linear both; animation-timeline: --reel-slide; animation-range: cover 0% cover 100%; }
+  }
+}
+@keyframes reel-focus-dots {
+  0%, 18% { filter: brightness(.3) blur(2px); }
+  47%, 53% { filter: brightness(1) blur(0); }
+  82%, 100% { filter: brightness(.3) blur(2px); }
+}
+
+.theme-dots .code-box .mockup-code { background: #0d0d0d; font-variant-ligatures: none; }
+
+/* A Fira Code é mais larga: no celular os links encolhem um pouco para caber numa linha */
+@media (max-width: 600px) {
+  .theme-dots .nav-main { gap: 4px 12px; font-size: 14px; }
+}
+
+.theme-dots .login-button { border-radius: 10px; transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
+.theme-dots .login-button:hover, .theme-dots .login-button:focus-visible { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255, 255, 255, .25), 0 12px 36px -10px rgba(255, 255, 255, .45); }
+
+/* Skeleton ao carregar o rodapé da home: cada bloco fica coberto por uma barra com brilho e depois é revelado.
+   Fica dentro de no-preference porque, sem a animação, a barra não sairia de cima do conteúdo. */
+.theme-dots .github h2, .theme-dots .github .section-sub, .theme-dots .footer-tagline, .theme-dots .footer-lines li { width: fit-content; max-width: 100%; }
+.theme-dots .github h2, .theme-dots .github .section-sub { margin-inline: auto; }
+.theme-dots .footer-lines { justify-items: start; }
+@media (prefers-reduced-motion: no-preference) {
+  .theme-dots:has(.home-hero) :is(.footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a) { position: relative; }
+  .theme-dots:has(.home-hero) :where(.footer-brand .brand, .footer-tagline, .footer-lines li, .site-footer nav h2, .site-footer nav a)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    border-radius: 8px;
+    pointer-events: none;
+    background: linear-gradient(100deg, #171717 30%, #2a2a2a 50%, #171717 70%) 0 0 / 220% 100%;
+    animation: load-shimmer .45s linear both, load-reveal .5s ease-out both;
+  }
+}
+@keyframes load-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@keyframes load-reveal { 0%, 55% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
+
+/* O link da política corre junto com o texto, sem deixar o ponto final sozinho numa linha */
+.theme-dots .login-consent .text-link { display: inline; font-size: inherit; text-decoration: underline; text-underline-offset: 3px; }

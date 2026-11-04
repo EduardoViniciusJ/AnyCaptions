@@ -188,7 +188,8 @@ nav a:hover, .text-link:hover { color: white; }
 .hero-copy svg { flex-shrink: 0; color: #fff; }
 .hero-copy strong { color: var(--text-primary); font-weight: 700; }
 /* Cada palavra entra como numa legenda ao vivo: desfocada, depois nítida. */
-.home-hero .w { display: inline-block; animation: caption-cycle 11s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.home-hero .w, .github .w { display: inline-block; animation: caption-cycle 11s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.github a.w { display: grid; }
 /* Legenda ao vivo em loop: as palavras aparecem em sequência, ficam um tempo e somem na mesma ordem. */
 @keyframes caption-cycle {
   0% { opacity: 0; filter: blur(8px); translate: 0 4px; }
@@ -209,6 +210,7 @@ nav a:hover, .text-link:hover { color: white; }
 .hero-download:hover, .hero-download:focus-visible { color: #000; background: #fff; border-color: #fff; }
 .hero-alt:hover, .hero-alt:focus-visible, .code-copy:hover, .code-copy:focus-visible, .nav-pill:hover, .nav-pill:focus-visible { color: #fff; background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .45); }
 .hero-download:hover, .hero-download:focus-visible, .hero-alt:hover, .hero-alt:focus-visible, .code-copy:hover, .code-copy:focus-visible, .nav-pill:hover, .nav-pill:focus-visible { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255, 255, 255, .25), 0 12px 36px -10px rgba(255, 255, 255, .45); }
+.hero-danger, .hero-danger:hover, .hero-danger:focus-visible { color: #f87171; border-color: rgba(248, 113, 113, .5); }
 .hero-download:disabled { pointer-events: auto; cursor: not-allowed; opacity: .55; color: #000; background: #fff; transform: none; box-shadow: none; }
 .hero-secondary { font-size: 15px; color: var(--text-secondary); text-decoration: underline; text-underline-offset: 6px; text-decoration-color: var(--line); }
 .hero-secondary:hover { color: #fff; }
@@ -237,7 +239,10 @@ nav a:hover, .text-link:hover { color: white; }
 .code-box { position: relative; max-width: 720px; margin: 32px auto 0; text-align: left; }
 .code-box .mockup-code { min-width: 0; padding-right: 96px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); color: #fff; font-size: 14px; }
 .code-box .mockup-code pre::before { color: var(--text-secondary); }
-.code-box .mockup-code pre { width: auto; white-space: pre-wrap; }
+/* Cada comando é uma linha flexível: o $ fica à esquerda e o texto quebra alinhado a ele. */
+.code-box .mockup-code pre { display: flex; width: auto; white-space: pre-wrap; }
+.code-box .mockup-code pre::before { flex: none; }
+.code-box .mockup-code code { flex: 1; min-width: 0; }
 .code-box .mockup-code code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .code-copy { position: absolute; top: 12px; right: 12px; height: 34px; min-height: 34px; padding-inline: 14px; border: 1px solid var(--line); font-size: 13px; color: #fff; background: rgba(255, 255, 255, .08); }
 .github { padding-block: 96px 120px; text-align: center; }
@@ -286,12 +291,11 @@ nav a:hover, .text-link:hover { color: white; }
   .section-sub { font-size: 15px; }
   .code-box { margin-top: 24px; }
   .code-box .mockup-code { min-width: 0; font-size: 12px; }
-  .code-box .mockup-code pre { padding-right: 12px; overflow-wrap: anywhere; word-break: break-all; }
-  .code-box .mockup-code pre::before { margin-right: 10px; }
+  .code-box .mockup-code pre { padding-right: 12px; overflow-wrap: anywhere; }
+  .code-box .mockup-code pre::before { width: 1.5rem; margin-right: 8px; }
   .github { padding-block: 72px 88px; }
   .code-box .mockup-code { padding-right: 16px; font-size: 13px; }
-  .code-copy { position: static; margin-top: 10px; }
-  .hero-actions .btn { width: 100%; max-width: 360px; }
+  .hero-actions .btn { width: 100%; }
   .site-footer { padding-block: 32px; }
   .footer-grid { grid-template-columns: 1fr 1fr; gap: 20px; }
 }
