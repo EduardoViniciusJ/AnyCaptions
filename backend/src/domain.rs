@@ -345,6 +345,59 @@ impl<'de> Deserialize<'de> for CaptionColor {
     }
 }
 
+/// A caption typeface the product offers, held as its catalog id (e.g.
+/// `inter`). Only ids from [`CAPTION_FONTS`] can be constructed; the frontend
+/// owns the actual font-family stacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptionFont(&'static str);
+
+impl CaptionFont {
+    pub const fn id(self) -> &'static str {
+        self.0
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        CAPTION_FONTS
+            .iter()
+            .copied()
+            .find(|font| font.0.eq_ignore_ascii_case(id))
+    }
+}
+
+impl Default for CaptionFont {
+    fn default() -> Self {
+        CaptionFont("inter")
+    }
+}
+
+/// Typefaces the overlay can render: the two bundled with the app (Inter,
+/// Fira Code) and fonts every Windows installation ships. Mirrored by the
+/// frontend's `CAPTION_FONTS` table.
+pub const CAPTION_FONTS: &[CaptionFont] = &[
+    CaptionFont("inter"),
+    CaptionFont("fira-code"),
+    CaptionFont("segoe-ui"),
+    CaptionFont("arial"),
+    CaptionFont("verdana"),
+    CaptionFont("tahoma"),
+    CaptionFont("trebuchet-ms"),
+    CaptionFont("georgia"),
+    CaptionFont("consolas"),
+];
+
+impl Serialize for CaptionFont {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for CaptionFont {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_id(&value).ok_or_else(|| de::Error::custom("unsupported caption font"))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Appearance {
@@ -356,6 +409,9 @@ pub struct Appearance {
     /// preferences saved before this option keep their look.
     #[serde(default)]
     pub background: bool,
+    /// Caption typeface; preferences saved before this option keep Inter.
+    #[serde(default)]
+    pub font: CaptionFont,
 }
 
 fn default_partial_color() -> CaptionColor {
@@ -368,6 +424,7 @@ impl Default for Appearance {
             font_size: 32,
             color: CaptionColor::WHITE,
             partial_color: CaptionColor::DEFAULT_PARTIAL,
+            font: CaptionFont::default(),
             background: false,
         }
     }
@@ -388,6 +445,9 @@ pub struct Resources {
     pub audio_capture: bool,
     pub transcription: bool,
     pub translation: bool,
+    /// The diarization model and its library are usable. Never a start
+    /// requirement: captions keep flowing without labels when it is missing.
+    pub speaker_labels: bool,
 }
 
 impl Resources {
@@ -427,6 +487,9 @@ pub struct AppSnapshot {
     pub mode: CaptionMode,
     pub translation_engine: TranslationEngine,
     pub source_language: Option<SourceLanguage>,
+    /// The user asked for generic speaker labels ("Person 1", "Person 2").
+    /// Whether they actually appear also depends on `resources.speaker_labels`.
+    pub speaker_labels: bool,
     pub capture: CaptureState,
     pub window_mode: WindowMode,
     pub appearance: Appearance,
@@ -436,6 +499,11 @@ pub struct AppSnapshot {
     pub shortcut: String,
     pub shortcut_available: bool,
     pub error: Option<DomainError>,
+    /// The running app version (`CARGO_PKG_VERSION`), shown in the settings.
+    pub version: &'static str,
+    /// Look for a newer release when the app opens (off by default: it is
+    /// the one network request the user did not ask for explicitly).
+    pub update_check: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -446,6 +514,7 @@ pub struct AppState {
     mode: CaptionMode,
     translation_engine: TranslationEngine,
     source_language: Option<SourceLanguage>,
+    speaker_labels: bool,
     capture: CaptureState,
     appearance: Appearance,
     resources: Resources,
@@ -454,6 +523,7 @@ pub struct AppState {
     tray_available: bool,
     shortcut: String,
     shortcut_available: bool,
+    update_check: bool,
 }
 
 impl AppState {
@@ -480,6 +550,7 @@ impl AppState {
             mode: self.mode,
             translation_engine: self.translation_engine,
             source_language: self.source_language,
+            speaker_labels: self.speaker_labels,
             capture: self.capture,
             window_mode: self.window_mode,
             appearance: self.appearance,
@@ -494,6 +565,8 @@ impl AppState {
             },
             shortcut_available: self.shortcut_available,
             error: self.error,
+            version: crate::update::CURRENT_VERSION,
+            update_check: self.update_check,
         }
     }
 
@@ -557,6 +630,41 @@ impl AppState {
             self.source_language = language;
             self.capture = CaptureState::Stopped;
             self.error = None;
+        }
+        Ok(())
+    }
+
+    /// Turns the generic speaker labels on or off. The running session is
+    /// invalidated: the diarizer is attached when the recognizer is created,
+    /// so the next session opens with (or without) it. Enabling never fails,
+    /// even with the model missing — the session then runs without labels and
+    /// `resources.speaker_labels` tells the UI why.
+    pub fn set_speaker_labels(&mut self, enabled: bool) -> Result<(), DomainError> {
+        if enabled != self.speaker_labels {
+            self.advance(true)?;
+            self.speaker_labels = enabled;
+            self.capture = CaptureState::Stopped;
+            self.error = None;
+        }
+        Ok(())
+    }
+
+    /// Reports whether speaker labels can actually be produced right now. A
+    /// session that failed to attach the diarizer clears it so the overlay
+    /// explains the missing labels instead of silently showing none.
+    pub fn set_speaker_labels_resource(&mut self, available: bool) -> Result<(), DomainError> {
+        let resources = Resources {
+            speaker_labels: available,
+            ..self.resources
+        };
+        self.set_resources(resources)
+    }
+
+    /// Turns the startup update check on or off; captions are unaffected.
+    pub fn set_update_check(&mut self, enabled: bool) -> Result<(), DomainError> {
+        if enabled != self.update_check {
+            self.advance(false)?;
+            self.update_check = enabled;
         }
         Ok(())
     }
@@ -680,9 +788,49 @@ mod tests {
                 audio_capture: true,
                 transcription: true,
                 translation: true,
+                speaker_labels: false,
             },
             ..AppState::default()
         }
+    }
+
+    #[test]
+    fn speaker_labels_are_off_by_default_and_never_block_a_start() {
+        let mut state = ready();
+        let snapshot = state.snapshot();
+        assert!(!snapshot.speaker_labels);
+        assert!(!snapshot.resources.speaker_labels);
+        // Enabling is a session change (the diarizer attaches at model load)
+        // and does not require the diarization model to be installed.
+        state.start().unwrap();
+        let session = state.snapshot().session_id;
+        state.set_speaker_labels(true).unwrap();
+        let snapshot = state.snapshot();
+        assert!(snapshot.speaker_labels);
+        assert_eq!(snapshot.capture, CaptureState::Stopped);
+        assert_ne!(snapshot.session_id, session);
+        assert!(
+            snapshot.can_start,
+            "a missing diarizer never blocks captions"
+        );
+        // Same value again: no new revision.
+        let revision = snapshot.revision;
+        state.set_speaker_labels(true).unwrap();
+        assert_eq!(state.snapshot().revision, revision);
+        // The session reports whether labels can really be produced.
+        state.set_speaker_labels_resource(true).unwrap();
+        assert!(state.snapshot().resources.speaker_labels);
+        assert!(
+            state.snapshot().resources.transcription,
+            "other resources untouched"
+        );
+        state.set_speaker_labels_resource(false).unwrap();
+        assert!(!state.snapshot().resources.speaker_labels);
+        // Turning labels off while running also closes the session.
+        state.start().unwrap();
+        state.set_speaker_labels(false).unwrap();
+        assert_eq!(state.snapshot().capture, CaptureState::Stopped);
+        assert!(!state.snapshot().speaker_labels);
     }
 
     #[test]
@@ -837,6 +985,7 @@ mod tests {
                     font_size: size,
                     color: CaptionColor::YELLOW,
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
+                    font: CaptionFont::default(),
                     background: false,
                 }),
                 Err(DomainError::InvalidFontSize)
@@ -849,11 +998,63 @@ mod tests {
                     font_size: size,
                     color: CaptionColor::YELLOW,
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
+                    font: CaptionFont::default(),
                     background: false,
                 })
                 .unwrap();
             assert_eq!(state.snapshot().appearance.font_size, size);
         }
+    }
+
+    #[test]
+    fn caption_fonts_come_from_the_catalog_and_default_to_inter() {
+        assert_eq!(Appearance::default().font, CaptionFont::default());
+        assert_eq!(CaptionFont::default().id(), "inter");
+        for font in CAPTION_FONTS {
+            let wire = serde_json::to_value(font).unwrap();
+            assert_eq!(wire, font.id());
+            assert_eq!(serde_json::from_value::<CaptionFont>(wire).unwrap(), *font);
+        }
+        assert_eq!(CaptionFont::from_id("Fira-Code").unwrap().id(), "fira-code");
+        assert!(serde_json::from_value::<CaptionFont>(serde_json::json!("comic-sans")).is_err());
+        // Saved preferences without a font keep Inter; a chosen font restores.
+        let legacy = serde_json::from_value::<Appearance>(
+            serde_json::json!({"fontSize":32,"color":"#FFFFFF"}),
+        )
+        .unwrap();
+        assert_eq!(legacy.font.id(), "inter");
+        let chosen = serde_json::from_value::<Appearance>(
+            serde_json::json!({"fontSize":32,"color":"#FFFFFF","font":"consolas"}),
+        )
+        .unwrap();
+        assert_eq!(chosen.font.id(), "consolas");
+        assert!(
+            serde_json::from_value::<Appearance>(
+                serde_json::json!({"fontSize":32,"color":"#FFFFFF","font":"wingdings"})
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn update_check_is_off_by_default_and_never_touches_the_session() {
+        let mut state = ready();
+        state.start().unwrap();
+        let session = state.snapshot().session_id;
+        assert!(!state.snapshot().update_check);
+        assert_eq!(state.snapshot().version, env!("CARGO_PKG_VERSION"));
+        state.set_update_check(true).unwrap();
+        let snapshot = state.snapshot();
+        assert!(snapshot.update_check);
+        assert_eq!(snapshot.session_id, session, "no new session");
+        assert_eq!(
+            snapshot.capture,
+            CaptureState::Preparing,
+            "capture untouched"
+        );
+        let revision = snapshot.revision;
+        state.set_update_check(true).unwrap();
+        assert_eq!(state.snapshot().revision, revision);
     }
 
     #[test]

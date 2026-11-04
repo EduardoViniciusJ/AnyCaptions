@@ -30,6 +30,7 @@
 - **Live transcription of system audio:** captured via WASAPI loopback — no microphone or virtual cable needed, just pick the output device you already use.
 - **Real-time translation into 37 languages:** from Portuguese to Japanese, with automatic detection of the spoken language.
 - **Fast English ↔ Portuguese path:** runs on the CPU (~90 ms per sentence), with the full 37-language model on the GPU.
+- **Optional speaker labels:** tells apart who is talking with generic labels ("Person 1", "Person 2") that follow the captions, including translated ones. Off by default; the model is a 107 MB in-app download. Labels come from the voices alone — nobody is identified by name.
 - **Voice dictation:** speak and your words are typed into whatever application you are using.
 - **Transparent, click-through overlay:** when locked, clicks pass straight through the caption; recover it any time from the tray or the global shortcut (`Ctrl+Alt+L`, configurable).
 - **In-app model download:** the large translation model is a one-click download with integrity verification; everything else ships in the installer.
@@ -64,11 +65,12 @@ All models run locally:
 | --- | --- | --- | --- |
 | [NVIDIA Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) | Real-time speech recognition (punctuation, end-of-sentence and language detection built in) | GPU (Vulkan), CPU fallback | Ships with the installer |
 | [NVIDIA Riva Translate 4B Instruct v2](https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2) | Translation into 37 languages | GPU | Downloaded inside the app (2.8 GB) |
+| [NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) | Speaker labels (streaming Sortformer, up to 8 generic speaker slots) | GPU (Vulkan), CPU fallback (alongside the ASR model) | Downloaded inside the app (107 MB) |
 | [Helsinki-NLP OPUS-MT](https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt) (en ↔ pt) | Fast English ↔ Portuguese translation | CPU | Ships with the installer |
 
 Inference runs on [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) (Apache-2.0) for recognition and Riva, and on [CTranslate2](https://github.com/OpenNMT/CTranslate2) (MIT) for OPUS-MT.
 
-**Licenses:** Nemotron under [OpenMDW-1.1](https://openmdw.ai/license/1-1/); Riva Translate — Licensed by NVIDIA Corporation under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/); OPUS-MT under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (credits: Helsinki-NLP/OPUS-MT, Jörg Tiedemann). Selector flags from [flag-icons](https://github.com/lipis/flag-icons) (MIT).
+**Licenses:** Nemotron ASR and Nemotron 3 Diarization under [OpenMDW-1.1](https://openmdw.ai/license/1-1/); Riva Translate — Licensed by NVIDIA Corporation under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/); OPUS-MT under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (credits: Helsinki-NLP/OPUS-MT, Jörg Tiedemann). Selector flags from [flag-icons](https://github.com/lipis/flag-icons) (MIT).
 
 ## Getting started
 

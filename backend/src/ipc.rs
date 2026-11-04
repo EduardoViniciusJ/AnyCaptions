@@ -16,6 +16,7 @@ use crate::models::{
 };
 use crate::preferences::{PreferenceStore, Preferences};
 use crate::transcription::session::{CaptionSessionManager, SessionSink};
+use crate::update::{self, UpdateCheck, UpdateError};
 
 pub const STATE_EVENT: &str = "app-state-changed";
 pub const CAPTION_EVENT: &str = "caption-updated";
@@ -25,6 +26,17 @@ impl<R: Runtime> DownloadSink for WebviewWindow<R> {
     fn download_changed(&self, update: &DownloadUpdate) {
         let _ = self.emit_to(self.label(), MODEL_DOWNLOAD_EVENT, update);
     }
+}
+
+/// A run of consecutive words attributed to one speaker slot. `speaker` is the
+/// diarizer's 1-based generic slot ("Person 1"); `0` means the slot is not
+/// known yet (the diarizer has not covered those words), and the overlay then
+/// shows the words without asserting a label.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeakerSpan {
+    pub speaker: u32,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -38,6 +50,10 @@ pub struct CaptionUpdate {
     pub is_final: bool,
     /// Language detected by the model (BCP-47); only final captions carry it.
     pub language: Option<String>,
+    /// Speaker attribution of `text`, in order; the spans' words joined by a
+    /// space are the caption's words. Empty when speaker labels are off (or the
+    /// diarizer is unavailable), which leaves the caption exactly as before.
+    pub speakers: Vec<SpeakerSpan>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -55,6 +71,7 @@ pub enum CommandError {
     BrowserUnavailable,
     DownloadBusy,
     DownloadUnavailable,
+    Update(UpdateError),
 }
 
 impl From<DomainError> for CommandError {
@@ -98,6 +115,18 @@ pub struct TranslationEngineRequest {
 pub struct SourceLanguageRequest {
     /// `None` volta à detecção automática; a tag é validada pelo domínio.
     pub language: Option<crate::domain::SourceLanguage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpeakerLabelsRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateCheckRequest {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,6 +218,8 @@ impl Controller {
         state.set_translation_engine(preferences.translation_engine)?;
         state.set_mode(preferences.mode)?;
         state.set_source_language(preferences.source_language)?;
+        state.set_speaker_labels(preferences.speaker_labels)?;
+        state.set_update_check(preferences.update_check)?;
         state.set_ui_language(preferences.ui_language)?;
         state.set_appearance(preferences.appearance)?;
         state.set_shortcut(preferences.shortcut.clone(), false)?;
@@ -234,6 +265,16 @@ impl Controller {
         events: &(impl StateEvents + ?Sized),
     ) -> Result<AppSnapshot, CommandError> {
         self.update(events, |state| state.set_resources(resources))
+    }
+
+    /// Records whether the running session can really label speakers (the
+    /// coordinator learns it only when the recognizer loads).
+    pub fn set_speaker_labels_resource(
+        &self,
+        available: bool,
+        events: &(impl StateEvents + ?Sized),
+    ) -> Result<AppSnapshot, CommandError> {
+        self.update(events, |state| state.set_speaker_labels_resource(available))
     }
 
     pub fn start_session(
@@ -374,6 +415,7 @@ pub fn start_live_capture<R: Runtime>(
                 mode: snapshot.mode,
                 engine: snapshot.translation_engine,
                 source_language: snapshot.source_language,
+                speaker_labels: snapshot.speaker_labels,
             },
             device_id,
             controller.clone(),
@@ -456,6 +498,31 @@ pub fn set_source_language<R: Runtime>(
     }
     let state = controller.update(&window, |state| state.set_source_language(request.language))?;
     persist(&app, &state)?;
+    Ok(state)
+}
+
+#[tauri::command]
+pub fn set_speaker_labels<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    request: SpeakerLabelsRequest,
+) -> Result<AppSnapshot, CommandError> {
+    authorize(window.label())?;
+    // The diarizer attaches when the recognizer is created, so the running
+    // session ends; the next start opens with the new choice.
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.stop_session();
+    }
+    let state = controller.update(&window, |state| state.set_speaker_labels(request.enabled))?;
+    persist(&app, &state)?;
+    // Re-probe so the overlay can say right away whether labels will appear.
+    if let (Some(sessions), Some(outputs)) = (
+        app.try_state::<CaptionSessionManager>(),
+        app.try_state::<Arc<OutputService>>(),
+    ) {
+        return sessions.refresh_resources(&controller, &outputs, &window);
+    }
     Ok(state)
 }
 
@@ -682,14 +749,48 @@ pub async fn select_audio_output<R: Runtime>(
     Ok(selection)
 }
 
-/// The project page is the only URL the app ever opens. The command takes no
-/// arguments, so the webview cannot steer the browser anywhere else.
+/// The project page and the releases page are the only URLs the app ever
+/// opens. The commands take no arguments, so the webview cannot steer the
+/// browser anywhere else.
 pub const PROJECT_PAGE_URL: &str = "https://github.com/EduardoViniciusJ";
 
 #[tauri::command]
 pub fn open_project_page<R: Runtime>(window: WebviewWindow<R>) -> Result<(), CommandError> {
     authorize(window.label())?;
     crate::native::open_in_browser(PROJECT_PAGE_URL).map_err(|_| CommandError::BrowserUnavailable)
+}
+
+#[tauri::command]
+pub fn open_releases_page<R: Runtime>(window: WebviewWindow<R>) -> Result<(), CommandError> {
+    authorize(window.label())?;
+    crate::native::open_in_browser(update::RELEASES_PAGE_URL)
+        .map_err(|_| CommandError::BrowserUnavailable)
+}
+
+/// Asks GitHub for the latest release, off the UI thread. Only the user's
+/// click or their opt-in at startup reaches here.
+#[tauri::command]
+pub async fn check_for_updates<R: Runtime>(
+    window: WebviewWindow<R>,
+) -> Result<UpdateCheck, CommandError> {
+    authorize(window.label())?;
+    tauri::async_runtime::spawn_blocking(update::check)
+        .await
+        .map_err(|_| CommandError::StateUnavailable)?
+        .map_err(CommandError::Update)
+}
+
+#[tauri::command]
+pub fn set_update_check<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    request: UpdateCheckRequest,
+) -> Result<AppSnapshot, CommandError> {
+    authorize(window.label())?;
+    let state = controller.update(&window, |state| state.set_update_check(request.enabled))?;
+    persist(&app, &state)?;
+    Ok(state)
 }
 
 #[derive(Debug, Deserialize)]
@@ -703,7 +804,9 @@ pub struct DownloadModelRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ModelDownloadState {
     pub model: &'static str,
-    pub engine: TranslationEngine,
+    pub kind: crate::models::ModelKind,
+    /// The translation engine the model serves; `None` for other kinds.
+    pub engine: Option<TranslationEngine>,
     pub installed: bool,
     pub downloadable: bool,
     pub downloading: bool,
@@ -717,17 +820,33 @@ pub fn get_model_downloads<R: Runtime>(
     downloads: State<'_, DownloadManager>,
 ) -> Result<Vec<ModelDownloadState>, CommandError> {
     authorize(window.label())?;
-    let installed = app
-        .try_state::<CaptionSessionManager>()
+    let sessions = app.try_state::<CaptionSessionManager>();
+    let riva_installed = sessions
+        .as_ref()
         .is_some_and(|sessions| sessions.translation_available(TranslationEngine::Riva));
-    Ok(vec![ModelDownloadState {
-        model: catalog::RIVA_TRANSLATE_Q4.id,
-        engine: TranslationEngine::Riva,
-        installed,
-        downloadable: download::riva_source_configured(),
-        downloading: downloads.active_model() == Some(catalog::RIVA_TRANSLATE_Q4.id),
-        total_bytes: download::RIVA_DOWNLOAD_BYTES,
-    }])
+    let diarization_installed = sessions
+        .as_ref()
+        .is_some_and(|sessions| sessions.speaker_labels_available());
+    Ok(vec![
+        ModelDownloadState {
+            model: catalog::RIVA_TRANSLATE_Q4.id,
+            kind: catalog::RIVA_TRANSLATE_Q4.kind,
+            engine: Some(TranslationEngine::Riva),
+            installed: riva_installed,
+            downloadable: download::riva_source_configured(),
+            downloading: downloads.active_model() == Some(catalog::RIVA_TRANSLATE_Q4.id),
+            total_bytes: download::RIVA_DOWNLOAD_BYTES,
+        },
+        ModelDownloadState {
+            model: catalog::NEMOTRON_3_DIARIZATION_Q8.id,
+            kind: catalog::NEMOTRON_3_DIARIZATION_Q8.kind,
+            engine: None,
+            installed: diarization_installed,
+            downloadable: download::source_configured(catalog::NEMOTRON_3_DIARIZATION_Q8.id),
+            downloading: downloads.active_model() == Some(catalog::NEMOTRON_3_DIARIZATION_Q8.id),
+            total_bytes: download::DIARIZATION_DOWNLOAD_BYTES,
+        },
+    ])
 }
 
 #[tauri::command]
@@ -827,6 +946,7 @@ mod tests {
                     color: CaptionColor::WHITE,
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
                     background: false,
+                    font: crate::domain::CaptionFont::default(),
                 }))
                 .is_err()
         );
@@ -882,16 +1002,45 @@ mod tests {
             text: "<b>texto</b>".into(),
             is_final: true,
             language: Some("en-US".into()),
+            speakers: vec![SpeakerSpan {
+                speaker: 2,
+                text: "<b>texto</b>".into(),
+            }],
         };
         let json = serde_json::to_value(update).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt-br","text":"<b>texto</b>","isFinal":true,"language":"en-US"})
+            serde_json::json!({"sessionId":1,"segmentId":2,"revision":3,"mode":"translate-pt-br","text":"<b>texto</b>","isFinal":true,"language":"en-US","speakers":[{"speaker":2,"text":"<b>texto</b>"}]})
         );
         let snapshot = serde_json::to_value(AppState::default().snapshot()).unwrap();
         assert_eq!(snapshot["windowMode"], "edit");
         assert_eq!(snapshot["translationEngine"], "opus");
         assert_eq!(snapshot["uiLanguage"], "en");
+        assert_eq!(snapshot["speakerLabels"], false);
+        assert_eq!(snapshot["resources"]["speakerLabels"], false);
+        assert_eq!(snapshot["appearance"]["font"], "inter");
+        assert_eq!(snapshot["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(snapshot["updateCheck"], false);
+        assert_eq!(
+            serde_json::to_value(CommandError::Update(UpdateError::Network)).unwrap(),
+            serde_json::json!({"kind":"update","code":"network"})
+        );
+        assert_eq!(
+            serde_json::to_value(UpdateCheck {
+                current: "0.1.1".into(),
+                latest: "0.2.0".into(),
+                available: true
+            })
+            .unwrap(),
+            serde_json::json!({"current":"0.1.1","latest":"0.2.0","available":true})
+        );
+        assert!(serde_json::from_str::<UpdateCheckRequest>(r#"{"enabled":true}"#).is_ok());
+        assert!(serde_json::from_str::<UpdateCheckRequest>(r#"{"enabled":1}"#).is_err());
+        assert!(serde_json::from_str::<SpeakerLabelsRequest>(r#"{"enabled":true}"#).is_ok());
+        assert!(serde_json::from_str::<SpeakerLabelsRequest>(r#"{"enabled":"yes"}"#).is_err());
+        assert!(
+            serde_json::from_str::<SpeakerLabelsRequest>(r#"{"enabled":true,"name":"x"}"#).is_err()
+        );
         assert_eq!(snapshot["appearance"]["fontSize"], 32);
         assert_eq!(snapshot["appearance"]["color"], "#FFFFFF");
         assert_eq!(snapshot["appearance"]["partialColor"], "#B8B8B8");
@@ -910,7 +1059,8 @@ mod tests {
         );
         let state = serde_json::to_value(ModelDownloadState {
             model: "riva-translate-4b-instruct-v2-q4_k_m",
-            engine: TranslationEngine::Riva,
+            kind: crate::models::ModelKind::Translation,
+            engine: Some(TranslationEngine::Riva),
             installed: false,
             downloadable: true,
             downloading: false,
@@ -919,7 +1069,21 @@ mod tests {
         .unwrap();
         assert_eq!(
             state,
-            serde_json::json!({"model":"riva-translate-4b-instruct-v2-q4_k_m","engine":"riva","installed":false,"downloadable":true,"downloading":false,"totalBytes":2_759_302_368_u64})
+            serde_json::json!({"model":"riva-translate-4b-instruct-v2-q4_k_m","kind":"translation","engine":"riva","installed":false,"downloadable":true,"downloading":false,"totalBytes":2_759_302_368_u64})
+        );
+        let diarization = serde_json::to_value(ModelDownloadState {
+            model: catalog::NEMOTRON_3_DIARIZATION_Q8.id,
+            kind: catalog::NEMOTRON_3_DIARIZATION_Q8.kind,
+            engine: None,
+            installed: false,
+            downloadable: true,
+            downloading: false,
+            total_bytes: download::DIARIZATION_DOWNLOAD_BYTES,
+        })
+        .unwrap();
+        assert_eq!(
+            diarization,
+            serde_json::json!({"model":"nemotron-3-diarization-q8_0","kind":"diarization","engine":null,"installed":false,"downloadable":true,"downloading":false,"totalBytes":107_012_128_u64})
         );
     }
 

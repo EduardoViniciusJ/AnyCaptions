@@ -20,6 +20,7 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
     mode: "auto",
     translationEngine: "opus",
     sourceLanguage: null,
+    speakerLabels: false,
     capture: "stopped",
     windowMode: "edit",
     appearance: {
@@ -27,17 +28,21 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       color: "#FFFFFF",
       partialColor: "#B8B8B8",
       background: false,
+      font: "inter",
     },
     resources: {
       audioCapture: false,
       transcription: false,
       translation: false,
+      speakerLabels: false,
     },
     canStart: false,
     canLock: false,
     shortcut: "Ctrl+Alt+L",
     shortcutAvailable: false,
     error: null,
+    version: "0.1.1",
+    updateCheck: false,
     ...overrides,
   };
 }
@@ -72,6 +77,14 @@ function setup(initial = snapshot()) {
     setTranslationEngine: vi.fn(async (translationEngine) =>
       snapshot({ translationEngine, revision: 1, sessionId: 1 }),
     ),
+    setSpeakerLabels: vi.fn(async (speakerLabels) =>
+      snapshot({ speakerLabels, revision: 1, sessionId: 1 }),
+    ),
+    setUpdateCheck: vi.fn(async (updateCheck) =>
+      snapshot({ updateCheck, revision: 1 }),
+    ),
+    checkForUpdates: vi.fn().mockResolvedValue({ current: "0.1.1", latest: "0.1.1", available: false }),
+    openReleasesPage: vi.fn().mockResolvedValue(undefined),
     setSourceLanguage: vi.fn(async (sourceLanguage) =>
       snapshot({ sourceLanguage, revision: 1, sessionId: 1 }),
     ),
@@ -131,6 +144,7 @@ function setup(initial = snapshot()) {
     getModelDownloads: vi.fn().mockResolvedValue([
       {
         model: RIVA_MODEL,
+        kind: "translation",
         engine: "riva",
         installed: false,
         downloadable: true,
@@ -196,7 +210,7 @@ describe("overlay controls", () => {
   it("lists every translation target with a flag and disables them until the model is available", async () => {
     const app = setup();
     await app.ready();
-    const items = app.root.querySelectorAll("#language-menu li");
+    const items = app.root.querySelectorAll('#language-menu li[role="option"]');
     expect(items.length).toBe(38);
     const japanese = app.get<HTMLLIElement>(
       '#language-menu li[data-value="translate-ja"]',
@@ -214,6 +228,7 @@ describe("overlay controls", () => {
           audioCapture: true,
           transcription: true,
           translation: true,
+          speakerLabels: false,
         },
       }),
     );
@@ -299,6 +314,7 @@ describe("overlay controls", () => {
           audioCapture: true,
           transcription: true,
           translation: true,
+          speakerLabels: false,
         },
       }),
     );
@@ -335,6 +351,7 @@ describe("overlay controls", () => {
           audioCapture: true,
           transcription: true,
           translation: true,
+          speakerLabels: false,
         },
       }),
     );
@@ -377,6 +394,7 @@ describe("overlay controls", () => {
           audioCapture: true,
           transcription: true,
           translation: true,
+          speakerLabels: false,
         },
       }),
     );
@@ -444,7 +462,7 @@ describe("overlay controls", () => {
     const app = setup();
     await app.ready();
     const credit = app.get<HTMLButtonElement>("#developer-credit");
-    expect(credit.textContent).toBe("developed by EduardoViniciusJ");
+    expect(credit.textContent).toContain("EduardoViniciusJ");
     fireEvent.click(credit);
     expect(app.backend.openProjectPage).toHaveBeenCalledTimes(1);
   });
@@ -484,6 +502,7 @@ describe("overlay controls", () => {
         color: "#33CCFF",
         partialColor: "#FF77AA",
         background: true,
+        font: "inter",
       }),
     );
     await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
@@ -505,6 +524,7 @@ describe("overlay controls", () => {
           color: "#00FF00",
           partialColor: "#0088FF",
           background: true,
+          font: "inter",
         },
       }),
     );
@@ -569,6 +589,7 @@ describe("overlay controls", () => {
       mode: "auto",
       text: "Still visible",
       isFinal: true,
+      speakers: [],
       language: "en-US",
     });
     app.emit(
@@ -676,6 +697,7 @@ describe("overlay controls", () => {
           audioCapture: true,
           transcription: true,
           translation: true,
+          speakerLabels: false,
         },
       }),
     );
@@ -692,7 +714,7 @@ describe("overlay controls", () => {
     expect(app.get("#error").textContent).toBe(
       "Não foi possível concluir a ação. Tente novamente.",
     );
-    expect(app.get("#language-label").textContent).toBe("Automático");
+    expect(app.get("#language-label").textContent).toBe("Transcrever");
   });
 
   it("releases listeners and ignores events after disposal", async () => {
@@ -789,6 +811,7 @@ describe("model download", () => {
     vi.mocked(app.backend.getModelDownloads).mockResolvedValue([
       {
         model: RIVA_MODEL,
+        kind: "translation",
         engine: "riva",
         installed: true,
         downloadable: true,

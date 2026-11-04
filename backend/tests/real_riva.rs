@@ -68,6 +68,7 @@ fn recognizer_and_translator_work_loaded_together() {
         &NemotronPaths::resolve(),
         None,
         anycaptions_lib::transcription::tuning::TRANSLATION,
+        false,
     )
     .expect("ASR library and model");
     let mut translator =
