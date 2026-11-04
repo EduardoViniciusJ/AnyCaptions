@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/fira-code";
 @plugin "daisyui" { themes: false; logs: false; }
 @plugin "daisyui/theme" {
   name: "anycaptions";
@@ -81,7 +82,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
   margin: 0;
   padding: 8px 16px;
   color: var(--caption-color);
-  font-family: "Inter Variable", "Segoe UI", Arial, sans-serif;
+  font-family: var(--caption-font, "Inter Variable", "Segoe UI", Arial, sans-serif);
   font-size: var(--caption-base-size);
   font-weight: 700;
   line-height: 1.25;
@@ -286,3 +287,74 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Rótulo genérico de falante ("Pessoa 1:"): mesmo tamanho da legenda, mas
+   com uma cor própria por pessoa, diferente da cor do texto, para distinguir
+   quem fala. Só existe com a identificação ligada. */
+.caption-speaker {
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--caption-speaker-color, #7cc4ff);
+  white-space: nowrap;
+}
+.caption-speaker[data-speaker="1"] { --caption-speaker-color: #7cc4ff; }
+.caption-speaker[data-speaker="2"] { --caption-speaker-color: #ffb36b; }
+.caption-speaker[data-speaker="3"] { --caption-speaker-color: #7fe0a0; }
+.caption-speaker[data-speaker="4"] { --caption-speaker-color: #d6a6ff; }
+.caption-speaker[data-speaker="5"] { --caption-speaker-color: #ff9bb8; }
+.caption-speaker[data-speaker="6"] { --caption-speaker-color: #6fe6e0; }
+.caption-speaker[data-speaker="7"] { --caption-speaker-color: #ff8a80; }
+.caption-speaker[data-speaker="8"] { --caption-speaker-color: #b8c2ff; }
+/* Linhas de download de modelo (tradução e diarização). */
+.model-download { grid-template-columns: minmax(0, 1fr) auto; }
+.model-download button { white-space: nowrap; }
+.model-download-progress { width: 100%; height: 6px; margin: 2px 0 6px; }
+#speaker-labels-hint { margin: 0 0 6px; line-height: 1.4; }
+
+/* Independent native window: no absolute positioning relative to the caption overlay. */
+/* DaisyUI applies a base background to themed elements. Only the card is painted;
+   the reserved space for longer dictation must stay transparent. */
+.dictation-window { width: 100%; height: 100%; display: grid; align-items: end; padding: 4px; background: transparent; }
+.dictation-window .dictation-indicator {
+  position: static;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  max-height: 100%;
+  box-shadow: none;
+}
+.dictation-window .dictation-text { max-height: 6em; }
+.dictation-window .dictation-indicator[data-compact="true"] { min-height: 48px; justify-content: center; }
+/* Rótulos ligados: cada turno de fala (um falante) ocupa a própria linha. */
+.caption-turn { display: block; }
+.caption-turn-break { display: block; height: 0; }
+/* Rodapé das configurações: crédito com ícone do GitHub e versão. */
+.settings-credit { display: inline-flex; align-items: center; gap: 6px; color: #b5b5b5; }
+.settings-credit svg { width: 15px; height: 15px; fill: currentColor; stroke: none; }
+.settings-credit .credit-prefix { color: #8a8a8a; }
+.settings-credit .credit-name { color: #e5e5e5; font-weight: 600; }
+.settings-version { color: #8a8a8a; font-size: 11px; font-variant-numeric: tabular-nums; margin-right: auto; }
+#update-status { margin: 0 0 6px; line-height: 1.4; }
+#update-notice { display: flex; align-items: center; gap: 10px; }
+#update-notice button { white-space: nowrap; }
+.settings-footer .settings-credit { margin-right: 0; }
+/* Selects: opções longas (nomes de dispositivos) terminam em reticências antes da seta. */
+/* `appearance: none` evita o select nativo novo do Chromium (base-select), que ignora o recuo e as reticências. */
+.settings .select { appearance: none; padding-inline-end: 2.4rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* Atualizações: versão + botão numa linha de controle, status como as outras notas. */
+.version-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.version-row #app-version { color: #c4c4c4; font-variant-numeric: tabular-nums; }
+.version-row button { margin-left: auto; white-space: nowrap; }
+.update-status-row { grid-template-columns: minmax(0, 1fr); padding-top: 0; }
+.update-status-row #update-status, .model-download #update-status { margin: 0; line-height: 1.4; }
+/* Rodapé: crédito à esquerda, ações à direita, numa linha só. */
+.settings-footer { flex-wrap: nowrap; }
+.settings-footer .settings-credit { margin-right: auto; min-width: 0; overflow: hidden; }
+.settings-footer .settings-credit .credit-prefix, .settings-footer .settings-credit .credit-name { white-space: nowrap; }
+.settings-footer .settings-credit { flex: 1 1 0; }
+@media (max-width: 480px) { .settings-footer { flex-wrap: wrap; } .settings-footer .settings-credit { flex-basis: 100%; margin-right: 0; } }
+/* Dica no fim do menu de idiomas (ex.: outros idiomas exigem o Riva). */
+.language-picker ul li.picker-footer { border-top: 1px solid #ffffff1f; margin-top: 4px; padding: 6px 2px 2px; white-space: normal; cursor: default; }
+.language-picker ul li.picker-footer:hover { background: transparent; }
+.language-picker ul li.picker-footer button { display: block; width: 100%; max-width: 100%; min-width: 0; height: auto; min-height: 0; padding: 4px 6px; text-align: left; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; color: #c4c4c4; font-size: 11px; }
+.controls .language-picker ul:has(.picker-footer) { min-width: 300px; }

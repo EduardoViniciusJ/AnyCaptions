@@ -3,18 +3,22 @@ import type {
   Backend,
   ModelDownloadState,
   ModelDownloadUpdate,
+  ModelKind,
   TranslationEngine,
 } from "../contracts";
-import { t } from "../i18n";
-export function ModelDownload({
-  backend,
-  engine,
-  report,
-}: {
-  backend: Backend;
-  engine: TranslationEngine;
-  report(error: unknown): void;
-}) {
+import { t, type MessageKey } from "../i18n";
+
+export interface ModelDownloads {
+  models: ModelDownloadState[];
+  update: ModelDownloadUpdate | null;
+  setUpdate(update: ModelDownloadUpdate | null): void;
+}
+
+/**
+ * Uma única inscrição nos downloads do catálogo, compartilhada por todas as
+ * linhas de download do painel (tradução e diarização).
+ */
+export function useModelDownloads(backend: Backend): ModelDownloads {
   const [models, setModels] = useState<ModelDownloadState[]>([]);
   const [update, setUpdate] = useState<ModelDownloadUpdate | null>(null);
   useEffect(() => {
@@ -50,7 +54,35 @@ export function ModelDownload({
       release?.();
     };
   }, [backend]);
-  const entry = models.find((model) => model.engine === engine);
+  return { models, update, setUpdate };
+}
+
+/**
+ * Oferta de download de um modelo do catálogo: pelo mecanismo de tradução que
+ * ele serve (`engine`) ou pelo tipo (`kind`, ex.: diarização). A interface só
+ * passa o id do catálogo; o backend resolve e valida a origem.
+ */
+export function ModelDownload({
+  backend,
+  downloads,
+  engine,
+  kind,
+  idPrefix = "model-download",
+  missingKey = "modelDownloadMissing",
+  report,
+}: {
+  backend: Backend;
+  downloads: ModelDownloads;
+  engine?: TranslationEngine;
+  kind?: ModelKind;
+  idPrefix?: string;
+  missingKey?: MessageKey;
+  report(error: unknown): void;
+}) {
+  const { models, update, setUpdate } = downloads;
+  const entry = kind
+    ? models.find((model) => model.kind === kind)
+    : models.find((model) => model.engine === engine);
   const event = update?.model === entry?.model ? update : null;
   const downloading = event
     ? event.phase === "downloading"
@@ -68,18 +100,31 @@ export function ModelDownload({
         : "modelDownloadFailedNetwork";
   const visible =
     !!entry?.downloadable && !entry.installed && event?.phase !== "ready";
+  const bytes = entry?.totalBytes ?? 0;
+  // Tamanhos abaixo de 1 GB em MB, para não mostrar "0.1 GB".
+  const sizeLabel =
+    bytes >= 1e9
+      ? t("modelDownloadAction").replace("{size}", (bytes / 1e9).toFixed(1))
+      : t("modelDownloadActionMb").replace(
+          "{size}",
+          String(Math.round(bytes / 1e6)),
+        );
   return (
     <>
-      <div id="model-download" className="setting-row" hidden={!visible}>
-        <span id="model-download-status" className="muted" role="status">
+      <div
+        id={idPrefix}
+        className="setting-row model-download"
+        hidden={!visible}
+      >
+        <span id={`${idPrefix}-status`} className="muted" role="status">
           {downloading
             ? t("modelDownloadProgress").replace("{percent}", String(percent))
             : failed
               ? t(failureKey)
-              : t("modelDownloadMissing")}
+              : t(missingKey)}
         </span>
         <button
-          id="model-download-action"
+          id={`${idPrefix}-action`}
           className="btn btn-sm"
           type="button"
           onClick={() => {
@@ -110,15 +155,12 @@ export function ModelDownload({
             ? t("modelDownloadCancel")
             : failed
               ? t("modelDownloadRetry")
-              : t("modelDownloadAction").replace(
-                  "{size}",
-                  ((entry?.totalBytes ?? 0) / 1e9).toFixed(1),
-                )}
+              : sizeLabel}
         </button>
       </div>
       <progress
-        className="progress progress-primary"
-        id="model-download-progress"
+        className="progress progress-primary model-download-progress"
+        id={`${idPrefix}-progress`}
         aria-label={t("modelDownloadProgress").replace(
           "{percent}",
           String(percent),

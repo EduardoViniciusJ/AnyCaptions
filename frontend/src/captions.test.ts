@@ -62,6 +62,7 @@ function setup(mode: CaptionUpdate["mode"] = "auto", wordsPerPage = 20) {
     text,
     language: isFinal ? "en-US" : null,
     isFinal,
+    speakers: [],
   });
   return { element, presenter, update };
 }
@@ -137,6 +138,7 @@ describe("caption presenter", () => {
       text,
       language: "pt-br",
       isFinal: true,
+      speakers: [],
     });
     presenter.accept(update(1, "Primeira frase."));
     expect(element.textContent).toBe("Primeira frase.");
@@ -249,6 +251,7 @@ describe("caption presenter", () => {
       text: "One two three four five",
       isFinal: false,
       language: null,
+      speakers: [],
     });
 
     wordsPerPage = 3;

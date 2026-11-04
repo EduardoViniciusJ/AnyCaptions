@@ -10,10 +10,13 @@ use std::path::{Path, PathBuf};
 pub use verify::ModelProfileError;
 
 /// What a model does. Each kind owns a folder under the models root.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ModelKind {
     Asr,
     Translation,
+    /// Speaker diarization: who spoke when, as generic speaker slots.
+    Diarization,
 }
 
 impl ModelKind {
@@ -21,6 +24,7 @@ impl ModelKind {
         match self {
             Self::Asr => "asr",
             Self::Translation => "translation",
+            Self::Diarization => "diarization",
         }
     }
 }
@@ -92,9 +96,25 @@ mod tests {
 
     #[test]
     fn catalog_profiles_carry_complete_integrity_data() {
-        let profile = &catalog::NEMOTRON_STREAMING_Q8;
-        assert_eq!(profile.sha256.len(), 64);
-        assert!(profile.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
-        assert!(profile.max_bytes > 0);
+        for profile in [
+            &catalog::NEMOTRON_STREAMING_Q8,
+            &catalog::NEMOTRON_3_DIARIZATION_Q8,
+            &catalog::RIVA_TRANSLATE_Q4,
+        ] {
+            assert_eq!(profile.sha256.len(), 64);
+            assert!(profile.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
+            assert!(profile.max_bytes > 0);
+            assert!(!profile.revision.is_empty());
+        }
+    }
+
+    #[test]
+    fn diarization_models_live_in_their_own_folder() {
+        let path = catalog::NEMOTRON_3_DIARIZATION_Q8.path_in(Path::new("models"));
+        assert_eq!(
+            path,
+            Path::new("models/diarization/nemotron-3-diarization/Nemotron-3-Diarization.q8_0.gguf")
+        );
+        assert_eq!(ModelKind::Diarization.dir_name(), "diarization");
     }
 }

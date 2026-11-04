@@ -1,6 +1,6 @@
 ﻿import type { CSSProperties } from "react";
 import type { Appearance } from "../contracts";
-import { normalizeCaptionColor } from "../appearance";
+import { CAPTION_FONTS, captionFontFamily, normalizeCaptionColor } from "../appearance";
 import { t } from "../i18n";
 import { Field } from "./Field";
 export function appearanceStyle(value: Appearance): CSSProperties {
@@ -8,6 +8,7 @@ export function appearanceStyle(value: Appearance): CSSProperties {
     "--caption-base-size": `${value.fontSize}px`,
     "--caption-color": value.color,
     "--caption-partial-color": value.partialColor,
+    "--caption-font": captionFontFamily(value.font),
   } as CSSProperties;
 }
 export function AppearanceSettings({
@@ -98,6 +99,21 @@ export function AppearanceSettings({
           </div>
         </Field>
       ))}
+      <Field id="caption-font" label={t("captionFont")}>
+        <select
+          className="select select-sm"
+          id="caption-font"
+          value={value.font}
+          style={{ fontFamily: captionFontFamily(value.font) }}
+          onChange={(event) => onChange({ ...value, font: event.target.value })}
+        >
+          {CAPTION_FONTS.map((font) => (
+            <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
+              {font.name}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field id="caption-background" label={t("captionBackground")}>
         <input
           className="toggle toggle-sm toggle-primary"

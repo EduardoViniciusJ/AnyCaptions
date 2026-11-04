@@ -5,11 +5,15 @@ export type WindowMode = "edit" | "locked";
 export type ResizeDirection = "East" | "West" | "South";
 export type CaptionColor = `#${string}`;
 
+/** Id de fonte do catálogo (`CAPTION_FONTS` em appearance.ts); o backend valida. */
+export type CaptionFont = string;
+
 export interface Appearance {
   fontSize: number;
   color: CaptionColor;
   partialColor: CaptionColor;
   background: boolean;
+  font: CaptionFont;
 }
 
 export interface AppSnapshot {
@@ -20,15 +24,47 @@ export interface AppSnapshot {
   translationEngine: TranslationEngine;
   /** Idioma falado fixado no reconhecedor (BCP-47); null = detecção automática. */
   sourceLanguage: string | null;
+  /**
+   * Rótulos genéricos de falante ("Pessoa 1", "Pessoa 2") pedidos pelo usuário.
+   * Só aparecem de fato quando `resources.speakerLabels` também é verdadeiro.
+   */
+  speakerLabels: boolean;
   capture: CaptureState;
   windowMode: WindowMode;
   appearance: Appearance;
-  resources: { audioCapture: boolean; transcription: boolean; translation: boolean };
+  resources: {
+    audioCapture: boolean;
+    transcription: boolean;
+    translation: boolean;
+    /** Modelo de diarização instalado e carregável; nunca impede a captura. */
+    speakerLabels: boolean;
+  };
   canStart: boolean;
   canLock: boolean;
   shortcut: string;
   shortcutAvailable: boolean;
   error: string | null;
+  /** Versão do app em execução (Cargo). */
+  version: string;
+  /** Verificar nova versão ao abrir o app (desligado por padrão). */
+  updateCheck: boolean;
+}
+
+/** Resultado da consulta à última versão publicada no GitHub. */
+export interface UpdateCheck {
+  current: string;
+  latest: string;
+  available: boolean;
+}
+
+/**
+ * Trecho consecutivo de palavras atribuído a um falante. `speaker` é o slot
+ * genérico do diarizador (1 = "Pessoa 1"); 0 = ainda indefinido, e o overlay
+ * mostra as palavras sem afirmar um rótulo.
+ */
+export interface SpeakerSpan {
+  speaker: number;
+  text: string;
 }
 
 export interface CaptionUpdate {
@@ -40,6 +76,11 @@ export interface CaptionUpdate {
   isFinal: boolean;
   /** Idioma detectado pelo modelo (BCP-47); presente apenas em legendas finais. */
   language: string | null;
+  /**
+   * Atribuição de falantes de `text`, em ordem (as palavras dos trechos são as
+   * palavras da legenda). Vazio com os rótulos desligados ou indisponíveis.
+   */
+  speakers: SpeakerSpan[];
 }
 
 export interface OutputSelection {
@@ -86,9 +127,13 @@ export interface DictationEvent {
 }
 
 /** Um modelo do catálogo que o app oferece para baixar nas configurações. */
+export type ModelKind = "asr" | "translation" | "diarization";
+
 export interface ModelDownloadState {
   model: string;
-  engine: TranslationEngine;
+  kind: ModelKind;
+  /** Mecanismo de tradução que o modelo serve; null para os demais tipos. */
+  engine: TranslationEngine | null;
   installed: boolean;
   downloadable: boolean;
   downloading: boolean;
@@ -111,6 +156,10 @@ export interface Backend {
   setMode(mode: CaptionMode): Promise<AppSnapshot>;
   setTranslationEngine(engine: TranslationEngine): Promise<AppSnapshot>;
   setSourceLanguage(language: string | null): Promise<AppSnapshot>;
+  setSpeakerLabels(enabled: boolean): Promise<AppSnapshot>;
+  setUpdateCheck(enabled: boolean): Promise<AppSnapshot>;
+  checkForUpdates(): Promise<UpdateCheck>;
+  openReleasesPage(): Promise<void>;
   setUiLanguage(language: string): Promise<AppSnapshot>;
   start(): Promise<AppSnapshot>;
   stop(): Promise<AppSnapshot>;

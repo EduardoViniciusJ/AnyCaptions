@@ -1,5 +1,5 @@
 //! Riva-Translate through the NeMo-Speech.cpp NMT C API (`include/nemo_speech/nmt.h`,
-//! v0.2.0, llama.cpp backend). The library is loaded at runtime, so builds and unit
+//! v0.3.0, unchanged since v0.2.0; llama.cpp backend). The library is loaded at runtime, so builds and unit
 //! tests never need it.
 
 use std::{

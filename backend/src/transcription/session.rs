@@ -1,5 +1,9 @@
 use std::{
-    sync::{Arc, Mutex, mpsc},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -18,7 +22,10 @@ use crate::{
         TranslationEngine,
     },
     ipc::{CAPTION_EVENT, CaptionUpdate, CommandError, Controller, StateEvents},
-    models::{catalog::NEMOTRON_STREAMING_Q8, models_root},
+    models::{
+        catalog::{NEMOTRON_3_DIARIZATION_Q8, NEMOTRON_STREAMING_Q8},
+        models_root,
+    },
     pipeline::{AudioProcessor, Cancellation, MAX_BLOCK_SAMPLES, Pipeline},
 };
 
@@ -42,15 +49,24 @@ impl NemotronPaths {
     /// Model: the catalog layout under the models root (see `crate::models::models_root`).
     /// Library: the shared NeMo-Speech folder (see `crate::native::nemo_library_dir`).
     pub fn resolve() -> Self {
+        let root = models_root();
         Self {
             library_dir: crate::native::nemo_library_dir(),
-            model: NEMOTRON_STREAMING_Q8.path_in(&models_root()),
+            model: NEMOTRON_STREAMING_Q8.path_in(&root),
+            diarization: NEMOTRON_3_DIARIZATION_Q8.path_in(&root),
         }
     }
 
     pub fn transcription_available(&self) -> bool {
         self.library_dir.join(LIBRARY_FILENAME).is_file()
             && NEMOTRON_STREAMING_Q8.verify(&self.model).is_ok()
+    }
+
+    /// The diarization GGUF is installed and intact (the sidecar lives in the
+    /// same library as the recognizer, so no extra library check is needed).
+    pub fn diarization_available(&self) -> bool {
+        self.transcription_available()
+            && NEMOTRON_3_DIARIZATION_Q8.verify(&self.diarization).is_ok()
     }
 }
 
@@ -67,23 +83,34 @@ impl<R: Runtime> SessionSink for WebviewWindow<R> {
 
 pub trait ProcessorFactory: Send + Sync {
     fn is_available(&self) -> bool;
+    /// Whether speaker labels can be produced right now: the diarization model
+    /// is installed and did not fail to load in this run. Checked again after
+    /// each `create`, since loading is when the sidecar can still fail.
+    fn speaker_labels_available(&self) -> bool {
+        false
+    }
     /// `source_language` optionally pins the spoken language on the stream
     /// (the model's prompt dictionary); `None` keeps auto-detection.
+    /// `speaker_labels` asks for per-word speaker tags; when the diarizer is
+    /// unavailable the processor still comes back, without tags, and
+    /// `speaker_labels_available` turns false so the UI can explain it.
     fn create(
         &self,
         session_id: u32,
         mode: CaptionMode,
         source_language: Option<&str>,
+        speaker_labels: bool,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError>;
     /// Processador do ditado: mesmo modelo compartilhado das legendas, com o
     /// idioma opcionalmente fixado no stream (condiciona o decodificador e
     /// melhora a precisão quando o usuário sabe em que idioma vai falar).
+    /// O ditado nunca rotula falantes: é a voz do próprio usuário.
     fn create_dictation(
         &self,
         session_id: u32,
         language: Option<&str>,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        self.create(session_id, CaptionMode::Auto, language)
+        self.create(session_id, CaptionMode::Auto, language, false)
     }
     fn translation_available(&self, _engine: TranslationEngine) -> bool {
         false
@@ -104,8 +131,13 @@ pub struct NativeProcessorFactory {
     // session cost seconds on each language switch and accumulated leaked GPU
     // memory in the native library until allocations failed. The ASR cache is
     // keyed by the right-context preset, because that is chosen at model load
-    // and the modes use different values.
+    // and the modes use different values. A recognizer loaded with the
+    // diarizer also serves sessions without labels (tags are per stream), so
+    // the ASR weights are never held twice for one preset.
     asr_models: Mutex<Vec<(Option<i32>, Arc<NemotronModel>)>>,
+    // Set when the diarizer failed to load in this run (bad file, no memory):
+    // later sessions stop retrying and the UI reports labels as unavailable.
+    diarization_failed: AtomicBool,
     opus_translator: Mutex<Option<Arc<Mutex<NativeOpusTranslator>>>>,
     riva_translator: Mutex<Option<Arc<Mutex<NativeRivaTranslator>>>>,
 }
@@ -117,29 +149,81 @@ impl NativeProcessorFactory {
             riva,
             opus,
             asr_models: Mutex::new(Vec::new()),
+            diarization_failed: AtomicBool::new(false),
             opus_translator: Mutex::new(None),
             riva_translator: Mutex::new(None),
         }
     }
 
+    /// The cached recognizer for `rnnt_right_context`. With `diarization`, a
+    /// cached recognizer that lacks the sidecar is replaced by one carrying it
+    /// (the old one is released once its last session ends); when the sidecar
+    /// fails to load, the plain recognizer is kept or loaded instead and
+    /// `diarization_failed` is set, so captions never stop over missing labels.
     fn asr_model(
         &self,
         rnnt_right_context: Option<i32>,
+        diarization: bool,
     ) -> Result<Arc<NemotronModel>, DomainError> {
         let mut cached = self
             .asr_models
             .lock()
             .map_err(|_| DomainError::TranscriptionUnavailable)?;
-        if let Some((_, model)) = cached
+        let existing = cached
             .iter()
-            .find(|(context, _)| *context == rnnt_right_context)
-        {
-            return Ok(Arc::clone(model));
+            .position(|(context, _)| *context == rnnt_right_context);
+        if let Some(index) = existing {
+            let model = &cached[index].1;
+            if model.has_diarization() || !diarization {
+                return Ok(Arc::clone(model));
+            }
         }
-        let model = NemotronModel::load(&self.paths, rnnt_right_context)
+        if diarization {
+            match NemotronModel::load(&self.paths, rnnt_right_context, true) {
+                Ok(model) => {
+                    if let Some(index) = existing {
+                        cached.remove(index);
+                    }
+                    cached.push((rnnt_right_context, Arc::clone(&model)));
+                    return Ok(model);
+                }
+                Err(_) => {
+                    // Explicit, like the CPU fallback: the user asked for labels.
+                    eprintln!(
+                        "[diar] diarizer unavailable, captions continue without speaker labels"
+                    );
+                    self.diarization_failed.store(true, Ordering::Release);
+                    if let Some(index) = existing {
+                        return Ok(Arc::clone(&cached[index].1));
+                    }
+                }
+            }
+        }
+        let model = NemotronModel::load(&self.paths, rnnt_right_context, false)
             .map_err(|_| DomainError::TranscriptionUnavailable)?;
         cached.push((rnnt_right_context, Arc::clone(&model)));
         Ok(model)
+    }
+
+    /// Opens a recognition stream with `tuning` over the cached model, with
+    /// the diarizer when `labels` asks for it and it loaded.
+    fn open_processor(
+        &self,
+        session_id: u32,
+        mode: CaptionMode,
+        source_language: Option<&str>,
+        labels: bool,
+        tuning: super::tuning::RecognizerTuning,
+    ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
+        let model = self.asr_model(tuning.rnnt_right_context, labels)?;
+        // The model may have come back without the diarizer (load failure):
+        // the stream then runs plain, and the UI learns it from availability.
+        let labels = labels && model.has_diarization();
+        let recognizer = NativeNemotron::open(model, source_language, tuning, labels)
+            .map_err(|_| DomainError::TranscriptionUnavailable)?;
+        Ok(Box::new(StreamingProcessor::new(
+            session_id, mode, recognizer,
+        )))
     }
 
     /// The cached OPUS engine, loaded on first use; `None` when its files are
@@ -203,27 +287,38 @@ impl ProcessorFactory for NativeProcessorFactory {
         self.paths.transcription_available()
     }
 
+    fn speaker_labels_available(&self) -> bool {
+        self.paths.diarization_available() && !self.diarization_failed.load(Ordering::Acquire)
+    }
+
     fn create(
         &self,
         session_id: u32,
         mode: CaptionMode,
         source_language: Option<&str>,
+        speaker_labels: bool,
     ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-        // Auto keeps the recognizer untouched; translate mode closes finals sooner.
-        let tuning = if mode.requires_translation() {
-            super::tuning::TRANSLATION
-        } else {
-            super::tuning::TRANSCRIPTION
-        };
-        let recognizer = NativeNemotron::open(
-            self.asr_model(tuning.rnnt_right_context)?,
-            source_language,
-            tuning,
+        let labels = speaker_labels && self.speaker_labels_available();
+        // Translate mode closes finals sooner than transcription; both share
+        // the Auto model.
+        let tuning = super::tuning::for_session(mode.requires_translation(), labels);
+        self.open_processor(session_id, mode, source_language, labels, tuning)
+    }
+
+    /// Dictation keeps the library's own endpointing (see `tuning::DICTATION`)
+    /// and never labels speakers.
+    fn create_dictation(
+        &self,
+        session_id: u32,
+        language: Option<&str>,
+    ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
+        self.open_processor(
+            session_id,
+            CaptionMode::Auto,
+            language,
+            false,
+            super::tuning::DICTATION,
         )
-        .map_err(|_| DomainError::TranscriptionUnavailable)?;
-        Ok(Box::new(StreamingProcessor::new(
-            session_id, mode, recognizer,
-        )))
     }
 
     fn translation_available(&self, engine: TranslationEngine) -> bool {
@@ -315,12 +410,18 @@ impl CaptionSessionManager {
             audio_capture,
             transcription,
             translation: self.factory.translation_available(engine),
+            speaker_labels: self.factory.speaker_labels_available(),
         }
     }
 
     /// Whether `engine` has its library and model on disk right now.
     pub fn translation_available(&self, engine: TranslationEngine) -> bool {
         self.factory.translation_available(engine)
+    }
+
+    /// Whether the diarization model is installed and loadable right now.
+    pub fn speaker_labels_available(&self) -> bool {
+        self.factory.speaker_labels_available()
     }
 
     /// Engine the app opens with: the saved choice, unless its model is
@@ -425,13 +526,15 @@ impl Drop for CaptionSessionManager {
 }
 
 /// Everything the domain decided for one capture session: identity, mode,
-/// translation engine and the pinned spoken language (`None` = auto-detect).
+/// translation engine, the pinned spoken language (`None` = auto-detect) and
+/// whether to label speakers.
 #[derive(Debug, Clone, Copy)]
 pub struct SessionPlan {
     pub session_id: u32,
     pub mode: CaptionMode,
     pub engine: TranslationEngine,
     pub source_language: Option<SourceLanguage>,
+    pub speaker_labels: bool,
 }
 
 /// Where finished captions go: straight to the UI, or through the translation
@@ -522,6 +625,7 @@ fn run_coordinator(
         mode,
         engine,
         source_language,
+        speaker_labels,
     } = plan;
     if cancel.is_cancelled() || !controller.is_session_active(session_id) {
         return;
@@ -537,14 +641,24 @@ fn run_coordinator(
         return;
     }
 
-    let processor = match factory.create(session_id, mode, source_language.map(SourceLanguage::tag))
-    {
+    let processor = match factory.create(
+        session_id,
+        mode,
+        source_language.map(SourceLanguage::tag),
+        speaker_labels,
+    ) {
         Ok(proc) => proc,
         Err(error) => {
             let _ = controller.fail_session(session_id, error, sink.as_ref());
             return;
         }
     };
+    // Loading is when the diarizer can still fail; tell the overlay whether
+    // this session will actually carry labels (never fatal for captions).
+    if speaker_labels {
+        let _ = controller
+            .set_speaker_labels_resource(factory.speaker_labels_available(), sink.as_ref());
+    }
 
     let route = if let Some(target) = mode.translation_target() {
         match spawn_translation_route(
@@ -802,6 +916,7 @@ mod tests {
             session_id: u32,
             mode: CaptionMode,
             _source_language: Option<&str>,
+            _speaker_labels: bool,
         ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
             // Speech yields a finished utterance; silence yields nothing.
             let mut recognizer = MockStreamingRecognizer::new();
@@ -812,6 +927,7 @@ mod tests {
                         text: "Live English caption".into(),
                         is_final: true,
                         language: Some("en-US".into()),
+                        words: Vec::new(),
                     })
                     .into_iter()
                     .collect())
@@ -835,8 +951,9 @@ mod tests {
             session_id: u32,
             mode: CaptionMode,
             source_language: Option<&str>,
+            speaker_labels: bool,
         ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-            FakeFactory.create(session_id, mode, source_language)
+            FakeFactory.create(session_id, mode, source_language, speaker_labels)
         }
 
         fn translation_available(&self, engine: TranslationEngine) -> bool {
@@ -881,6 +998,7 @@ mod tests {
                     audio_capture: true,
                     transcription: true,
                     translation,
+                    speaker_labels: false,
                 },
                 sink,
             )
@@ -927,6 +1045,7 @@ mod tests {
                     mode: started.mode,
                     engine: started.translation_engine,
                     source_language: started.source_language,
+                    speaker_labels: started.speaker_labels,
                 },
                 "speaker-1".into(),
                 controller.clone(),
@@ -968,8 +1087,9 @@ mod tests {
             session_id: u32,
             mode: CaptionMode,
             source_language: Option<&str>,
+            speaker_labels: bool,
         ) -> Result<Box<dyn AudioProcessor<Output = Vec<CaptionUpdate>>>, DomainError> {
-            FakeFactory.create(session_id, mode, source_language)
+            FakeFactory.create(session_id, mode, source_language, speaker_labels)
         }
 
         fn create_translator(
@@ -1033,6 +1153,7 @@ mod tests {
                     mode: started.mode,
                     engine: started.translation_engine,
                     source_language: started.source_language,
+                    speaker_labels: started.speaker_labels,
                 },
                 "speaker-1".into(),
                 controller.clone(),
@@ -1093,6 +1214,7 @@ mod tests {
                     mode: started.mode,
                     engine: started.translation_engine,
                     source_language: started.source_language,
+                    speaker_labels: started.speaker_labels,
                 },
                 "speaker-1".into(),
                 controller.clone(),
@@ -1156,6 +1278,7 @@ mod tests {
                     mode: started.mode,
                     engine: started.translation_engine,
                     source_language: started.source_language,
+                    speaker_labels: started.speaker_labels,
                 },
                 "speaker-1".into(),
                 controller,
