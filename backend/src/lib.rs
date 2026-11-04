@@ -11,6 +11,7 @@ mod recovery;
 pub mod transcription;
 pub mod translation;
 mod update;
+mod updater;
 mod window;
 
 pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
@@ -18,6 +19,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
         .manage(ipc::Controller::default())
         .manage(dictation_window::IndicatorState::default())
         .manage(models::download::DownloadManager::default())
+        .manage(updater::UpdateInstaller::default())
         .invoke_handler(tauri::generate_handler![
             ipc::get_state,
             dictation_window::get_dictation_indicator,
@@ -38,6 +40,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::open_project_page,
             ipc::open_releases_page,
             ipc::check_for_updates,
+            ipc::install_update,
             ipc::set_update_check,
             ipc::get_model_downloads,
             ipc::download_model,
@@ -51,6 +54,13 @@ pub fn run() -> tauri::Result<()> {
     builder(tauri::Builder::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            // Files a previous update could not delete while it was running.
+            if let Some(dir) = std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(std::path::Path::to_owned))
+            {
+                updater::cleanup_leftovers(&dir);
+            }
             let root = app.path().app_config_dir()?;
             let store = preferences::PreferenceStore::load(preferences::config_path(&root));
             let sessions = transcription::session::CaptionSessionManager::default_native();

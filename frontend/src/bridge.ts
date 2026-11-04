@@ -6,6 +6,7 @@ import type {
   CaptionUpdate,
   DictationEvent,
   ModelDownloadUpdate,
+  UpdateProgress,
 } from "./contracts";
 
 export const backend: Backend = {
@@ -17,6 +18,8 @@ export const backend: Backend = {
   setUpdateCheck: (enabled) => invoke("set_update_check", { request: { enabled } }),
   checkForUpdates: () => invoke("check_for_updates"),
   openReleasesPage: () => invoke("open_releases_page"),
+  installUpdate: () => invoke("install_update"),
+  subscribeUpdateProgress: (listener) => getCurrentWindow().listen<UpdateProgress>("app-update-changed", (event) => listener(event.payload)),
   setUiLanguage: (language) => invoke("set_ui_language", { request: { language } }),
   start: () => invoke("start_capture"),
   stop: () => invoke("stop_capture"),

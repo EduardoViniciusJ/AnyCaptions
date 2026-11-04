@@ -23,6 +23,7 @@
     "allow-open-project-page",
     "allow-open-releases-page",
     "allow-check-for-updates",
+    "allow-install-update",
     "allow-set-update-check",
     "allow-get-model-downloads",
     "allow-download-model",

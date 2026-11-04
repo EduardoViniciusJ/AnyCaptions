@@ -21,6 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "open_project_page",
             "open_releases_page",
             "check_for_updates",
+            "install_update",
             "set_update_check",
             "get_model_downloads",
             "download_model",

@@ -46,7 +46,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function setup(initial = snapshot(), update: UpdateCheck | Error = { current: "0.1.1", latest: "0.1.1", available: false }) {
+function setup(initial = snapshot(), update: UpdateCheck | Error = { current: "0.1.1", latest: "0.1.1", available: false, installable: false }) {
   const root = document.createElement("main");
   document.body.append(root);
   let listener: ((state: AppSnapshot) => void) | undefined;
@@ -182,7 +182,7 @@ describe("updates", () => {
   });
 
   it("checks on demand and offers the download when a newer release exists", async () => {
-    const app = setup(snapshot(), { current: "0.1.1", latest: "0.2.0", available: true });
+    const app = setup(snapshot(), { current: "0.1.1", latest: "0.2.0", available: true, installable: false });
     await app.ready();
     // Off by default: nothing is checked at startup.
     expect(app.backend.checkForUpdates).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe("updates", () => {
   });
 
   it("checks once at startup when enabled and shows a dismissible notice", async () => {
-    const app = setup(snapshot({ updateCheck: true }), { current: "0.1.1", latest: "0.3.0", available: true });
+    const app = setup(snapshot({ updateCheck: true }), { current: "0.1.1", latest: "0.3.0", available: true, installable: false });
     await app.ready();
     expect(app.backend.checkForUpdates).toHaveBeenCalledTimes(1);
     const notice = app.get("#update-notice");
