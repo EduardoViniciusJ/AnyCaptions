@@ -7,18 +7,38 @@ import type { DictationEvent } from "./contracts";
  * decorrido no modo alternar. O sinal sonoro cobre jogos em tela cheia
  * exclusiva, onde a janela não aparece.
  */
+export interface DictationFrame {
+  hidden: boolean;
+  phase: DictationEvent["phase"];
+  compact: boolean;
+  text: string;
+  hint: string;
+  elapsed: string;
+}
+
 export class DictationIndicator {
+  private frame: DictationFrame = {
+    hidden: true,
+    phase: "idle",
+    compact: false,
+    text: "",
+    hint: "",
+    elapsed: "",
+  };
   private timer: ReturnType<typeof setInterval> | undefined;
   private startedAt = 0;
   private lastPhase: DictationEvent["phase"] = "idle";
   private audio: AudioContext | undefined;
 
   constructor(
-    private readonly root: HTMLElement,
-    private readonly text: HTMLElement,
-    private readonly elapsed: HTMLElement,
+    private readonly onChange: (frame: DictationFrame) => void,
     private readonly showError: (message: string) => void,
   ) {}
+
+  private publish(patch: Partial<DictationFrame>) {
+    this.frame = { ...this.frame, ...patch };
+    this.onChange(this.frame);
+  }
 
   accept(event: DictationEvent) {
     if (event.phase === "recording" && this.lastPhase === "idle") {
@@ -32,24 +52,23 @@ export class DictationIndicator {
     this.lastPhase = event.phase;
     if (event.phase === "idle") {
       this.stopTimer();
-      this.root.hidden = true;
+      this.publish({ hidden: true, phase: "idle" });
       if (event.error) this.showError(dictationErrorMessage(event.error));
       return;
     }
-    this.root.hidden = false;
-    this.root.dataset.phase = event.phase;
-    // Compacto: o usuário pediu para não ver a transcrição; ficam o ponto
-    // vermelho (indicação obrigatória de microfone aberto) e o tempo.
-    this.root.dataset.compact = event.showLiveText ? "false" : "true";
-    const hint = event.phase === "finalizing"
-      ? t("dictationFinalizing")
-      : event.activation === "hold" ? t("dictationListening") : t("dictationListeningToggle");
-    // Sempre textContent: o texto vem do reconhecedor, nunca é HTML.
-    this.text.textContent = event.showLiveText ? (event.text ? event.text : hint) : "";
-    this.text.title = hint;
-    // Frases longas quebram linha; passado o teto de linhas, o fim (as
-    // palavras mais novas) permanece visível.
-    this.text.scrollTop = this.text.scrollHeight;
+    const hint =
+      event.phase === "finalizing"
+        ? t("dictationFinalizing")
+        : event.activation === "hold"
+          ? t("dictationListening")
+          : t("dictationListeningToggle");
+    this.publish({
+      hidden: false,
+      phase: event.phase,
+      compact: !event.showLiveText,
+      text: event.showLiveText ? event.text || hint : "",
+      hint,
+    });
   }
 
   private startTimer() {
@@ -61,14 +80,17 @@ export class DictationIndicator {
   private stopTimer() {
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
-    this.elapsed.textContent = "";
+    this.publish({ elapsed: "" });
   }
 
   private renderElapsed() {
-    const total = Math.max(0, Math.round((Date.now() - this.startedAt) / 1_000));
+    const total = Math.max(
+      0,
+      Math.round((Date.now() - this.startedAt) / 1_000),
+    );
     const minutes = Math.floor(total / 60);
     const seconds = String(total % 60).padStart(2, "0");
-    this.elapsed.textContent = `${minutes}:${seconds}`;
+    this.publish({ elapsed: `${minutes}:${seconds}` });
   }
 
   /** Bipe curto embutido (WebAudio); sem arquivos e sem rede. */
@@ -81,7 +103,10 @@ export class DictationIndicator {
       const gain = this.audio.createGain();
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(0.08, this.audio.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, this.audio.currentTime + 0.12);
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        this.audio.currentTime + 0.12,
+      );
       oscillator.connect(gain).connect(this.audio.destination);
       oscillator.start();
       oscillator.stop(this.audio.currentTime + 0.12);
@@ -99,10 +124,15 @@ export class DictationIndicator {
 
 export function dictationErrorMessage(code: string): string {
   switch (code) {
-    case "dictation-capture": return t("errDictationMic");
-    case "dictation-model": return t("errDictationModel");
-    case "dictation-paste": return t("errDictationPaste");
-    case "dictation-translate": return t("errDictationTranslate");
-    default: return t("errDictation");
+    case "dictation-capture":
+      return t("errDictationMic");
+    case "dictation-model":
+      return t("errDictationModel");
+    case "dictation-paste":
+      return t("errDictationPaste");
+    case "dictation-translate":
+      return t("errDictationTranslate");
+    default:
+      return t("errDictation");
   }
 }

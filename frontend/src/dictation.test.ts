@@ -9,7 +9,14 @@ function indicator() {
   const text = document.createElement("span");
   const elapsed = document.createElement("span");
   const showError = vi.fn();
-  const subject = new DictationIndicator(root, text, elapsed, showError);
+  const subject = new DictationIndicator((frame) => {
+    root.hidden = frame.hidden;
+    root.dataset.phase = frame.phase;
+    root.dataset.compact = String(frame.compact);
+    text.textContent = frame.text;
+    text.title = frame.hint;
+    elapsed.textContent = frame.elapsed;
+  }, showError);
   return { root, text, elapsed, showError, subject };
 }
 
@@ -64,12 +71,16 @@ describe("indicador do ditado", () => {
   it("modo compacto esconde o texto mas mantém o indicador visível", () => {
     const { root, text, subject } = indicator();
     disposers.push(() => subject.dispose());
-    subject.accept(event({ phase: "recording", text: "hello", showLiveText: false }));
+    subject.accept(
+      event({ phase: "recording", text: "hello", showLiveText: false }),
+    );
     expect(root.hidden).toBe(false);
     expect(root.dataset.compact).toBe("true");
     expect(text.textContent).toBe("");
     // Religar a exibição volta a mostrar o texto na mesma gravação.
-    subject.accept(event({ phase: "recording", text: "hello", showLiveText: true }));
+    subject.accept(
+      event({ phase: "recording", text: "hello", showLiveText: true }),
+    );
     expect(root.dataset.compact).toBe("false");
     expect(text.textContent).toBe("hello");
   });
@@ -79,7 +90,9 @@ describe("indicador do ditado", () => {
     disposers.push(() => subject.dispose());
     subject.accept(event({ phase: "recording" }));
     subject.accept(event({ phase: "idle", error: "dictation-paste" }));
-    expect(showError).toHaveBeenCalledWith(dictationErrorMessage("dictation-paste"));
+    expect(showError).toHaveBeenCalledWith(
+      dictationErrorMessage("dictation-paste"),
+    );
     // O texto literal nunca vira HTML: o indicador usa textContent.
     const { text, subject: second } = indicator();
     disposers.push(() => second.dispose());
