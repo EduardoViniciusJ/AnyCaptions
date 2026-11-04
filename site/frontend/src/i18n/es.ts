@@ -14,7 +14,6 @@ export const es: SiteMessages = {
   },
   nav: {
     docs: 'Docs',
-    contribute: 'Contribuir',
     changelog: 'Novedades',
     signIn: 'Entrar',
     language: 'Idioma del sitio',

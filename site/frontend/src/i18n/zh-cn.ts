@@ -12,7 +12,7 @@ export const zhCn: SiteMessages = {
       licenses: '许可证',
       },
   },
-  nav: { docs: '文档', contribute: '参与贡献', changelog: '更新日志', signIn: '登录', language: '网站语言' },
+  nav: { docs: '文档', changelog: '更新日志', signIn: '登录', language: '网站语言' },
   home: {
     title: '实时字幕',
     description: '在 Windows 上转写并翻译游戏、视频和通话的音频。用本地听写代替打字。',

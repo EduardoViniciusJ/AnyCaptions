@@ -15,7 +15,7 @@ export interface SiteMessages {
       privacy: string; licenses: string;
     };
   };
-  nav: { docs: string; contribute: string; changelog: string; signIn: string; language: string };
+  nav: { docs: string; changelog: string; signIn: string; language: string };
   home: {
     title: string;
     description: string;

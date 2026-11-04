@@ -68,6 +68,8 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
               <div className="skeleton h-12 w-full" />
               <div className="skeleton h-12 w-full" />
               <div className="skeleton h-12 w-full" />
+              <div className="skeleton mt-1 h-3 w-full" />
+              <div className="skeleton h-3 w-2/3" />
             </div>
           </div> : account ? (
             <>
@@ -80,8 +82,8 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
               </div>
               <p className="account-news">{t.news}</p>
               <div className="account-actions">
-                <a className="btn btn-outline btn-lg" href={`${homePath}#download`}>{t.download}</a>
-                <button type="button" className="btn btn-outline btn-lg" disabled={signingOut} onClick={() => void signOut()}>
+                <a className="btn hero-alt" href={`${homePath}#download`}>{t.download}</a>
+                <button type="button" className="btn hero-alt" disabled={signingOut} onClick={() => void signOut()}>
                   {signingOut ? t.signingOut : t.signOut}
                 </button>
               </div>
@@ -91,10 +93,10 @@ export function AccountPanel({ lang = 'pt-br' }: { lang?: Lang }) {
                   <>
                     <p>{t.deleteWarning}</p>
                     <div className="account-actions">
-                      <button type="button" className="btn btn-error btn-lg" disabled={deleting} onClick={() => void removeAccount()}>
+                      <button type="button" className="btn hero-alt hero-danger" disabled={deleting} onClick={() => void removeAccount()}>
                         {deleting ? t.deleting : t.deleteConfirm}
                       </button>
-                      <button type="button" className="btn btn-outline btn-lg" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
+                      <button type="button" className="btn hero-alt" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
                         {t.cancel}
                       </button>
                     </div>
