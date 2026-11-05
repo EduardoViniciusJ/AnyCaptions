@@ -37,8 +37,37 @@ export const es: SiteMessages = {
       game: 'Juego con subtítulos en vivo',
       prev: 'Video anterior',
       next: 'Siguiente video',
+      play: 'Reproducir vídeo',
       goTo: 'Ir al video {n}',
     },
+    demos: {
+      config: { title: 'Ajustes', text: 'Elige el audio, los idiomas y el aspecto de los subtítulos.', label: 'Recorrido por los ajustes' },
+      dictation: { title: 'Dictado por voz', text: 'Pulsa el atajo, habla, y el texto aparece donde está el cursor.', label: 'Dictado por voz escribiendo en el Bloc de notas' },
+    },
+    features: [
+      {
+        title: 'Subtítulos personalizables',
+        sub: 'Elige el aspecto del texto, los idiomas y el audio que se subtitula.',
+        alt: 'Ajustes de AnyCaptions para el aspecto de los subtítulos, los idiomas y la identificación de hablantes',
+        items: [
+          { title: 'Aspecto', text: 'Tamaño del texto, colores del texto confirmado y de las palabras recientes, fuente y fondo oscuro, con vista previa.' },
+          { title: 'Idioma y traducción', text: 'Define el idioma de la app y el idioma hablado, o déjalo en automático. Traduce con OPUS-MT en la CPU o Riva en la GPU, con 37 idiomas.' },
+          { title: 'Quién habla', text: 'Cada voz recibe una etiqueta como Persona 1 o Persona 2, solo por el sonido. La app no reconoce nombres.' },
+          { title: 'Audio y ventana', text: 'Elige la salida de audio que se subtitula y el atajo que bloquea la ventana.' },
+        ],
+      },
+      {
+        title: 'Dictado por voz configurable',
+        sub: 'Configura el dictado por voz y mantén la app actualizada.',
+        alt: 'Ajustes de AnyCaptions para el dictado por voz y las actualizaciones',
+        items: [
+          { title: 'Atajo y micrófono', text: 'Elige el micrófono y el atajo. Mantén pulsado para hablar o toca para iniciar y detener.' },
+          { title: 'Idioma y traducción', text: 'Elige el idioma en el que dictas y, si quieres, un idioma al que traducir.' },
+          { title: 'Durante la grabación', text: 'Aviso sonoro, texto reconocido en pantalla y duración máxima opcional.' },
+          { title: 'Actualizaciones', text: 'Consulta tu versión y busca una nueva cuando quieras o cada vez que se abra la app.' },
+        ],
+      },
+    ],
     github: {
       title: 'GitHub',
       sub: 'Sigue el desarrollo, abre una issue o contribuye.',

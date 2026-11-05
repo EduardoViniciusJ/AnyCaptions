@@ -37,8 +37,37 @@ export const fr: SiteMessages = {
       game: 'Jeu avec sous-titres en direct',
       prev: 'Vidéo précédente',
       next: 'Vidéo suivante',
+      play: 'Lire la vidéo',
       goTo: 'Aller à la vidéo {n}',
     },
+    demos: {
+      config: { title: 'Réglages', text: "Choisissez l'audio, les langues et l'apparence des sous-titres.", label: 'Tour des réglages' },
+      dictation: { title: 'Dictée vocale', text: 'Appuyez sur le raccourci, parlez, et le texte apparaît là où se trouve le curseur.', label: 'Dictée vocale dans le Bloc-notes' },
+    },
+    features: [
+      {
+        title: 'Sous-titres personnalisables',
+        sub: "Choisissez l'apparence du texte, les langues et l'audio à sous-titrer.",
+        alt: "Réglages d'AnyCaptions pour l'apparence des sous-titres, les langues et l'identification des locuteurs",
+        items: [
+          { title: 'Apparence', text: 'Taille du texte, couleurs du texte confirmé et des mots récents, police et fond sombre, avec un aperçu.' },
+          { title: 'Langue et traduction', text: "Définissez la langue de l'application et la langue parlée, ou laissez le mode automatique. Traduisez avec OPUS-MT sur le CPU ou Riva sur le GPU, avec 37 langues." },
+          { title: 'Qui parle', text: "Chaque voix reçoit une étiquette comme Personne 1 ou Personne 2, à partir du son seul. L'application ne reconnaît pas les noms." },
+          { title: 'Audio et fenêtre', text: 'Choisissez la sortie audio à sous-titrer et le raccourci qui verrouille la fenêtre.' },
+        ],
+      },
+      {
+        title: 'Dictée vocale configurable',
+        sub: "Configurez la dictée vocale et gardez l'application à jour.",
+        alt: "Réglages d'AnyCaptions pour la dictée vocale et les mises à jour",
+        items: [
+          { title: 'Raccourci et microphone', text: 'Choisissez le microphone et le raccourci. Maintenez pour parler, ou appuyez pour démarrer et arrêter.' },
+          { title: 'Langue et traduction', text: 'Choisissez la langue de dictée et, si vous le souhaitez, une langue de traduction.' },
+          { title: "Pendant l'enregistrement", text: "Signal sonore, texte reconnu à l'écran et durée maximale facultative." },
+          { title: 'Mises à jour', text: "Consultez votre version et cherchez-en une nouvelle quand vous voulez ou à chaque ouverture de l'application." },
+        ],
+      },
+    ],
     github: {
       title: 'GitHub',
       sub: 'Suivez le développement, ouvrez une issue ou contribuez.',

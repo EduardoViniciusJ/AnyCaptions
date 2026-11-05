@@ -1,0 +1,35 @@
+---
+// Um vídeo avulso com a mesma moldura e o mesmo play escuro do carrossel principal,
+// para entrar ao lado de um texto. Abre escuro e só toca no clique.
+import { Play } from '@lucide/astro';
+interface Props { src: string; poster: string; label: string; playLabel: string }
+const { src, poster, label, playLabel } = Astro.props;
+// `loading` em <video> ainda não consta nos tipos do Astro; o navegador o entende.
+const lazy = { loading: 'lazy' } as Record<string, string>;
+---
+<div class="demo-frame demo-player">
+  <video class="skeleton" controls muted loop playsinline preload="none" {...lazy} src={src} poster={poster} width="1920" height="1080" aria-label={label}></video>
+  <button type="button" class="reel-play" aria-label={playLabel} hidden><span><Play size={40} fill="currentColor" stroke-width={1} aria-hidden="true" /></span></button>
+</div>
+<script>
+  document.querySelectorAll<HTMLElement>('.demo-player').forEach(frame => {
+    const video = frame.querySelector('video');
+    const play = frame.querySelector<HTMLButtonElement>('.reel-play');
+    if (!video || !play) return;
+    // Sem JavaScript o vídeo mantém os controles nativos; com ele, abre escuro e só toca no clique.
+    video.controls = false;
+    play.addEventListener('click', async () => {
+      play.classList.add('is-open');
+      video.controls = true;
+      video.focus();
+      video.muted = false;
+      try { await video.play(); } catch { /* os controles nativos continuam disponíveis */ }
+    });
+    // Skeleton no lugar do vídeo até o poster carregar; só então o play escuro aparece.
+    const done = () => { video.classList.remove('skeleton'); play.hidden = false; };
+    const poster = new Image();
+    poster.onload = done;
+    poster.onerror = done;
+    poster.src = video.poster;
+  });
+</script>

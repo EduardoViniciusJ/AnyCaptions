@@ -1,0 +1,99 @@
+---
+// Carrossel de demonstrações: um vídeo no centro e um vizinho apagado de cada lado.
+// Com um único vídeo, ele apenas abre centralizado. A página pode ter vários carrosséis.
+import { Play } from '@lucide/astro';
+export type Demo = { label: string; src: string; poster: string };
+interface Props { demos: Demo[]; startAt?: number; label: string; playLabel: string; goToLabel: string; class?: string }
+const { demos, startAt = 0, label, playLabel, goToLabel, class: className } = Astro.props;
+// `loading` em <video> ainda não consta nos tipos do Astro; o navegador o entende.
+const lazy = { loading: 'lazy' } as Record<string, string>;
+---
+<section class:list={['reel', className]} aria-label={label}>
+  <div class="reel-track" tabindex="0" aria-roledescription="carousel" data-start={startAt}>
+    {demos.map((demo, index) => (
+      <figure class:list={['reel-slide', { 'is-active': index === startAt }]} aria-roledescription="slide" aria-label={demo.label} data-index={index}>
+        <div class="demo-frame">
+          <video class="skeleton" controls muted loop playsinline preload={index === startAt ? 'metadata' : 'none'} {...(index === startAt ? {} : lazy)} src={demo.src} poster={demo.poster} width="1920" height="1080" aria-label={demo.label}></video>
+          <button type="button" class="reel-play" aria-label={playLabel} hidden><span><Play size={40} fill="currentColor" stroke-width={1} aria-hidden="true" /></span></button>
+          <button type="button" class="reel-pick" data-go={index} aria-label={goToLabel.replace('{n}', String(index + 1))}></button>
+        </div>
+      </figure>
+    ))}
+  </div>
+</section>
+<script>
+  document.querySelectorAll<HTMLElement>('.reel-track').forEach(track => {
+    const slides = [...track.querySelectorAll<HTMLElement>('.reel-slide')];
+    let active = Number(track.dataset.start ?? 0);
+    const goTo = (index: number, behavior: ScrollBehavior = 'smooth') => {
+      const target = slides[Math.max(0, Math.min(slides.length - 1, index))];
+      if (!target) return;
+      const left = target.offsetLeft - track.offsetLeft - (track.clientWidth - target.clientWidth) / 2;
+      track.scrollTo({ left, behavior });
+    };
+    const setActive = (index: number) => {
+      active = index;
+      slides.forEach((slide, i) => {
+        slide.classList.toggle('is-active', i === index);
+        // Um vídeo que saiu do centro não continua tocando escondido e volta a escurecer.
+        if (i !== index) dim(slide);
+      });
+    };
+    // Sem JavaScript o vídeo mantém os controles nativos; com ele, abre escuro e só toca no clique.
+    const dim = (slide: HTMLElement) => {
+      const video = slide.querySelector('video');
+      const play = slide.querySelector<HTMLButtonElement>('.reel-play');
+      if (!video || !play) return;
+      video.pause();
+      video.controls = false;
+      // O play escuro só entra depois do poster; antes disso o skeleton fica no lugar.
+      if (!video.classList.contains('skeleton')) play.hidden = false;
+      play.classList.remove('is-open');
+    };
+    slides.forEach(slide => {
+      dim(slide);
+      const video = slide.querySelector('video');
+      const play = slide.querySelector<HTMLButtonElement>('.reel-play');
+      play?.addEventListener('click', async () => {
+        if (!video) return;
+        play.classList.add('is-open'); // o preto fica transparente e revela o vídeo já tocando
+        video.controls = true;
+        video.focus(); // o botão some, e o teclado continua no player
+        video.muted = false; // quem clicou quer ouvir
+        try { await video.play(); } catch { /* os controles nativos continuam disponíveis */ }
+      });
+    });
+    track.querySelectorAll<HTMLButtonElement>('.reel-pick').forEach(button =>
+      button.addEventListener('click', () => goTo(Number(button.dataset.go))));
+    track.addEventListener('keydown', event => {
+      if (event.key === 'ArrowRight') { event.preventDefault(); goTo(active + 1); }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); goTo(active - 1); }
+    });
+    // O ativo vem da posição no trilho, sem contar transformações: o giro 3D distorce a área visível dos vizinhos.
+    const updateActive = () => {
+      const center = track.scrollLeft + track.clientWidth / 2;
+      let nearest = 0;
+      slides.forEach((slide, i) => {
+        const distance = (el: HTMLElement) => Math.abs(el.offsetLeft - track.offsetLeft + el.clientWidth / 2 - center);
+        if (distance(slide) < distance(slides[nearest]!)) nearest = i;
+      });
+      if (nearest !== active || !slides[nearest]?.classList.contains('is-active')) setActive(nearest);
+    };
+    let frame = 0;
+    track.addEventListener('scroll', () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(updateActive); }, { passive: true });
+    // Skeleton no lugar de cada vídeo até o poster carregar; só então o play escuro aparece.
+    track.querySelectorAll('video').forEach(video => {
+      const done = () => {
+        video.classList.remove('skeleton');
+        const play = video.parentElement?.querySelector<HTMLButtonElement>('.reel-play');
+        if (play) play.hidden = false;
+      };
+      const poster = new Image();
+      poster.onload = done;
+      poster.onerror = done;
+      poster.src = video.poster;
+    });
+    goTo(active, 'instant');
+    updateActive();
+  });
+</script>

@@ -1,5 +1,9 @@
 // Shape shared by every locale file, so a missing key in any language is a
 // compile error instead of a blank spot on the page.
+/** Vídeo curto com texto ao lado, na home. */
+type Spotlight = { title: string; text: string; label: string };
+type Feature = { title: string; sub: string; alt: string; items: { title: string; text: string }[] };
+
 export interface LinkedSentence {
   before: string;
   link: string;
@@ -27,8 +31,10 @@ export interface SiteMessages {
     downloadUnavailable: string;
     videos: {
       amongUs: string; youtube: string; game: string;
-      prev: string; next: string; goTo: string;
+      prev: string; next: string; play: string; goTo: string;
     };
+    demos: { config: Spotlight; dictation: Spotlight };
+    features: [Feature, Feature];
     github: { title: string; sub: string; repo: string; issues: string; copy: string; copied: string };
   };
   docs: {

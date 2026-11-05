@@ -37,8 +37,37 @@ export const ptBr: SiteMessages = {
       game: 'Jogo com legenda ao vivo',
       prev: 'Vídeo anterior',
       next: 'Próximo vídeo',
+      play: 'Reproduzir vídeo',
       goTo: 'Ir para o vídeo {n}',
     },
+    demos: {
+      config: { title: 'Configurações', text: 'Escolha o áudio, os idiomas e a aparência das legendas.', label: 'Passeio pelas configurações' },
+      dictation: { title: 'Ditado por voz', text: 'Aperte o atalho, fale, e o texto aparece onde está o cursor.', label: 'Ditado por voz digitando no Bloco de Notas' },
+    },
+    features: [
+      {
+        title: 'Legendas personalizáveis',
+        sub: 'Escolha a aparência do texto, os idiomas e o áudio que vira legenda.',
+        alt: 'Configurações do AnyCaptions para aparência das legendas, idiomas e identificação de quem fala',
+        items: [
+          { title: 'Aparência', text: 'Tamanho do texto, cores do texto confirmado e das palavras recentes, fonte e fundo escuro, com prévia.' },
+          { title: 'Idioma e tradução', text: 'Defina o idioma do app e o idioma falado, ou deixe no automático. Traduza com OPUS-MT na CPU ou Riva na GPU, com 37 idiomas.' },
+          { title: 'Quem está falando', text: 'Cada voz recebe um rótulo como Pessoa 1 ou Pessoa 2, só pelo som. O app não reconhece nomes.' },
+          { title: 'Áudio e janela', text: 'Escolha a saída de áudio que vira legenda e o atalho que trava a janela.' },
+        ],
+      },
+      {
+        title: 'Ditado por voz configurável',
+        sub: 'Configure o ditado por voz e mantenha o app atualizado.',
+        alt: 'Configurações do AnyCaptions para ditado por voz e atualizações',
+        items: [
+          { title: 'Atalho e microfone', text: 'Escolha o microfone e o atalho. Segure para falar ou toque para iniciar e parar.' },
+          { title: 'Idioma e tradução', text: 'Escolha o idioma em que você dita e, se quiser, um idioma para traduzir.' },
+          { title: 'Durante a gravação', text: 'Aviso sonoro, texto reconhecido na tela e duração máxima opcional.' },
+          { title: 'Atualizações', text: 'Veja sua versão e procure uma nova quando quiser ou sempre que o app abrir.' },
+        ],
+      },
+    ],
     github: {
       title: 'GitHub',
       sub: 'Acompanhe o desenvolvimento, abra uma issue ou contribua.',
