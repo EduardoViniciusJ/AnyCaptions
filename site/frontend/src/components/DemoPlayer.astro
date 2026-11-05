@@ -18,7 +18,6 @@ const lazy = { loading: 'lazy' } as Record<string, string>;
     if (!video || !play) return;
     // Sem JavaScript o vídeo mantém os controles nativos; com ele, abre escuro e só toca no clique.
     video.controls = false;
-    play.hidden = false;
     play.addEventListener('click', async () => {
       play.classList.add('is-open');
       video.controls = true;
@@ -26,8 +25,8 @@ const lazy = { loading: 'lazy' } as Record<string, string>;
       video.muted = false;
       try { await video.play(); } catch { /* os controles nativos continuam disponíveis */ }
     });
-    // Skeleton atrás do vídeo até o poster carregar.
-    const done = () => video.classList.remove('skeleton');
+    // Skeleton no lugar do vídeo até o poster carregar; só então o play escuro aparece.
+    const done = () => { video.classList.remove('skeleton'); play.hidden = false; };
     const poster = new Image();
     poster.onload = done;
     poster.onerror = done;

@@ -132,17 +132,38 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
   <div class="showcase container">
     {features.map(feature => (
       <section class="showcase-row">
-        <img class="showcase-shot" src={feature.src} width={feature.width} height={feature.height} alt={feature.alt} loading="lazy" decoding="async" />
+        <img class="showcase-shot skeleton" src={feature.src} width={feature.width} height={feature.height} alt={feature.alt} loading="lazy" decoding="async" />
         <div>
           <h2>{feature.title}</h2>
           <p class="section-sub">{feature.sub}</p>
           <ul class="showcase-list">
-            {feature.items.map(item => <li><h3>{item.title}</h3><p>{item.text}</p></li>)}
+            {feature.items.map((item, index) => <li style={`--i:${index}`}><h3>{item.title}</h3><p>{item.text}</p></li>)}
           </ul>
         </div>
       </section>
     ))}
   </div>
+
+  <script>
+    // Mesmo carregamento do topo nas seções abaixo da dobra: skeleton nas capturas de tela até a
+    // imagem chegar, e cada linha entra apagada e desfocada quando aparece na tela.
+    document.querySelectorAll<HTMLImageElement>('img.skeleton').forEach(img => {
+      const done = () => img.classList.remove('skeleton');
+      if (img.complete && img.naturalWidth > 0) done();
+      else { img.addEventListener('load', done, { once: true }); img.addEventListener('error', done, { once: true }); }
+    });
+    const rows = [...document.querySelectorAll<HTMLElement>('.spotlight-row, .showcase-row')];
+    if ('IntersectionObserver' in window) {
+      // A classe só entra com JavaScript, para a página nunca ficar em branco sem ele.
+      rows.forEach(row => row.classList.add('reveal'));
+      const seen = new IntersectionObserver(entries => entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-in');
+        seen.unobserve(entry.target);
+      }), { rootMargin: '0px 0px -12% 0px', threshold: 0.15 });
+      rows.forEach(row => seen.observe(row));
+    }
+  </script>
 
   <section class="github container" aria-labelledby="github-title">
     <a class="github-mark w" style={`--d:${githubIconDelay}s`} href={repo} target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/icons/github.svg" alt="" width="40" height="40" /></a>

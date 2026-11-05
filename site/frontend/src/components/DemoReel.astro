@@ -46,7 +46,8 @@ const lazy = { loading: 'lazy' } as Record<string, string>;
       if (!video || !play) return;
       video.pause();
       video.controls = false;
-      play.hidden = false;
+      // O play escuro só entra depois do poster; antes disso o skeleton fica no lugar.
+      if (!video.classList.contains('skeleton')) play.hidden = false;
       play.classList.remove('is-open');
     };
     slides.forEach(slide => {
@@ -80,9 +81,13 @@ const lazy = { loading: 'lazy' } as Record<string, string>;
     };
     let frame = 0;
     track.addEventListener('scroll', () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(updateActive); }, { passive: true });
-    // Skeleton atrás de cada vídeo até o poster carregar.
+    // Skeleton no lugar de cada vídeo até o poster carregar; só então o play escuro aparece.
     track.querySelectorAll('video').forEach(video => {
-      const done = () => video.classList.remove('skeleton');
+      const done = () => {
+        video.classList.remove('skeleton');
+        const play = video.parentElement?.querySelector<HTMLButtonElement>('.reel-play');
+        if (play) play.hidden = false;
+      };
       const poster = new Image();
       poster.onload = done;
       poster.onerror = done;
