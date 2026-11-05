@@ -32,8 +32,37 @@ export const en: SiteMessages = {
       game: 'Game with live captions',
       prev: 'Previous video',
       next: 'Next video',
+      play: 'Play video',
       goTo: 'Go to video {n}',
     },
+    demos: {
+      config: { title: 'Settings', text: 'Pick the audio, the languages and how the captions look.', label: 'Walkthrough of the settings' },
+      dictation: { title: 'Voice dictation', text: 'Press the shortcut, speak, and the text appears where your cursor is.', label: 'Voice dictation typing into Notepad' },
+    },
+    features: [
+      {
+        title: 'Customizable captions',
+        sub: 'Choose how the text looks, the languages and the audio to caption.',
+        alt: 'AnyCaptions settings for caption appearance, languages and speaker identification',
+        items: [
+          { title: 'Appearance', text: 'Text size, colors for confirmed text and recent words, font and dark background, with a preview.' },
+          { title: 'Language and translation', text: 'Set the app language and the spoken language, or leave it on automatic. Translate with OPUS-MT on the CPU or Riva on the GPU, with 37 languages.' },
+          { title: 'Who is speaking', text: 'Each voice gets a label like Person 1 or Person 2, from the sound alone. The app does not recognize names.' },
+          { title: 'Audio and window', text: 'Choose the audio output to caption and the shortcut that locks the window.' },
+        ],
+      },
+      {
+        title: 'Configurable voice dictation',
+        sub: 'Set up voice dictation and keep the app up to date.',
+        alt: 'AnyCaptions settings for voice dictation and updates',
+        items: [
+          { title: 'Shortcut and microphone', text: 'Choose the microphone and the shortcut. Hold to talk, or tap to start and stop.' },
+          { title: 'Language and translation', text: 'Pick the language you dictate in and, if you want, a language to translate it to.' },
+          { title: 'While recording', text: 'Sound cue, recognized text on screen and an optional maximum duration.' },
+          { title: 'Updates', text: 'See your version and check for a new one when you want or every time the app opens.' },
+        ],
+      },
+    ],
     github: {
       title: 'GitHub',
       sub: 'Follow development, open an issue or contribute.',

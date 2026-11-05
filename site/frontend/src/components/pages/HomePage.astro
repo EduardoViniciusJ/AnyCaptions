@@ -2,6 +2,8 @@
 import { existsSync } from 'node:fs';
 import Layout from '../../layouts/Layout.astro';
 import { Captions, Mic, WifiOff } from '@lucide/astro';
+import DemoReel from '../DemoReel.astro';
+import DemoPlayer from '../DemoPlayer.astro';
 import { getLatestRelease } from '../../lib/api/releases';
 import { localePath, messages, type Lang } from '../../i18n';
 interface Props { lang: Lang }
@@ -31,21 +33,28 @@ const githubSubWords = toWords(t.github.sub, false);
 
 // Cada demonstração espera um arquivo em public/media. Enquanto a gravação
 // definitiva não existe, o vídeo provisório entra no lugar.
-type Demo = { label: string; file: string; fallback: string };
-function media(demo: Demo) {
+type Source = { label: string; file: string; fallback: string };
+function media(demo: Source) {
   const ready = existsSync(new URL(`../../../public/media/${demo.file}.mp4`, import.meta.url));
   const name = ready ? demo.file : demo.fallback;
   return { label: demo.label, src: `/media/${name}.mp4`, poster: `/media/${name}-poster.jpg` };
 }
+// Por enquanto só a demonstração do YouTube entra; as laterais voltam quando as gravações existirem.
 const demos = [
-  { label: t.videos.amongUs, file: 'among-us', fallback: 'cs2v1' },
   { label: t.videos.youtube, file: 'youtube', fallback: 'cs2v1' },
-  { label: t.videos.game, file: 'game', fallback: 'cs2v1' },
 ].map(media);
-const startAt = 1; // o vídeo do meio abre centralizado, com um vizinho de cada lado
+const startAt = 0; // único vídeo, abre centralizado
+// Vídeos curtos das configurações e do ditado por voz, cada um com um texto ao lado.
+const spotlights = [
+  { ...t.demos.config, ...media({ label: t.demos.config.label, file: 'config', fallback: 'config' }) },
+  { ...t.demos.dictation, ...media({ label: t.demos.dictation.label, file: 'transcription', fallback: 'transcription' }) },
+];
 
-// `loading` em <video> ainda não consta nos tipos do Astro; o navegador o entende.
-const lazy = { loading: 'lazy' } as Record<string, string>;
+const features = [
+  { ...t.features[0], src: '/config.png', width: 940, height: 1026 },
+  { ...t.features[1], src: '/config2.png', width: 1052, height: 1024 },
+];
+
 const cloneCommands = [
   'git clone https://github.com/EduardoViniciusJ/AnyCaptions.git',
   'cd AnyCaptions',
@@ -104,69 +113,36 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
     }
   </script>
 
-  <!-- Carrossel: um vídeo no centro e um vizinho apagado de cada lado.
-       Clicar num vizinho, arrastar ou usar as setas do teclado troca o vídeo. -->
-  <section class="reel" aria-label={t.videos.amongUs}>
-    <div class="reel-track" tabindex="0" aria-roledescription="carousel" data-start={startAt}>
-      {demos.map((demo, index) => (
-        <figure class:list={['reel-slide', { 'is-active': index === startAt }]} aria-roledescription="slide" aria-label={demo.label} data-index={index}>
-          <div class="demo-frame">
-            <video class="skeleton" controls muted loop playsinline preload={index === startAt ? 'metadata' : 'none'} {...(index === startAt ? {} : lazy)} src={demo.src} poster={demo.poster} width="1920" height="1080" aria-label={demo.label}></video>
-            <button type="button" class="reel-pick" data-go={index} aria-label={t.videos.goTo.replace('{n}', String(index + 1))}></button>
-          </div>
-        </figure>
-      ))}
-    </div>
-  </section>
-  <script>
-    const track = document.querySelector<HTMLElement>('.reel-track');
-    if (track) {
-      const slides = [...track.querySelectorAll<HTMLElement>('.reel-slide')];
-      let active = Number(track.dataset.start ?? 0);
-      const goTo = (index: number, behavior: ScrollBehavior = 'smooth') => {
-        const target = slides[Math.max(0, Math.min(slides.length - 1, index))];
-        if (!target) return;
-        const left = target.offsetLeft - track.offsetLeft - (track.clientWidth - target.clientWidth) / 2;
-        track.scrollTo({ left, behavior });
-      };
-      const setActive = (index: number) => {
-        active = index;
-        slides.forEach((slide, i) => {
-          slide.classList.toggle('is-active', i === index);
-          // Um vídeo que saiu do centro não continua tocando escondido.
-          if (i !== index) slide.querySelector('video')?.pause();
-        });
-      };
-      track.querySelectorAll<HTMLButtonElement>('.reel-pick').forEach(button =>
-        button.addEventListener('click', () => goTo(Number(button.dataset.go))));
-      track.addEventListener('keydown', event => {
-        if (event.key === 'ArrowRight') { event.preventDefault(); goTo(active + 1); }
-        if (event.key === 'ArrowLeft') { event.preventDefault(); goTo(active - 1); }
-      });
-      // O ativo vem da posição no trilho, sem contar transformações: o giro 3D distorce a área visível dos vizinhos.
-      const updateActive = () => {
-        const center = track.scrollLeft + track.clientWidth / 2;
-        let nearest = 0;
-        slides.forEach((slide, i) => {
-          const distance = (el: HTMLElement) => Math.abs(el.offsetLeft - track.offsetLeft + el.clientWidth / 2 - center);
-          if (distance(slide) < distance(slides[nearest]!)) nearest = i;
-        });
-        if (nearest !== active || !slides[nearest]?.classList.contains('is-active')) setActive(nearest);
-      };
-      let frame = 0;
-      track.addEventListener('scroll', () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(updateActive); }, { passive: true });
-      // Skeleton atrás de cada vídeo até o poster carregar.
-      track.querySelectorAll('video').forEach(video => {
-        const done = () => video.classList.remove('skeleton');
-        const poster = new Image();
-        poster.onload = done;
-        poster.onerror = done;
-        poster.src = video.poster;
-      });
-      goTo(active, 'instant');
-      updateActive();
-    }
-  </script>
+  <!-- Vídeo principal: legendas ao vivo num vídeo do YouTube. -->
+  <DemoReel demos={demos} startAt={startAt} label={t.videos.youtube} playLabel={t.videos.play} goToLabel={t.videos.goTo} />
+
+  <!-- Vídeos curtos com texto ao lado: configurações e ditado por voz. O bloco de imagens abaixo segue igual. -->
+  <div class="spotlight container">
+    {spotlights.map(item => (
+      <section class="spotlight-row" aria-label={item.title}>
+        <DemoPlayer src={item.src} poster={item.poster} label={item.label} playLabel={t.videos.play} />
+        <div>
+          <h2>{item.title}</h2>
+          <p class="section-sub">{item.text}</p>
+        </div>
+      </section>
+    ))}
+  </div>
+
+  <div class="showcase container">
+    {features.map(feature => (
+      <section class="showcase-row">
+        <img class="showcase-shot" src={feature.src} width={feature.width} height={feature.height} alt={feature.alt} loading="lazy" decoding="async" />
+        <div>
+          <h2>{feature.title}</h2>
+          <p class="section-sub">{feature.sub}</p>
+          <ul class="showcase-list">
+            {feature.items.map(item => <li><h3>{item.title}</h3><p>{item.text}</p></li>)}
+          </ul>
+        </div>
+      </section>
+    ))}
+  </div>
 
   <section class="github container" aria-labelledby="github-title">
     <a class="github-mark w" style={`--d:${githubIconDelay}s`} href={repo} target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/icons/github.svg" alt="" width="40" height="40" /></a>
