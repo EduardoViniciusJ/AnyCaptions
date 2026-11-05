@@ -13,6 +13,8 @@
   <a href="https://anycaptions.app">Website &amp; download</a>
 </p>
 
+<img width="800" height="429" alt="video-800w-10fps" src="https://github.com/user-attachments/assets/aafec861-0966-4986-bd42-1db6028e8196" />
+
 
 <p align="center">
   <a href="#features">Features</a> ·
