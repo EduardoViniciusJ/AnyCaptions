@@ -1,5 +1,4 @@
 ---
-import { existsSync } from 'node:fs';
 import Layout from '../../layouts/Layout.astro';
 import { Captions, Mic, WifiOff } from '@lucide/astro';
 import DemoReel from '../DemoReel.astro';
@@ -31,23 +30,16 @@ const githubIconDelay = 0.2 + 0.09 * wordIndex++;
 const githubTitleWords = toWords(t.github.title, false);
 const githubSubWords = toWords(t.github.sub, false);
 
-// Cada demonstração espera um arquivo em public/media. Enquanto a gravação
-// definitiva não existe, o vídeo provisório entra no lugar.
-type Source = { label: string; file: string; fallback: string };
-function media(demo: Source) {
-  const ready = existsSync(new URL(`../../../public/media/${demo.file}.mp4`, import.meta.url));
-  const name = ready ? demo.file : demo.fallback;
-  return { label: demo.label, src: `/media/${name}.mp4`, poster: `/media/${name}-poster.jpg` };
-}
-// Por enquanto só a demonstração do YouTube entra; as laterais voltam quando as gravações existirem.
-const demos = [
-  { label: t.videos.youtube, file: 'youtube', fallback: 'cs2v1' },
-].map(media);
+// Cada demonstração é um arquivo em public/media, com um poster de mesmo nome.
+// Sem checar o disco: em produção o código roda fora da árvore do projeto e a checagem sempre falhava.
+const media = (label: string, file: string) => ({ label, src: `/media/${file}.mp4`, poster: `/media/${file}-poster.jpg` });
+// Vídeo principal: legendas ao vivo num vídeo do YouTube. O carrossel aceita mais itens quando houver gravações.
+const demos = [media(t.videos.youtube, 'deathnote')];
 const startAt = 0; // único vídeo, abre centralizado
 // Vídeos curtos das configurações e do ditado por voz, cada um com um texto ao lado.
 const spotlights = [
-  { ...t.demos.config, ...media({ label: t.demos.config.label, file: 'config', fallback: 'config' }) },
-  { ...t.demos.dictation, ...media({ label: t.demos.dictation.label, file: 'transcription', fallback: 'transcription' }) },
+  { ...t.demos.config, ...media(t.demos.config.label, 'config') },
+  { ...t.demos.dictation, ...media(t.demos.dictation.label, 'transcription') },
 ];
 
 const features = [
