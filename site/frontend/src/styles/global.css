@@ -247,7 +247,7 @@ nav a:hover, .text-link:hover { color: white; }
 /* Enquanto o poster não chega, o vídeo e a captura de tela mostram o brilho do skeleton sobre um cinza escuro. */
 .demo-frame video.skeleton, .showcase-shot.skeleton { background-color: #1f1f1f; border-radius: 12px; }
 /* O play escuro entra com o mesmo fade do restante da página. */
-.reel-play:not([hidden]) { animation: word-in .35s ease-out both; }
+.reel-play:not([hidden]) { animation: word-in .25s ease-out both; }
 
 /* ---------- Home: vídeos curtos (configurações e ditado) ---------- */
 /* Vídeo de um lado, com metade da largura do principal, e texto curto do outro; a cada linha os lados se invertem. */
@@ -262,9 +262,9 @@ nav a:hover, .text-link:hover { color: white; }
 /* Com JavaScript, cada linha fica apagada e desfocada até aparecer na tela; aí entra como o vídeo principal,
    primeiro a mídia, depois o texto e, nas configurações, um card de cada vez. */
 .reveal > * { opacity: 0; }
-.reveal.is-in > * { opacity: 1; animation: word-in .5s ease-out both; }
-.reveal.is-in > :nth-child(2) { animation-delay: .08s; }
-.reveal.is-in .showcase-list li { animation: word-in .4s ease-out both; animation-delay: calc(.16s + var(--i, 0) * .05s); }
+.reveal.is-in > * { opacity: 1; animation: word-in .35s ease-out both; }
+.reveal.is-in > :nth-child(2) { animation-delay: .05s; }
+.reveal.is-in .showcase-list li { animation: word-in .3s ease-out both; animation-delay: calc(.1s + var(--i, 0) * .04s); }
 
 /* ---------- Home: configurações ---------- */
 /* Imagem de um lado e opções do outro; a cada linha os lados se invertem. */

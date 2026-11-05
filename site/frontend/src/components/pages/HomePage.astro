@@ -160,7 +160,7 @@ const windowsIcon = 'M3 5.5 10.5 4.5v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 
         if (!entry.isIntersecting) return;
         entry.target.classList.add('is-in');
         seen.unobserve(entry.target);
-      }), { rootMargin: '0px 0px -6% 0px', threshold: 0.1 });
+      }), { rootMargin: '0px 0px 0px 0px', threshold: 0.05 });
       rows.forEach(row => seen.observe(row));
     }
   </script>
