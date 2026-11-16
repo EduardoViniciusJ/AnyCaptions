@@ -336,7 +336,22 @@ fn complete<R: Runtime>(app: &AppHandle<R>, session: u64, error: Option<&'static
     if let Ok(mut machine) = state.machine.lock() {
         let _ = machine.finished(session);
     }
-    let _ = app.global_shortcut().unregister(ESC_SHORTCUT);
+    // Never wait for the main thread here: it may be joining this very worker
+    // (quit, new settings, the next recording). The plugin's `unregister`
+    // blocks until the main thread answers, which froze the app for good.
+    // Queued instead, it runs once the main thread is free; by then a new
+    // recording may own Esc, so it is only removed while nothing records.
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let idle = handle
+            .state::<DictationState>()
+            .machine
+            .lock()
+            .is_ok_and(|machine| machine.phase() == DictationPhase::Idle);
+        if idle {
+            let _ = handle.global_shortcut().unregister(ESC_SHORTCUT);
+        }
+    });
     emit(app, "idle", String::new(), error);
 }
 
