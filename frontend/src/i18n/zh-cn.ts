@@ -109,7 +109,7 @@ export const zhCN: Messages = {
   sizeMb: "{size} MB",
   errModelInUse: "模型正在使用中，无法删除。请先停止字幕和听写，然后重试。",
   errDownloadBusy: "请等待当前下载完成，或先取消下载。",
-  unsavedChanges: "有未保存的更改",
+  unsavedChanges: "点击“保存”以应用更改",
   dictationTranslateUnsupported: "所选的翻译模型不支持翻译成这种语言。请选择其他语言，或在“翻译”选项卡中更换模型。",
   settingsTabs: "设置分区",
   tabCaptions: "字幕",

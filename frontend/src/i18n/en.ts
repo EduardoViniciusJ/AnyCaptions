@@ -109,7 +109,7 @@ export const en: Messages = {
   sizeMb: "{size} MB",
   errModelInUse: "The model is in use and could not be removed. Stop captions and dictation, then try again.",
   errDownloadBusy: "Wait for the current download to finish, or cancel it first.",
-  unsavedChanges: "Unsaved changes",
+  unsavedChanges: "Click Save to apply your changes",
   dictationTranslateUnsupported: "The selected translation model does not translate into this language. Pick another language, or change the model in the Translation tab.",
   settingsTabs: "Settings sections",
   tabCaptions: "Captions",

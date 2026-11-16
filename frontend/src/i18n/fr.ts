@@ -109,7 +109,7 @@ export const fr: Messages = {
   sizeMb: "{size} Mo",
   errModelInUse: "Le modèle est en cours d'utilisation et n'a pas pu être supprimé. Arrêtez les sous-titres et la dictée, puis réessayez.",
   errDownloadBusy: "Attendez la fin du téléchargement en cours, ou annulez-le d'abord.",
-  unsavedChanges: "Modifications non enregistrées",
+  unsavedChanges: "Cliquez sur Enregistrer pour appliquer les modifications",
   dictationTranslateUnsupported: "Le modèle de traduction choisi ne traduit pas vers cette langue. Choisissez une autre langue ou changez de modèle dans l'onglet Traduction.",
   settingsTabs: "Sections des paramètres",
   tabCaptions: "Sous-titres",

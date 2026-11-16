@@ -109,7 +109,7 @@ export const es: Messages = {
   sizeMb: "{size} MB",
   errModelInUse: "El modelo está en uso y no se pudo eliminar. Detén los subtítulos y el dictado e inténtalo de nuevo.",
   errDownloadBusy: "Espera a que termine la descarga actual, o cancélala antes.",
-  unsavedChanges: "Cambios sin guardar",
+  unsavedChanges: "Haz clic en Guardar para aplicar los cambios",
   dictationTranslateUnsupported: "El modelo de traducción elegido no traduce a este idioma. Elige otro idioma o cambia el modelo en la pestaña Traducción.",
   settingsTabs: "Secciones de la configuración",
   tabCaptions: "Subtítulos",

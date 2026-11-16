@@ -391,3 +391,7 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .settings { padding-bottom: 0; }
 .settings-footer { position: sticky; bottom: 0; margin-top: 4px; padding: 22px 0 14px; background: linear-gradient(to bottom, transparent, #0f0f0f 16px); }
 .settings-footer #save-settings { transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+/* Drafts waiting for Save: a quiet note where the credit sits. */
+.settings-unsaved { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; color: #d4d4d4; font-size: 12px; animation: settings-unsaved-in 0.2s ease; }
+.settings-unsaved-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #f5c26b; box-shadow: 0 0 0 3px rgba(245, 194, 107, 0.16); }
+@keyframes settings-unsaved-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }

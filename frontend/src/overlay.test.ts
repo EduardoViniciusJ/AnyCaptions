@@ -465,7 +465,11 @@ describe("overlay controls", () => {
       target: { value: "F9" },
     });
     expect(hint.hidden).toBe(false);
-    expect(hint.textContent).toBe("Alterações não salvas");
+    expect(hint.textContent).toBe(
+      "Clique em Salvar para aplicar as alterações",
+    );
+    // The note takes the credit's place instead of squeezing it.
+    expect(app.get("#developer-credit").hidden).toBe(true);
     // Save only stands out while there is something to save.
     expect(app.get("#save-settings").className).toContain("btn-primary");
     fireEvent.change(app.get<HTMLInputElement>("#shortcut"), {
@@ -473,6 +477,7 @@ describe("overlay controls", () => {
     });
     expect(hint.hidden).toBe(true);
     expect(app.get("#save-settings").className).not.toContain("btn-primary");
+    expect(app.get("#developer-credit").hidden).toBe(false);
   });
 
   it("warns when dictation translates into a language the model cannot write", async () => {

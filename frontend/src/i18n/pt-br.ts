@@ -108,7 +108,7 @@ export const ptBR = {
   sizeMb: "{size} MB",
   errModelInUse: "O modelo está em uso e não pôde ser removido. Pare as legendas e o ditado e tente de novo.",
   errDownloadBusy: "Espere o download atual terminar, ou cancele antes.",
-  unsavedChanges: "Alterações não salvas",
+  unsavedChanges: "Clique em Salvar para aplicar as alterações",
   dictationTranslateUnsupported: "O modelo de tradução escolhido não traduz para este idioma. Escolha outro idioma ou troque o modelo na aba Tradução.",
   settingsTabs: "Seções das configurações",
   tabCaptions: "Legendas",

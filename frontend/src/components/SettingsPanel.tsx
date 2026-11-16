@@ -413,6 +413,7 @@ export function SettingsPanel({
         <button
           className="btn btn-ghost btn-xs settings-credit"
           id="developer-credit"
+          hidden={dirty}
           title="github.com/EduardoViniciusJ"
           onClick={() => void backend.openProjectPage().catch(report)}
         >
@@ -423,7 +424,9 @@ export function SettingsPanel({
           {" "}
           <span className="credit-name">EduardoViniciusJ</span>
         </button>
-        <span id="unsaved-changes" className="sr-only" role="status" hidden={!dirty}>
+        {/* Takes the credit's place while something waits for Save. */}
+        <span id="unsaved-changes" className="settings-unsaved" role="status" hidden={!dirty}>
+          <span className="settings-unsaved-dot" aria-hidden="true" />
           {t("unsavedChanges")}
         </span>
         <button
