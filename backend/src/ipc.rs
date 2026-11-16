@@ -258,7 +258,7 @@ impl Controller {
                 .0
                 .lock()
                 .map_err(|_| CommandError::StateUnavailable)?;
-            let previous_revision = state.snapshot().revision;
+            let previous_revision = state.revision();
             action(&mut state)?;
             let snapshot = state.snapshot();
             let changed = snapshot.revision != previous_revision;
@@ -321,14 +321,13 @@ impl Controller {
         self.update(events, |state| state.fail(session_id, error))
     }
 
+    /// Asked several times per audio packet by the capture loop, so it reads
+    /// the two fields under the lock instead of cloning a whole snapshot.
     pub fn is_session_active(&self, session_id: u32) -> bool {
-        self.snapshot().is_ok_and(|snapshot| {
-            snapshot.session_id == session_id
-                && matches!(
-                    snapshot.capture,
-                    CaptureState::Preparing | CaptureState::Listening | CaptureState::Processing
-                )
-        })
+        self.0
+            .0
+            .lock()
+            .is_ok_and(|state| state.is_session_active(session_id))
     }
 
     pub fn enable_tray(&self, window: &impl StateEvents) -> Result<AppSnapshot, CommandError> {
@@ -481,6 +480,51 @@ pub fn get_state<R: Runtime>(
     controller.snapshot()
 }
 
+/// Probes models and audio again and publishes the result. `None` while the
+/// app is still starting (the services are not managed yet).
+fn reprobe_resources<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    controller: &Controller,
+) -> Option<Result<AppSnapshot, CommandError>> {
+    let sessions = app.try_state::<CaptionSessionManager>()?;
+    let outputs = app.try_state::<Arc<OutputService>>()?;
+    Some(sessions.refresh_resources(controller, &outputs, window))
+}
+
+/// Whether a setting changes which models the session needs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reprobe {
+    No,
+    Yes,
+}
+
+/// Applies a setting the running session cannot pick up (it is fixed when the
+/// recognizer and the translator are created): the session ends, the change
+/// is committed and saved, and the next start opens with it. With
+/// [`Reprobe::Yes`] availability is checked again, so the overlay enables or
+/// disables its options right away.
+fn apply_session_setting<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    controller: &Controller,
+    reprobe: Reprobe,
+    change: impl FnOnce(&mut AppState) -> Result<(), DomainError>,
+) -> Result<AppSnapshot, CommandError> {
+    authorize(window.label())?;
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.stop_session();
+    }
+    let state = controller.update(window, change)?;
+    persist(app, &state)?;
+    if reprobe == Reprobe::Yes
+        && let Some(refreshed) = reprobe_resources(app, window, controller)
+    {
+        return refreshed;
+    }
+    Ok(state)
+}
+
 #[tauri::command]
 pub fn set_caption_mode<R: Runtime>(
     window: WebviewWindow<R>,
@@ -488,13 +532,9 @@ pub fn set_caption_mode<R: Runtime>(
     controller: State<'_, Controller>,
     request: ModeRequest,
 ) -> Result<AppSnapshot, CommandError> {
-    authorize(window.label())?;
-    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
-        sessions.stop_session();
-    }
-    let state = controller.update(&window, |state| state.set_mode(request.mode))?;
-    persist(&app, &state)?;
-    Ok(state)
+    apply_session_setting(&app, &window, &controller, Reprobe::No, |state| {
+        state.set_mode(request.mode)
+    })
 }
 
 #[tauri::command]
@@ -504,13 +544,9 @@ pub fn set_source_language<R: Runtime>(
     controller: State<'_, Controller>,
     request: SourceLanguageRequest,
 ) -> Result<AppSnapshot, CommandError> {
-    authorize(window.label())?;
-    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
-        sessions.stop_session();
-    }
-    let state = controller.update(&window, |state| state.set_source_language(request.language))?;
-    persist(&app, &state)?;
-    Ok(state)
+    apply_session_setting(&app, &window, &controller, Reprobe::No, |state| {
+        state.set_source_language(request.language)
+    })
 }
 
 #[tauri::command]
@@ -520,22 +556,10 @@ pub fn set_speaker_labels<R: Runtime>(
     controller: State<'_, Controller>,
     request: SpeakerLabelsRequest,
 ) -> Result<AppSnapshot, CommandError> {
-    authorize(window.label())?;
-    // The diarizer attaches when the recognizer is created, so the running
-    // session ends; the next start opens with the new choice.
-    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
-        sessions.stop_session();
-    }
-    let state = controller.update(&window, |state| state.set_speaker_labels(request.enabled))?;
-    persist(&app, &state)?;
-    // Re-probe so the overlay can say right away whether labels will appear.
-    if let (Some(sessions), Some(outputs)) = (
-        app.try_state::<CaptionSessionManager>(),
-        app.try_state::<Arc<OutputService>>(),
-    ) {
-        return sessions.refresh_resources(&controller, &outputs, &window);
-    }
-    Ok(state)
+    // Re-probed so the overlay can say right away whether labels will appear.
+    apply_session_setting(&app, &window, &controller, Reprobe::Yes, |state| {
+        state.set_speaker_labels(request.enabled)
+    })
 }
 
 #[tauri::command]
@@ -545,23 +569,10 @@ pub fn set_translation_engine<R: Runtime>(
     controller: State<'_, Controller>,
     request: TranslationEngineRequest,
 ) -> Result<AppSnapshot, CommandError> {
-    authorize(window.label())?;
-    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
-        sessions.stop_session();
-    }
-    let state = controller.update(&window, |state| {
+    // Availability depends on the chosen engine's files.
+    apply_session_setting(&app, &window, &controller, Reprobe::Yes, |state| {
         state.set_translation_engine(request.engine)
-    })?;
-    persist(&app, &state)?;
-    // Availability depends on the chosen engine's files; re-probe so the
-    // translate options enable or disable right away.
-    if let (Some(sessions), Some(outputs)) = (
-        app.try_state::<CaptionSessionManager>(),
-        app.try_state::<Arc<OutputService>>(),
-    ) {
-        return sessions.refresh_resources(&controller, &outputs, &window);
-    }
-    Ok(state)
+    })
 }
 
 #[tauri::command]
@@ -864,44 +875,40 @@ pub fn get_model_downloads<R: Runtime>(
 ) -> Result<Vec<ModelDownloadState>, CommandError> {
     authorize(window.label())?;
     let sessions = app.try_state::<CaptionSessionManager>();
-    let riva_installed = sessions
-        .as_ref()
-        .is_some_and(|sessions| sessions.translation_available(TranslationEngine::Riva));
-    let m2m100_installed = sessions
-        .as_ref()
-        .is_some_and(|sessions| sessions.translation_available(TranslationEngine::M2m100));
-    let diarization_installed = sessions
-        .as_ref()
-        .is_some_and(|sessions| sessions.speaker_labels_available());
-    Ok(vec![
-        ModelDownloadState {
-            model: catalog::RIVA_TRANSLATE_Q4.id,
-            kind: catalog::RIVA_TRANSLATE_Q4.kind,
-            engine: Some(TranslationEngine::Riva),
-            installed: riva_installed,
-            downloadable: download::riva_source_configured(),
-            downloading: downloads.active_model() == Some(catalog::RIVA_TRANSLATE_Q4.id),
-            total_bytes: download::RIVA_DOWNLOAD_BYTES,
-        },
-        ModelDownloadState {
-            model: catalog::M2M100_418M.id,
-            kind: catalog::M2M100_418M.kind,
-            engine: Some(TranslationEngine::M2m100),
-            installed: m2m100_installed,
-            downloadable: download::source_configured(catalog::M2M100_418M.id),
-            downloading: downloads.active_model() == Some(catalog::M2M100_418M.id),
-            total_bytes: download::M2M100_DOWNLOAD_BYTES,
-        },
-        ModelDownloadState {
-            model: catalog::NEMOTRON_3_DIARIZATION_Q8.id,
-            kind: catalog::NEMOTRON_3_DIARIZATION_Q8.kind,
-            engine: None,
-            installed: diarization_installed,
-            downloadable: download::source_configured(catalog::NEMOTRON_3_DIARIZATION_Q8.id),
-            downloading: downloads.active_model() == Some(catalog::NEMOTRON_3_DIARIZATION_Q8.id),
-            total_bytes: download::DIARIZATION_DOWNLOAD_BYTES,
-        },
-    ])
+    let active = downloads.active_model();
+    // (model, the translation engine it serves, size shown on the button)
+    let offered = [
+        (
+            &catalog::RIVA_TRANSLATE_Q4,
+            Some(TranslationEngine::Riva),
+            download::RIVA_DOWNLOAD_BYTES,
+        ),
+        (
+            &catalog::M2M100_418M,
+            Some(TranslationEngine::M2m100),
+            download::M2M100_DOWNLOAD_BYTES,
+        ),
+        (
+            &catalog::NEMOTRON_3_DIARIZATION_Q8,
+            None,
+            download::DIARIZATION_DOWNLOAD_BYTES,
+        ),
+    ];
+    Ok(offered
+        .into_iter()
+        .map(|(profile, engine, total_bytes)| ModelDownloadState {
+            model: profile.id,
+            kind: profile.kind,
+            engine,
+            installed: sessions.as_ref().is_some_and(|sessions| match engine {
+                Some(engine) => sessions.translation_available(engine),
+                None => sessions.speaker_labels_available(),
+            }),
+            downloadable: download::source_configured(profile.id),
+            downloading: active == Some(profile.id),
+            total_bytes,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -940,13 +947,8 @@ pub fn cancel_model_download<R: Runtime>(
 /// A freshly installed model changes availability; re-probe so the translate
 /// options enable without a restart.
 fn refresh_after_install<R: Runtime>(app: &AppHandle<R>) {
-    if let (Some(sessions), Some(outputs), Some(window)) = (
-        app.try_state::<CaptionSessionManager>(),
-        app.try_state::<Arc<OutputService>>(),
-        app.get_webview_window("overlay"),
-    ) {
-        let controller = app.state::<Controller>();
-        let _ = sessions.refresh_resources(&controller, &outputs, &window);
+    if let Some(window) = app.get_webview_window("overlay") {
+        let _ = reprobe_resources(app, &window, &app.state::<Controller>());
     }
 }
 

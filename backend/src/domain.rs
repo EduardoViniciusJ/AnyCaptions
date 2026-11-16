@@ -587,6 +587,20 @@ impl AppState {
         Ok(format!("Ctrl+Alt+{key}"))
     }
 
+    /// Counter that advances with every change the overlay must hear about.
+    pub fn revision(&self) -> u32 {
+        self.revision
+    }
+
+    /// Whether `session_id` is the current session and it is still capturing.
+    pub fn is_session_active(&self, session_id: u32) -> bool {
+        self.session_id == session_id
+            && matches!(
+                self.capture,
+                CaptureState::Preparing | CaptureState::Listening | CaptureState::Processing
+            )
+    }
+
     pub fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             revision: self.revision,
