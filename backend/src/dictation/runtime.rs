@@ -197,6 +197,18 @@ fn warm_up<R: Runtime>(app: &AppHandle<R>, state: &DictationState) {
         });
 }
 
+/// The translation engine changed in the settings. Dictation translates with
+/// the same engine, so it is loaded now, in the background, instead of during
+/// the first dictation after the switch (M2M100 takes about a second to load,
+/// Riva several).
+pub fn engine_changed<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<DictationState>()
+        && state.settings().enabled
+    {
+        warm_up(app, &state);
+    }
+}
+
 fn handle_hotkey<R: Runtime>(app: &AppHandle<R>, pressed: bool) {
     let state = app.state::<DictationState>();
     let Ok(mut machine) = state.machine.lock() else {

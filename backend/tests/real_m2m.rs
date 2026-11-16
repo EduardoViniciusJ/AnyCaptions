@@ -80,6 +80,24 @@ fn m2m100_translates_directly_between_languages() {
     eprintln!("[m2m100] merged -> {merged}");
     assert!(merged.contains('?'), "the question survives: {merged}");
 
+    // Dictation pastes whole paragraphs: every sentence must come through,
+    // in order, and into the regional targets only dictation can still hold.
+    let dictated = "Bom dia, pessoal. Eu terminei o relatório ontem à noite. \
+                    Vocês podem revisar até sexta-feira?";
+    let pasted = translator
+        .translate(dictated, "pt-BR", "en")
+        .expect("pt->en");
+    eprintln!("[m2m100] dictation -> {pasted}");
+    let lower = pasted.to_lowercase();
+    let report = lower.find("report").expect("second sentence");
+    let friday = lower.find("friday").expect("third sentence");
+    assert!(report < friday, "sentences keep their order: {pasted}");
+    assert!(pasted.trim_end().ends_with('?'), "{pasted}");
+    let regional = translator
+        .translate("The meeting starts at nine.", "en-US", "es-us")
+        .expect("en->es-us");
+    assert!(regional.to_lowercase().contains("reuni"), "{regional}");
+
     // Same language passes through; a language outside the model is rejected.
     assert_eq!(
         translator.translate("Hello.", "en-US", "en").as_deref(),

@@ -143,7 +143,8 @@ impl Translator for NativeM2mTranslator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ASR_LANGUAGES, TranslationEngine};
+    use crate::domain::{ASR_LANGUAGES, TRANSLATION_TARGETS, TranslationEngine};
+    use crate::translation::stage::resolve_text_source;
 
     #[test]
     fn language_tags_map_to_the_model_codes() {
@@ -167,6 +168,53 @@ mod tests {
                 target.tag()
             );
         }
+    }
+
+    #[test]
+    fn dictation_can_use_every_target_it_may_have_saved() {
+        // Dictation keeps its own target, chosen under any engine. The ones
+        // this engine does not list (Portuguese of Portugal, Latin American
+        // Spanish, Traditional Chinese) still translate, to the shared code.
+        for target in TRANSLATION_TARGETS {
+            assert!(language_code(target.tag()).is_some(), "{}", target.tag());
+        }
+        assert_eq!(language_code("pt-pt"), Some("pt"));
+        assert_eq!(language_code("es-us"), Some("es"));
+        assert_eq!(language_code("zh-tw"), Some("zh"));
+    }
+
+    #[test]
+    fn dictation_without_a_fixed_language_detects_one_the_model_reads() {
+        // (dictated text, the model code its detected language maps to)
+        let dictated = [
+            (
+                "Amanhã de manhã eu vou enviar o relatório para a equipe.",
+                "pt",
+            ),
+            (
+                "Tomorrow morning I will send the report to the whole team.",
+                "en",
+            ),
+            ("Завтра утром я отправлю отчёт всей команде.", "ru"),
+            ("明日の朝、チーム全員にレポートを送ります。", "ja"),
+            (
+                "Demain matin, j'enverrai le rapport à toute l'équipe.",
+                "fr",
+            ),
+            (
+                "Morgen früh schicke ich den Bericht an das ganze Team.",
+                "de",
+            ),
+        ];
+        for (text, code) in dictated {
+            assert_eq!(
+                language_code(resolve_text_source(text)),
+                Some(code),
+                "{text}"
+            );
+        }
+        // Too little text to detect falls back to English, which the model has.
+        assert!(language_code(resolve_text_source("")).is_some());
     }
 
     #[test]

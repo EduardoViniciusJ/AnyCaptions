@@ -571,9 +571,11 @@ pub fn set_translation_engine<R: Runtime>(
     request: TranslationEngineRequest,
 ) -> Result<AppSnapshot, CommandError> {
     // Availability depends on the chosen engine's files.
-    apply_session_setting(&app, &window, &controller, Reprobe::Yes, |state| {
+    let state = apply_session_setting(&app, &window, &controller, Reprobe::Yes, |state| {
         state.set_translation_engine(request.engine)
-    })
+    })?;
+    dictation_runtime::engine_changed(&app);
+    Ok(state)
 }
 
 #[tauri::command]
