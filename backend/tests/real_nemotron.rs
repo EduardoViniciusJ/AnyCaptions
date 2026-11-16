@@ -1,3 +1,8 @@
+//! Real-hardware checks for the recognizer. Each test loads the model on the
+//! GPU, and creating several at once crashes inside the Vulkan backend, so
+//! run them one at a time:
+//!   cargo test --test real_nemotron -- --ignored --nocapture --test-threads=1
+
 use std::{path::PathBuf, time::Instant};
 
 use anycaptions_lib::transcription::{
