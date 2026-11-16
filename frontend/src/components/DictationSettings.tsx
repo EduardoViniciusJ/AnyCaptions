@@ -3,7 +3,12 @@
   DictationSnapshot,
   TranslationEngine,
 } from "../contracts";
-import { ASR_LANGUAGES, TRANSLATION_TARGETS, engineServes } from "../languages";
+import {
+  ASR_LANGUAGES,
+  TRANSLATION_TARGETS,
+  dictationTargetServed,
+  engineServes,
+} from "../languages";
 import { t } from "../i18n";
 import { Field } from "./Field";
 import { LanguagePicker } from "./LanguagePicker";
@@ -115,6 +120,12 @@ export function DictationSettings({
           ]}
         />
       </Field>
+      {value.translateTo && !dictationTargetServed(engine, value.translateTo) && (
+        // Said here, before the first dictation fails at paste time.
+        <p id="dictation-translate-status" className="text-warning text-xs" role="status">
+          {t("dictationTranslateUnsupported")}
+        </p>
+      )}
       <Field id="dictation-activation" label={t("dictationActivation")}>
         <select
           className="select select-sm"

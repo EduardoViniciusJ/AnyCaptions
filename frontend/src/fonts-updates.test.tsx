@@ -99,6 +99,7 @@ function setup(initial = snapshot(), update: UpdateCheck | Error = { current: "0
     getModelDownloads: vi.fn().mockResolvedValue([]),
     downloadModel: vi.fn(),
     cancelModelDownload: vi.fn(),
+    removeModel: vi.fn().mockResolvedValue([]),
     resize: vi.fn(),
     close: vi.fn(),
     openProjectPage: vi.fn().mockResolvedValue(undefined),

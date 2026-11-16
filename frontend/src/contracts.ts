@@ -190,6 +190,8 @@ export interface Backend {
   getModelDownloads(): Promise<ModelDownloadState[]>;
   downloadModel(model: string): Promise<void>;
   cancelModelDownload(): Promise<void>;
+  /** Apaga um modelo baixado; devolve o novo estado de todos os modelos. */
+  removeModel(model: string): Promise<ModelDownloadState[]>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
   subscribeDictation(listener: (event: DictationEvent) => void): Promise<() => void>;

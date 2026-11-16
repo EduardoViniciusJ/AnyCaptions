@@ -366,3 +366,28 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .controls .language-picker ul:has(.picker-footer) { min-width: 300px; }
 /* Tradução provisória (modo Traduzir): mesma cor das palavras recentes. */
 .caption-provisional { font-weight: 700; }
+
+/* Settings split into tabs, one per thing the user came to do. */
+.settings-tabs { display: flex; gap: 2px; margin: 0 0 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow-x: auto; scrollbar-width: none; }
+.settings-tab { flex: 0 0 auto; margin-bottom: -1px; padding: 7px 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: #a3a3a3; font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.settings-tab:hover { color: #e5e5e5; }
+.settings-tab[aria-selected="true"] { color: #fff; border-bottom-color: var(--color-primary); }
+.settings-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; border-radius: 4px; }
+/* A section title that only repeats the tab's own name is not shown. */
+.settings-tabpanel > fieldset > .settings-subtitle:first-child { display: none; }
+.settings-hint { margin: 0 0 10px; line-height: 1.45; }
+/* Translation models: one card each, with where it runs (CPU or GPU). */
+.engine-list { display: grid; gap: 8px; }
+.engine-card { padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.engine-card[data-selected="true"] { border-color: var(--color-primary); background: rgba(255, 255, 255, 0.05); }
+.engine-choice { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.engine-name { font-weight: 600; }
+.engine-device { margin-left: auto; padding: 1px 7px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px; color: #c4c4c4; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; }
+.engine-device[data-device="gpu"] { color: #ffb36b; border-color: rgba(255, 179, 107, 0.5); }
+.engine-card > p { margin: 6px 0 0 28px; line-height: 1.45; }
+.engine-card .setting-row { padding: 6px 0 0 28px; }
+.engine-card .model-download-progress { width: calc(100% - 28px); margin: 6px 0 0 28px; }
+/* The actions stay in reach on every tab, however long it is. */
+.settings { padding-bottom: 0; }
+.settings-footer { position: sticky; bottom: 0; margin-top: 12px; padding: 10px 0 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); background: #0f0f0f; }
+.settings-unsaved { color: #fbbf24; font-size: 11px; white-space: nowrap; }

@@ -154,6 +154,7 @@ function setup(initial = snapshot()) {
     ]),
     downloadModel: vi.fn().mockResolvedValue(undefined),
     cancelModelDownload: vi.fn().mockResolvedValue(undefined),
+    removeModel: vi.fn().mockResolvedValue([]),
     installUpdate: vi.fn().mockResolvedValue(undefined),
     subscribeUpdateProgress: vi.fn().mockResolvedValue(vi.fn()),
     subscribeModelDownloads: vi.fn(async (callback) => {
@@ -339,9 +340,12 @@ describe("overlay controls", () => {
         .hidden,
     ).toBe(false);
     fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
-    const select = app.get<HTMLSelectElement>("#translation-engine");
-    expect(select.value).toBe("opus");
-    fireEvent.change(select, { target: { value: "riva" } });
+    const choice = (engine: string) =>
+      app.get<HTMLInputElement>(
+        `#translation-engine input[type="radio"][value="${engine}"]`,
+      );
+    expect(choice("opus").checked).toBe(true);
+    fireEvent.click(choice("riva"));
     await vi.waitFor(() =>
       expect(app.backend.setTranslationEngine).toHaveBeenCalledWith("riva"),
     );
@@ -357,7 +361,8 @@ describe("overlay controls", () => {
         },
       }),
     );
-    expect(select.value).toBe("riva");
+    expect(choice("riva").checked).toBe(true);
+    expect(choice("opus").checked).toBe(false);
     expect(
       app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]')
         .hidden,
@@ -390,11 +395,118 @@ describe("overlay controls", () => {
     expect(hidden("translate-es-us")).toBe(true);
     expect(hidden("translate-zh-tw")).toBe(true);
     fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
-    const select = app.get<HTMLSelectElement>("#translation-engine");
-    expect(select.value).toBe("m2m100");
+    const choices = Array.from(
+      app.root.querySelectorAll<HTMLInputElement>(
+        '#translation-engine input[type="radio"]',
+      ),
+    );
+    expect(choices.map((choice) => choice.value)).toEqual([
+      "opus",
+      "m2m100",
+      "riva",
+    ]);
+    expect(choices.find((choice) => choice.checked)?.value).toBe("m2m100");
+  });
+
+  it("says where each translation model runs before the user picks one", async () => {
+    const app = setup();
+    await app.ready();
+    const device = (engine: string) =>
+      app.get(`.engine-card[data-engine="${engine}"] .engine-device`)
+        .textContent;
+    expect(device("opus")).toBe("CPU");
+    expect(device("m2m100")).toBe("CPU");
+    expect(device("riva")).toBe("GPU");
+    // The general notice about CPU and GPU, and what each model is good at.
+    expect(app.get("#translation-engine-hint").textContent).toContain("CPU");
+    expect(app.get("#translation-engine-hint").textContent).toContain("GPU");
+    expect(app.get("#engine-riva-description").textContent).toContain(
+      "placa de vídeo",
+    );
+    // The bundled model has nothing to download or remove.
+    const bundled = app.get('.engine-card[data-engine="opus"]');
+    expect(bundled.textContent).toContain("Já vem com o app");
+    expect(bundled.querySelector("button")).toBeNull();
+  });
+
+  it("shows one settings tab at a time and moves between them with the arrows", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    const tabs = ["captions", "translation", "dictation", "appearance", "general"];
+    const visible = () =>
+      tabs.filter((tab) => !app.get(`#settings-panel-${tab}`).hidden);
+    expect(visible()).toEqual(["captions"]);
+    fireEvent.click(app.get("#settings-tab-translation"));
+    expect(visible()).toEqual(["translation"]);
     expect(
-      Array.from(select.options).map((option) => option.value),
-    ).toEqual(["opus", "m2m100", "riva"]);
+      app.get("#settings-tab-translation").getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.keyDown(app.get("#settings-tab-translation"), {
+      key: "ArrowRight",
+    });
+    expect(visible()).toEqual(["dictation"]);
+    fireEvent.keyDown(app.get("#settings-tab-dictation"), { key: "ArrowLeft" });
+    fireEvent.keyDown(app.get("#settings-tab-translation"), {
+      key: "ArrowLeft",
+    });
+    fireEvent.keyDown(app.get("#settings-tab-captions"), { key: "ArrowLeft" });
+    expect(visible()).toEqual(["general"]);
+  });
+
+  it("flags drafts that still need Save", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await app.ready();
+    const hint = app.get("#unsaved-changes");
+    expect(hint.hidden).toBe(true);
+    fireEvent.change(app.get<HTMLInputElement>("#shortcut"), {
+      target: { value: "F9" },
+    });
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toBe("Alterações não salvas");
+    fireEvent.change(app.get<HTMLInputElement>("#shortcut"), {
+      target: { value: snapshot().shortcut },
+    });
+    expect(hint.hidden).toBe(true);
+  });
+
+  it("warns when dictation translates into a language the model cannot write", async () => {
+    const app = setup();
+    vi.mocked(app.backend.getDictation).mockResolvedValue({
+      settings: {
+        enabled: true,
+        shortcut: "Ctrl+Space",
+        activation: "hold",
+        soundCue: true,
+        showLiveText: true,
+        limitDuration: true,
+        maxDurationSecs: 60,
+        inputId: null,
+        language: null,
+        translateTo: "pt-pt",
+      },
+      available: true,
+      phase: "idle",
+      inputs: { devices: [], selectedId: null, selectedAvailable: false },
+    });
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await app.ready();
+    // OPUS writes Portuguese of Portugal; M2M100 writes it as Portuguese.
+    expect(app.root.querySelector("#dictation-translate-status")).toBeNull();
+    app.emit(snapshot({ revision: 1, translationEngine: "m2m100" }));
+    expect(app.root.querySelector("#dictation-translate-status")).toBeNull();
+    fireEvent.click(
+      app.get('#dictation-translate-menu li[data-value="fr"]'),
+    );
+    expect(app.root.querySelector("#dictation-translate-status")).toBeNull();
+    // French needs M2M100 or Riva: with OPUS the warning explains it.
+    app.emit(snapshot({ revision: 2, translationEngine: "opus" }));
+    expect(app.get("#dictation-translate-status").textContent).toContain(
+      "não traduz para este idioma",
+    );
   });
 
   it("switches the interface language and applies the texts", async () => {
@@ -835,25 +947,100 @@ describe("overlay controls", () => {
 });
 
 describe("model download", () => {
-  it("offers the download only while the selected engine's model is missing", async () => {
+  it("offers the download on the model's own card, selected or not", async () => {
     const app = setup(snapshot({ translationEngine: "riva" }));
     await app.ready();
-    const row = app.get("#model-download");
+    const row = app.get("#model-riva");
     expect(row.hidden).toBe(false);
-    expect(app.get("#model-download-status").textContent).toBe(
+    expect(app.get("#model-riva-status").textContent).toBe(
       "O modelo deste mecanismo ainda não foi baixado.",
     );
-    expect(app.get("#model-download-action").textContent).toBe(
-      "Baixar (2.8 GB)",
-    );
+    expect(app.get("#model-riva-action").textContent).toBe("Baixar (2.8 GB)");
+    expect(app.get("#model-riva-installed").hidden).toBe(true);
+    // A model can be fetched before it is chosen.
     app.emit(snapshot({ revision: 1, translationEngine: "opus" }));
-    expect(row.hidden).toBe(true);
+    expect(row.hidden).toBe(false);
+  });
+
+  it("removes a downloaded model only after the user confirms", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    const riva = {
+      model: RIVA_MODEL,
+      kind: "translation" as const,
+      engine: "riva" as const,
+      installed: true,
+      downloadable: true,
+      downloading: false,
+      totalBytes: RIVA_BYTES,
+    };
+    vi.mocked(app.backend.getModelDownloads).mockResolvedValue([riva]);
+    vi.mocked(app.backend.removeModel).mockResolvedValue([
+      { ...riva, installed: false },
+    ]);
+    await app.ready();
+    expect(app.get("#model-riva").hidden).toBe(true);
+    expect(app.get("#model-riva-installed").hidden).toBe(false);
+    expect(app.get("#model-riva-installed-status").textContent).toBe(
+      "Baixado · 2.8 GB em disco",
+    );
+
+    // First click only asks; "Manter" backs out without touching anything.
+    fireEvent.click(app.get("#model-riva-remove"));
+    expect(app.get("#model-riva-installed-status").textContent).toBe(
+      "Remover este modelo e liberar 2.8 GB? Você pode baixar de novo quando quiser.",
+    );
+    expect(app.backend.removeModel).not.toHaveBeenCalled();
+    fireEvent.click(app.get("#model-riva-remove-cancel"));
+    expect(app.root.querySelector("#model-riva-remove-cancel")).toBeNull();
+    expect(app.backend.removeModel).not.toHaveBeenCalled();
+
+    fireEvent.click(app.get("#model-riva-remove"));
+    fireEvent.click(app.get("#model-riva-remove"));
+    await vi.waitFor(() =>
+      expect(app.backend.removeModel).toHaveBeenCalledWith(RIVA_MODEL),
+    );
+    // Gone from disk: the download is offered again.
+    await vi.waitFor(() =>
+      expect(app.get("#model-riva-installed").hidden).toBe(true),
+    );
+    expect(app.get("#model-riva").hidden).toBe(false);
+    expect(app.get("#model-riva-action").textContent).toBe("Baixar (2.8 GB)");
+  });
+
+  it("explains why a model in use could not be removed and keeps it listed", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    vi.mocked(app.backend.getModelDownloads).mockResolvedValue([
+      {
+        model: RIVA_MODEL,
+        kind: "translation",
+        engine: "riva",
+        installed: true,
+        downloadable: true,
+        downloading: false,
+        totalBytes: RIVA_BYTES,
+      },
+    ]);
+    vi.mocked(app.backend.removeModel).mockRejectedValue({
+      kind: "model-in-use",
+    });
+    await app.ready();
+    fireEvent.click(app.get("#model-riva-remove"));
+    fireEvent.click(app.get("#model-riva-remove"));
+    await vi.waitFor(() =>
+      expect(app.root.textContent).toContain(
+        "O modelo está em uso e não pôde ser removido.",
+      ),
+    );
+    expect(app.get("#model-riva-installed").hidden).toBe(false);
+    expect(app.get("#model-riva-installed-status").textContent).toBe(
+      "Baixado · 2.8 GB em disco",
+    );
   });
 
   it("starts the download, shows progress and lets the user cancel", async () => {
     const app = setup(snapshot({ translationEngine: "riva" }));
     await app.ready();
-    fireEvent.click(app.get<HTMLButtonElement>("#model-download-action"));
+    fireEvent.click(app.get<HTMLButtonElement>("#model-riva-action"));
     expect(app.backend.downloadModel).toHaveBeenCalledWith(RIVA_MODEL);
     app.emitModelDownload({
       model: RIVA_MODEL,
@@ -862,11 +1049,11 @@ describe("model download", () => {
       totalBytes: RIVA_BYTES,
       reason: null,
     });
-    expect(app.get("#model-download-status").textContent).toBe("Baixando… 50%");
-    const progress = app.get<HTMLProgressElement>("#model-download-progress");
+    expect(app.get("#model-riva-status").textContent).toBe("Baixando… 50%");
+    const progress = app.get<HTMLProgressElement>("#model-riva-progress");
     expect(progress.hidden).toBe(false);
     expect(progress.value).toBe(50);
-    fireEvent.click(app.get<HTMLButtonElement>("#model-download-action"));
+    fireEvent.click(app.get<HTMLButtonElement>("#model-riva-action"));
     expect(app.backend.cancelModelDownload).toHaveBeenCalled();
   });
 
@@ -880,14 +1067,14 @@ describe("model download", () => {
       totalBytes: null,
       reason: "corrupted",
     });
-    expect(app.get("#model-download-status").textContent).toBe(
+    expect(app.get("#model-riva-status").textContent).toBe(
       "O arquivo baixado não passou na verificação. Tente de novo.",
     );
-    expect(app.get("#model-download-action").textContent).toBe(
+    expect(app.get("#model-riva-action").textContent).toBe(
       "Tentar de novo",
     );
     expect(
-      app.get<HTMLProgressElement>("#model-download-progress").hidden,
+      app.get<HTMLProgressElement>("#model-riva-progress").hidden,
     ).toBe(true);
   });
 
@@ -913,7 +1100,7 @@ describe("model download", () => {
       reason: null,
     });
     await vi.waitFor(() =>
-      expect(app.get("#model-download").hidden).toBe(true),
+      expect(app.get("#model-riva").hidden).toBe(true),
     );
   });
 });

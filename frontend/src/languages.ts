@@ -7,14 +7,20 @@ import type { MessageKey } from "./i18n";
  */
 export interface TranslationEngineOption {
   id: TranslationEngine;
-  /** Rótulo traduzível com nome e características do mecanismo. */
-  labelKey: MessageKey;
+  /** Nome do modelo; é um nome próprio, igual em todos os idiomas. */
+  name: string;
+  /** Onde o modelo roda: no processador ou na placa de vídeo. */
+  device: "cpu" | "gpu";
+  /** Texto traduzível: o que o modelo traduz e quanto pesa. */
+  descriptionKey: MessageKey;
+  /** Vem no instalador: não há o que baixar nem remover. */
+  bundled: boolean;
 }
 
 export const TRANSLATION_ENGINES: TranslationEngineOption[] = [
-  { id: "opus", labelKey: "engineOpus" },
-  { id: "m2m100", labelKey: "engineM2m100" },
-  { id: "riva", labelKey: "engineRiva" },
+  { id: "opus", name: "OPUS-MT", device: "cpu", descriptionKey: "engineOpus", bundled: true },
+  { id: "m2m100", name: "M2M100", device: "cpu", descriptionKey: "engineM2m100", bundled: false },
+  { id: "riva", name: "Riva", device: "gpu", descriptionKey: "engineRiva", bundled: false },
 ];
 
 /** Modos servidos por cada mecanismo; o backend valida, esta tabela só filtra o menu. */
@@ -36,6 +42,21 @@ const ENGINE_MODES: Record<TranslationEngine, "all" | ReadonlySet<CaptionMode>> 
 export function engineServes(engine: TranslationEngine, mode: CaptionMode): boolean {
   const modes = ENGINE_MODES[engine] ?? "all";
   return modes === "all" || modes.has(mode);
+}
+
+/** Variantes regionais que o M2M100 escreve com o código geral do idioma. */
+const M2M100_SHARED_TARGETS = new Set(["pt-pt", "es-us", "zh-tw"]);
+
+/**
+ * Se o ditado consegue traduzir para `target` com `engine`. O alvo do ditado é
+ * salvo à parte e pode ter sido escolhido com outro modelo; o M2M100 ainda
+ * atende as variantes regionais que não lista (saem no idioma geral).
+ */
+export function dictationTargetServed(engine: TranslationEngine, target: string): boolean {
+  return (
+    engineServes(engine, `translate-${target}` as CaptionMode) ||
+    (engine === "m2m100" && M2M100_SHARED_TARGETS.has(target))
+  );
 }
 
 /**
