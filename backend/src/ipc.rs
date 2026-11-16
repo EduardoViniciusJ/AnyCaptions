@@ -81,6 +81,7 @@ pub enum CommandError {
     BrowserUnavailable,
     DownloadBusy,
     DownloadUnavailable,
+    ModelInUse,
     UpdateBusy,
     UpdateUnavailable,
     Update(UpdateError),
@@ -867,6 +868,32 @@ pub struct ModelDownloadState {
     pub total_bytes: u64,
 }
 
+/// A model the settings offer to download and remove: the catalog profile,
+/// the translation engine it serves (`None` for speaker labels) and its size.
+type OfferedModel = (
+    &'static crate::models::ModelProfile,
+    Option<TranslationEngine>,
+    u64,
+);
+
+const OFFERED_MODELS: [OfferedModel; 3] = [
+    (
+        &catalog::RIVA_TRANSLATE_Q4,
+        Some(TranslationEngine::Riva),
+        download::RIVA_DOWNLOAD_BYTES,
+    ),
+    (
+        &catalog::M2M100_418M,
+        Some(TranslationEngine::M2m100),
+        download::M2M100_DOWNLOAD_BYTES,
+    ),
+    (
+        &catalog::NEMOTRON_3_DIARIZATION_Q8,
+        None,
+        download::DIARIZATION_DOWNLOAD_BYTES,
+    ),
+];
+
 #[tauri::command]
 pub fn get_model_downloads<R: Runtime>(
     window: WebviewWindow<R>,
@@ -874,27 +901,16 @@ pub fn get_model_downloads<R: Runtime>(
     downloads: State<'_, DownloadManager>,
 ) -> Result<Vec<ModelDownloadState>, CommandError> {
     authorize(window.label())?;
+    Ok(model_download_states(&app, &downloads))
+}
+
+fn model_download_states<R: Runtime>(
+    app: &AppHandle<R>,
+    downloads: &DownloadManager,
+) -> Vec<ModelDownloadState> {
     let sessions = app.try_state::<CaptionSessionManager>();
     let active = downloads.active_model();
-    // (model, the translation engine it serves, size shown on the button)
-    let offered = [
-        (
-            &catalog::RIVA_TRANSLATE_Q4,
-            Some(TranslationEngine::Riva),
-            download::RIVA_DOWNLOAD_BYTES,
-        ),
-        (
-            &catalog::M2M100_418M,
-            Some(TranslationEngine::M2m100),
-            download::M2M100_DOWNLOAD_BYTES,
-        ),
-        (
-            &catalog::NEMOTRON_3_DIARIZATION_Q8,
-            None,
-            download::DIARIZATION_DOWNLOAD_BYTES,
-        ),
-    ];
-    Ok(offered
+    OFFERED_MODELS
         .into_iter()
         .map(|(profile, engine, total_bytes)| ModelDownloadState {
             model: profile.id,
@@ -908,7 +924,39 @@ pub fn get_model_downloads<R: Runtime>(
             downloading: active == Some(profile.id),
             total_bytes,
         })
-        .collect())
+        .collect()
+}
+
+/// Deletes a downloaded model to free disk space; it can be downloaded again.
+/// Captions stop first and the loaded copy is released, because a model in
+/// use cannot be deleted. Returns the new state of every offered model.
+#[tauri::command]
+pub fn remove_model<R: Runtime>(
+    window: WebviewWindow<R>,
+    app: AppHandle<R>,
+    controller: State<'_, Controller>,
+    downloads: State<'_, DownloadManager>,
+    request: DownloadModelRequest,
+) -> Result<Vec<ModelDownloadState>, CommandError> {
+    authorize(window.label())?;
+    let (profile, engine, _) = OFFERED_MODELS
+        .into_iter()
+        .find(|(profile, _, _)| profile.id == request.model)
+        .ok_or(CommandError::DownloadUnavailable)?;
+    if downloads.active_model() == Some(profile.id) {
+        return Err(CommandError::DownloadBusy);
+    }
+    stop_live_capture(&app, &window, &controller)?;
+    if let Some(sessions) = app.try_state::<CaptionSessionManager>() {
+        sessions.unload_model(engine);
+    }
+    download::remove(profile.id, &crate::models::models_root()).map_err(|error| match error {
+        download::RemoveError::NotRemovable => CommandError::DownloadUnavailable,
+        download::RemoveError::InUse => CommandError::ModelInUse,
+    })?;
+    // Availability changed: the overlay disables what needed this model.
+    let _ = reprobe_resources(&app, &window, &controller);
+    Ok(model_download_states(&app, &downloads))
 }
 
 #[tauri::command]

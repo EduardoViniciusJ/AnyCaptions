@@ -135,6 +135,52 @@ impl DownloadableModel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoveError {
+    /// Not a model the app can download again (bundled or unknown).
+    NotRemovable,
+    /// The file is still open somewhere and could not be deleted.
+    InUse,
+}
+
+/// Deletes a downloaded model from `root`, with its companion files, its
+/// verification stamps and any leftover partial download. Only models the app
+/// can fetch again are removable, so the user can always undo it; the models
+/// the installer ships are refused.
+///
+/// The main file goes first: while it exists the model is whole, and once it
+/// is gone the model counts as not installed whatever happens to the small
+/// files. Removing a model that is not on disk succeeds.
+pub fn remove(model_id: &str, root: &Path) -> Result<(), RemoveError> {
+    let model = DOWNLOADABLE_MODELS
+        .iter()
+        .find(|model| model.profile.id == model_id)
+        .ok_or(RemoveError::NotRemovable)?;
+    let main = model.profile.path_in(root);
+    delete(&main)?;
+    for companion in model.companions {
+        let _ = delete(&companion.path_in(root));
+    }
+    if let Some(dir) = main.parent() {
+        // Only succeeds when nothing else is left in the model's folder.
+        let _ = fs::remove_dir(dir);
+    }
+    Ok(())
+}
+
+fn delete(path: &Path) -> Result<(), RemoveError> {
+    match fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(RemoveError::InUse),
+    }
+    super::forget_verification(path);
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    let _ = fs::remove_file(PathBuf::from(part));
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DownloadPhase {
@@ -389,6 +435,68 @@ fn stream_to_part(
 mod tests {
     use super::*;
     use crate::models::ModelKind;
+
+    fn temp_root(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("anycaptions-remove-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        root
+    }
+
+    #[test]
+    fn removing_a_model_deletes_its_files_stamps_and_folder() {
+        let root = temp_root("m2m");
+        let files = [
+            &catalog::M2M100_418M,
+            &catalog::M2M100_CONFIG,
+            &catalog::M2M100_VOCABULARY,
+            &catalog::M2M100_TOKENIZER,
+        ];
+        let dir = catalog::M2M100_418M.path_in(&root);
+        let dir = dir.parent().unwrap();
+        fs::create_dir_all(dir).unwrap();
+        for profile in files {
+            let path = profile.path_in(&root);
+            fs::write(&path, b"weights").unwrap();
+            fs::write(format!("{}.verified", path.display()), b"stamp").unwrap();
+        }
+        fs::write(dir.join("model.bin.part"), b"half").unwrap();
+
+        assert_eq!(remove(catalog::M2M100_418M.id, &root), Ok(()));
+        assert!(!dir.exists(), "nothing of the model is left behind");
+        // Removing again is not an error: the user only wants it gone.
+        assert_eq!(remove(catalog::M2M100_418M.id, &root), Ok(()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn removing_keeps_files_the_app_did_not_put_there() {
+        let root = temp_root("extra");
+        let model = catalog::NEMOTRON_3_DIARIZATION_Q8.path_in(&root);
+        let dir = model.parent().unwrap();
+        fs::create_dir_all(dir).unwrap();
+        fs::write(&model, b"weights").unwrap();
+        fs::write(dir.join("notes.txt"), b"mine").unwrap();
+
+        assert_eq!(remove(catalog::NEMOTRON_3_DIARIZATION_Q8.id, &root), Ok(()));
+        assert!(!model.exists());
+        assert!(dir.join("notes.txt").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn bundled_and_unknown_models_cannot_be_removed() {
+        let root = temp_root("bundled");
+        let bundled = catalog::NEMOTRON_STREAMING_Q8.path_in(&root);
+        fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        fs::write(&bundled, b"weights").unwrap();
+
+        for id in [catalog::NEMOTRON_STREAMING_Q8.id, "../../outside", ""] {
+            assert_eq!(remove(id, &root), Err(RemoveError::NotRemovable), "{id}");
+        }
+        assert!(bundled.is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
 
     // SHA-256 of the bytes "model".
     const TEST_PROFILE: ModelProfile = ModelProfile {

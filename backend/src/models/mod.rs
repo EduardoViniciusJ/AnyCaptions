@@ -8,7 +8,7 @@ mod verify;
 use std::path::{Path, PathBuf};
 
 pub use verify::ModelProfileError;
-pub(crate) use verify::digest_matches;
+pub(crate) use verify::{digest_matches, forget as forget_verification};
 
 /// What a model does. Each kind owns a folder under the models root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]

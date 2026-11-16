@@ -122,6 +122,10 @@ pub trait ProcessorFactory: Send + Sync {
     ) -> Result<Box<dyn Translator>, DomainError> {
         Err(DomainError::TranslationUnavailable)
     }
+    /// Lets go of whatever keeps a downloadable model's file open, so it can
+    /// be deleted: `Some(engine)` is that engine's translator, `None` the
+    /// speaker-label model. Sessions still running keep their own handle.
+    fn unload(&self, _engine: Option<TranslationEngine>) {}
 }
 
 pub struct NativeProcessorFactory {
@@ -390,6 +394,21 @@ impl ProcessorFactory for NativeProcessorFactory {
         }
         .ok_or(DomainError::TranslationUnavailable)
     }
+
+    fn unload(&self, engine: Option<TranslationEngine>) {
+        match engine {
+            Some(TranslationEngine::Opus) => release(&self.opus_translator),
+            Some(TranslationEngine::Riva) => release(&self.riva_translator),
+            Some(TranslationEngine::M2m100) => release(&self.m2m_translator),
+            // The diarizer lives inside a recognizer; the ones carrying it are
+            // dropped and the next session loads a plain one again.
+            None => {
+                if let Ok(mut cached) = self.asr_models.lock() {
+                    cached.retain(|(_, model)| !model.has_diarization());
+                }
+            }
+        }
+    }
 }
 
 struct ActiveCoordinator {
@@ -464,6 +483,11 @@ impl CaptionSessionManager {
     /// Whether `engine` has its library and model on disk right now.
     pub fn translation_available(&self, engine: TranslationEngine) -> bool {
         self.factory.translation_available(engine)
+    }
+
+    /// Frees the loaded copy of a model that is about to be deleted.
+    pub fn unload_model(&self, engine: Option<TranslationEngine>) {
+        self.factory.unload(engine);
     }
 
     /// Whether the diarization model is installed and loadable right now.

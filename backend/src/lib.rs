@@ -45,6 +45,7 @@ pub fn builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<
             ipc::get_model_downloads,
             ipc::download_model,
             ipc::cancel_model_download,
+            ipc::remove_model,
         ])
 }
 

@@ -92,6 +92,14 @@ pub(crate) fn digest_matches(hasher: Sha256, expected: &str) -> bool {
     hex.eq_ignore_ascii_case(expected)
 }
 
+/// Forgets a model file that was deleted: its stamp and its cache entry.
+pub(crate) fn forget(path: &Path) {
+    let _ = fs::remove_file(stamp_path(path));
+    if let Ok(mut cache) = VERIFIED_FILES.lock() {
+        cache.retain(|cached| cached.0 != path);
+    }
+}
+
 fn remember(entry: VerifiedFile) {
     if let Ok(mut cache) = VERIFIED_FILES.lock() {
         cache.retain(|cached| cached.0 != entry.0);
