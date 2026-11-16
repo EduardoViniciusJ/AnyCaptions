@@ -55,3 +55,11 @@ custom-protocol = ["tauri/custom-protocol"]
 # Hashing the ~740 MB model on every debug start is slow without optimization.
 [profile.dev.package.sha2]
 opt-level = 3
+
+# Release: whole-program optimization and no debug symbols in the shipped
+# binary. Panics keep unwinding (the default): the audio pipeline catches a
+# worker panic and reports it instead of taking the app down.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

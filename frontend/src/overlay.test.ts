@@ -551,7 +551,58 @@ describe("overlay controls", () => {
     expect(app.get<HTMLInputElement>("#caption-background").checked).toBe(
       false,
     );
-    expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false);
+    await vi.waitFor(() =>
+      expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(
+        false,
+      ),
+    );
+  });
+
+  it("restore default also returns the languages to a fresh install", async () => {
+    const app = setup(
+      snapshot({ uiLanguage: "pt-br", sourceLanguage: "pt-BR" }),
+    );
+    vi.mocked(app.backend.getDictation).mockResolvedValue({
+      settings: {
+        enabled: true,
+        shortcut: "Ctrl+Space",
+        activation: "hold",
+        soundCue: true,
+        showLiveText: true,
+        limitDuration: true,
+        maxDurationSecs: 60,
+        inputId: null,
+        language: "pt-BR",
+        translateTo: null,
+      },
+      available: true,
+      phase: "idle",
+      inputs: { devices: [], selectedId: null, selectedAvailable: false },
+    });
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await vi.waitFor(() =>
+      expect(app.get<HTMLButtonElement>("#reset-appearance").disabled).toBe(
+        false,
+      ),
+    );
+    fireEvent.click(app.get<HTMLButtonElement>("#reset-appearance"));
+    // Interface in English and automatic spoken language, right away.
+    await vi.waitFor(() =>
+      expect(app.backend.setSourceLanguage).toHaveBeenCalledWith(null),
+    );
+    expect(app.backend.setUiLanguage).toHaveBeenCalledWith("en");
+    // The dictation language is a draft like the rest of the dictation
+    // section: Save sends it, now automatic.
+    await vi.waitFor(() =>
+      expect(app.get<HTMLButtonElement>("#save-settings").disabled).toBe(false),
+    );
+    fireEvent.click(app.get<HTMLButtonElement>("#save-settings"));
+    await vi.waitFor(() =>
+      expect(app.backend.setDictation).toHaveBeenCalledWith(
+        expect.objectContaining({ language: null, enabled: true }),
+      ),
+    );
   });
 
   it("sends the edited shortcut and reflects a locked state from Rust", async () => {

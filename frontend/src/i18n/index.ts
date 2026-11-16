@@ -37,8 +37,10 @@ const locales: Record<string, Messages> = {
   ru,
 };
 
-let currentTag = "pt-br";
-let current: Messages = ptBR;
+// Same default as the backend (`UiLanguage::default`): a fresh install, or a
+// window rendered before the saved language arrives, shows English.
+let currentTag = "en";
+let current: Messages = en;
 
 /** Troca o idioma atual; devolve `true` quando ele mudou. */
 export function setLocale(tag: string): boolean {

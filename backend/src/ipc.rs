@@ -574,6 +574,7 @@ pub fn set_ui_language<R: Runtime>(
     authorize(window.label())?;
     let state = controller.update(&window, |state| state.set_ui_language(request.language))?;
     persist(&app, &state)?;
+    crate::recovery::relabel_tray(&app, state.ui_language);
     Ok(state)
 }
 

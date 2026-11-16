@@ -6,11 +6,92 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::{
-    domain::{CaptureState, WindowMode},
+    domain::{CaptureState, UiLanguage, WindowMode},
     ipc::{CommandError, Controller, start_live_capture, stop_live_capture},
     preferences::PreferenceStore,
     transcription::session::CaptionSessionManager,
 };
+
+/// Tray menu texts, in the interface language.
+struct TrayLabels {
+    show: &'static str,
+    capture: &'static str,
+    capture_unavailable: &'static str,
+    lock: &'static str,
+    quit: &'static str,
+}
+
+fn tray_labels(language: UiLanguage) -> TrayLabels {
+    match language.tag() {
+        "pt-br" => TrayLabels {
+            show: "Mostrar e editar",
+            capture: "Iniciar/parar legendas",
+            capture_unavailable: "Iniciar/parar (áudio e modelos indisponíveis)",
+            lock: "Bloquear/desbloquear",
+            quit: "Sair",
+        },
+        "es" => TrayLabels {
+            show: "Mostrar y editar",
+            capture: "Iniciar/detener subtítulos",
+            capture_unavailable: "Iniciar/detener (audio y modelos no disponibles)",
+            lock: "Bloquear/desbloquear",
+            quit: "Salir",
+        },
+        "fr" => TrayLabels {
+            show: "Afficher et modifier",
+            capture: "Démarrer/arrêter les sous-titres",
+            capture_unavailable: "Démarrer/arrêter (audio et modèles indisponibles)",
+            lock: "Verrouiller/déverrouiller",
+            quit: "Quitter",
+        },
+        "ru" => TrayLabels {
+            show: "Показать и изменить",
+            capture: "Запустить/остановить субтитры",
+            capture_unavailable: "Запустить/остановить (аудио и модели недоступны)",
+            lock: "Закрепить/открепить",
+            quit: "Выход",
+        },
+        "zh-cn" => TrayLabels {
+            show: "显示并编辑",
+            capture: "开始/停止字幕",
+            capture_unavailable: "开始/停止（音频和模型不可用）",
+            lock: "锁定/解锁",
+            quit: "退出",
+        },
+        _ => TrayLabels {
+            show: "Show and edit",
+            capture: "Start/stop captions",
+            capture_unavailable: "Start/stop (audio and models unavailable)",
+            lock: "Lock/unlock",
+            quit: "Quit",
+        },
+    }
+}
+
+/// The tray items whose text follows the interface language.
+struct TrayItems {
+    show: MenuItem<tauri::Wry>,
+    capture: MenuItem<tauri::Wry>,
+    lock: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+    can_capture: bool,
+}
+
+/// Renames the tray menu after an interface language change.
+pub(crate) fn relabel_tray<R: Runtime>(app: &AppHandle<R>, language: UiLanguage) {
+    let Some(items) = app.try_state::<TrayItems>() else {
+        return;
+    };
+    let labels = tray_labels(language);
+    let _ = items.show.set_text(labels.show);
+    let _ = items.capture.set_text(if items.can_capture {
+        labels.capture
+    } else {
+        labels.capture_unavailable
+    });
+    let _ = items.lock.set_text(labels.lock);
+    let _ = items.quit.set_text(labels.quit);
+}
 
 fn save_position<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("overlay")
@@ -61,16 +142,29 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         .state::<Controller>()
         .snapshot()
         .is_ok_and(|s| s.resources.audio_capture && s.resources.transcription);
+    let language = app
+        .state::<Controller>()
+        .snapshot()
+        .map(|state| state.ui_language)
+        .unwrap_or_default();
+    let labels = tray_labels(language);
     let capture_label = if can_capture {
-        "Iniciar/parar legendas"
+        labels.capture
     } else {
-        "Iniciar/parar (áudio e modelos indisponíveis)"
+        labels.capture_unavailable
     };
-    let show = MenuItem::with_id(app, "show", "Mostrar e editar", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", labels.show, true, None::<&str>)?;
     let capture = MenuItem::with_id(app, "capture", capture_label, can_capture, None::<&str>)?;
-    let lock = MenuItem::with_id(app, "lock", "Bloquear/desbloquear", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+    let lock = MenuItem::with_id(app, "lock", labels.lock, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &capture, &lock, &quit])?;
+    app.manage(TrayItems {
+        show: show.clone(),
+        capture: capture.clone(),
+        lock: lock.clone(),
+        quit: quit.clone(),
+        can_capture,
+    });
     let icon = app
         .default_window_icon()
         .cloned()

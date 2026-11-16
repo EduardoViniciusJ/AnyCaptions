@@ -2,6 +2,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DictationIndicator, dictationErrorMessage } from "./dictation";
 import type { DictationEvent } from "./contracts";
+import { setLocale } from "./i18n";
+
+// The assertions read the Portuguese texts; English is the app default.
+setLocale("pt-br");
 
 function indicator() {
   const root = document.createElement("div");
