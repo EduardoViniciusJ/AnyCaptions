@@ -338,6 +338,8 @@ struct QueueState {
 enum Job {
     Final(CaptionUpdate),
     Partial(CaptionUpdate),
+    /// The held sentence fragment waited long enough; translate it alone.
+    Flush,
 }
 
 impl StageQueue {
@@ -383,7 +385,10 @@ impl StageQueue {
     /// Blocks until there is work: a final, or the pending interim once
     /// `partial_not_before` has passed. `None` once closed and the finals are
     /// drained (a leftover interim is not worth translating then).
-    fn pop(&self, partial_not_before: Instant) -> Option<Job> {
+    ///
+    /// `flush_at` is when a held sentence fragment must be translated even
+    /// though no final arrived to complete it ([`Job::Flush`]).
+    fn pop(&self, partial_not_before: Instant, flush_at: Option<Instant>) -> Option<Job> {
         let mut state = self.state.lock().ok()?;
         loop {
             if let Some(update) = state.pending.pop_front() {
@@ -399,19 +404,21 @@ impl StageQueue {
             if state.closed {
                 return None;
             }
-            if state.partial.is_some() {
-                let now = Instant::now();
-                if now >= partial_not_before {
-                    return state.partial.take().map(Job::Partial);
-                }
-                let (guard, _) = self
-                    .available
-                    .wait_timeout(state, partial_not_before - now)
-                    .ok()?;
-                state = guard;
-                continue;
+            let now = Instant::now();
+            if state.partial.is_some() && now >= partial_not_before {
+                return state.partial.take().map(Job::Partial);
             }
-            state = self.available.wait(state).ok()?;
+            if flush_at.is_some_and(|at| now >= at) {
+                return Some(Job::Flush);
+            }
+            let deadline = [state.partial.as_ref().map(|_| partial_not_before), flush_at]
+                .into_iter()
+                .flatten()
+                .min();
+            state = match deadline {
+                Some(at) => self.available.wait_timeout(state, at - now).ok()?.0,
+                None => self.available.wait(state).ok()?,
+            };
         }
     }
 
@@ -421,6 +428,87 @@ impl StageQueue {
         }
         self.available.notify_all();
     }
+}
+
+/// The recognizer closes a final at short pauses (200 ms in translate mode),
+/// so one spoken sentence often arrives as several finals ("Because it is a",
+/// "Swedish store up there."). Translated one by one, each came out capitalized
+/// and without context ("Porque É um sueco loja Lá em cima"). A final whose end
+/// is not a sentence mark is held and joined with the next one.
+const CARRY_MAX_WAIT: Duration = Duration::from_millis(1_500);
+
+/// A held fragment never grows past this; longer text is translated as is.
+const MAX_CARRY_CHARS: usize = 200;
+
+struct Carry {
+    /// The final the tail came from (segment and language for the overlay).
+    update: CaptionUpdate,
+    text: String,
+    /// When the first held piece arrived: bounds the extra latency.
+    since: Instant,
+    /// Shown inside a newer segment's provisional translation.
+    attached: bool,
+}
+
+fn ends_sentence(text: &str) -> bool {
+    text.trim_end()
+        .chars()
+        .last()
+        .is_some_and(|ch| matches!(ch, '.' | '!' | '?' | '…'))
+}
+
+/// Splits `text` after its last sentence mark: the finished sentences and the
+/// unfinished tail (empty when the text ends a sentence).
+pub(crate) fn split_unfinished_tail(text: &str) -> (&str, &str) {
+    let text = text.trim();
+    if ends_sentence(text) {
+        return (text, "");
+    }
+    match text.rfind(['.', '!', '?', '…']) {
+        Some(index) => {
+            let mark = text[index..].chars().next().map_or(1, char::len_utf8);
+            (text[..index + mark].trim(), text[index + mark..].trim())
+        }
+        None => ("", text),
+    }
+}
+
+/// Joins a held fragment with the text that continues it. The recognizer
+/// capitalizes every final, so the continuation's first word goes back to
+/// lowercase unless it looks like something to keep: "I", its contractions
+/// ("I'm") and acronyms ("NASA").
+pub(crate) fn join_continuation(held: &str, next: &str) -> String {
+    let next = next.trim();
+    if held.trim().is_empty() {
+        return next.to_owned();
+    }
+    let first = next.split_whitespace().next().unwrap_or("");
+    let keep = first == "I"
+        || first.starts_with("I'")
+        || first.starts_with("I\u{2019}")
+        || first.chars().skip(1).any(char::is_uppercase)
+        || first.chars().count() < 2;
+    let next = if keep {
+        next.to_owned()
+    } else {
+        let mut chars = next.chars();
+        chars
+            .next()
+            .map(|ch| ch.to_lowercase().chain(chars).collect())
+            .unwrap_or_default()
+    };
+    match (held.trim(), next.as_str()) {
+        ("", rest) => rest.to_owned(),
+        (start, "") => start.to_owned(),
+        (start, rest) => format!("{start} {rest}"),
+    }
+}
+
+fn held_units(text: &str) -> Vec<(Option<u32>, String)> {
+    split_sentences(text)
+        .into_iter()
+        .map(|sentence| (None, sentence))
+        .collect()
 }
 
 /// Owns the translation worker. [`TranslationStage::finish`] drains the queue;
@@ -456,15 +544,85 @@ impl TranslationStage {
                 // Segment and input of the last provisional translation, so an
                 // interim that only changed in its newest word is not redone.
                 let mut last_partial: Option<(u32, String)> = None;
-                while let Some(job) = worker_queue.pop(partial_not_before) {
+                // The tail of the last final when it did not end a sentence:
+                // translated together with the next final instead of alone.
+                let mut carry: Option<Carry> = None;
+                // Newest translated revision per segment, so a segment emitted
+                // in several steps (sentences now, held tail later) keeps
+                // increasing revisions the overlay accepts.
+                let mut last_emitted: (u32, u32) = (0, 0);
+                loop {
+                    let flush_at = carry
+                        .as_ref()
+                        .filter(|held| !held.attached)
+                        .map(|held| held.since + CARRY_MAX_WAIT);
+                    let job = worker_queue.pop(partial_not_before, flush_at);
                     if stop_flag.load(Ordering::Acquire) {
                         return;
                     }
-                    let update = match job {
-                        Job::Final(update) => update,
-                        Job::Partial(update) => {
-                            let Some(input) = provisional_text(&update.text) else {
+                    let (update, units, closes_segment) = match job {
+                        // Closed and drained: the held tail still deserves a translation.
+                        None => match carry.take() {
+                            Some(held) => {
+                                let units = held_units(&held.text);
+                                (held.update, units, true)
+                            }
+                            None => return,
+                        },
+                        Some(Job::Flush) => match carry.take() {
+                            Some(held) => {
+                                let units = held_units(&held.text);
+                                (held.update, units, true)
+                            }
+                            None => continue,
+                        },
+                        Some(Job::Final(update)) => {
+                            if update.speakers.is_empty() {
+                                let (text, since) = match carry.take() {
+                                    Some(held) => (
+                                        join_continuation(&held.text, &update.text),
+                                        Some(held.since),
+                                    ),
+                                    None => (update.text.trim().to_owned(), None),
+                                };
+                                let (head, tail) = split_unfinished_tail(&text);
+                                if !tail.is_empty() && text.chars().count() < MAX_CARRY_CHARS {
+                                    let units = held_units(head);
+                                    carry = Some(Carry {
+                                        update: update.clone(),
+                                        text: tail.to_owned(),
+                                        since: since.unwrap_or_else(Instant::now),
+                                        attached: false,
+                                    });
+                                    if units.is_empty() {
+                                        continue;
+                                    }
+                                    (update, units, false)
+                                } else {
+                                    let units = held_units(&text);
+                                    (update, units, true)
+                                }
+                            } else {
+                                // Speaker spans keep their own units; a held
+                                // tail goes first, unlabeled.
+                                let mut units: Vec<(Option<u32>, String)> = carry
+                                    .take()
+                                    .map(|held| (None, held.text))
+                                    .into_iter()
+                                    .collect();
+                                units.extend(translation_units(&update));
+                                (update, units, true)
+                            }
+                        }
+                        Some(Job::Partial(update)) => {
+                            let Some(interim) = provisional_text(&update.text) else {
                                 continue;
+                            };
+                            // A held tail is the start of this sentence: show
+                            // them translated together.
+                            let input = match carry.as_ref() {
+                                Some(held) => join_continuation(&held.text, &interim),
+                                None => interim,
                             };
                             if last_partial
                                 .as_ref()
@@ -493,6 +651,13 @@ impl TranslationStage {
                                     last_partial = Some((update.segment_id, input));
                                     if text.is_empty() {
                                         continue;
+                                    }
+                                    // The overlay now shows the held tail inside
+                                    // this newer segment, so the tail must finish
+                                    // with it (a timeout would emit an older one).
+                                    if let Some(held) = carry.as_mut() {
+                                        held.attached = true;
+                                        held.update.segment_id = update.segment_id;
                                     }
                                     // The whole interim is one unit; label it with
                                     // whoever is speaking its newest words.
@@ -536,12 +701,16 @@ impl TranslationStage {
                     };
                     let source = source.as_str();
                     // Long finals translate sentence by sentence, and each
-                    // translated sentence is shown as its own block (the next
-                    // one replaces it): literal, stable text instead of a line
-                    // that keeps rewriting itself. Speaker spans are units of
-                    // their own, so the label travels with its translation.
-                    let units = translation_units(&update);
+                    // translated sentence is shown as its own block: literal,
+                    // stable text instead of a line that keeps rewriting
+                    // itself. Speaker spans are units of their own, so the
+                    // label travels with its translation.
                     let total = units.len();
+                    let base = if last_emitted.0 == update.segment_id {
+                        last_emitted.1
+                    } else {
+                        0
+                    };
                     for (index, (speaker, sentence)) in units.into_iter().enumerate() {
                         if stop_flag.load(Ordering::Acquire) {
                             return;
@@ -568,11 +737,13 @@ impl TranslationStage {
                                         }]
                                     })
                                     .unwrap_or_default();
+                                let revision = base + (index + 1) as u32;
+                                last_emitted = (update.segment_id, revision);
                                 let translated = CaptionUpdate {
                                     text,
                                     language: Some(target.tag().to_owned()),
-                                    revision: (index + 1) as u32,
-                                    is_final: index + 1 == total,
+                                    revision,
+                                    is_final: closes_segment && index + 1 == total,
                                     speakers,
                                     ..update.clone()
                                 };
@@ -931,8 +1102,8 @@ mod tests {
             .withf(|text, source, target| {
                 target == "pt-br"
                     && match text {
-                        "First" => source == "es-ES",
-                        "Second" => source == "es-ES", // sticky: last detected language
+                        "First." => source == "es-ES",
+                        "Second." => source == "es-ES", // sticky: last detected language
                         _ => false,
                     }
             })
@@ -956,17 +1127,17 @@ mod tests {
         .unwrap();
 
         stage
-            .submit(final_update(1, "First", Some("es-ES")))
+            .submit(final_update(1, "First.", Some("es-ES")))
             .unwrap();
-        stage.submit(final_update(2, "Second", None)).unwrap();
+        stage.submit(final_update(2, "Second.", None)).unwrap();
         stage.finish();
 
         let emitted = emitted.lock().unwrap();
         assert_eq!(emitted.len(), 2);
-        assert_eq!(emitted[0].text, "PT First");
+        assert_eq!(emitted[0].text, "PT First.");
         assert_eq!(emitted[0].language.as_deref(), Some("pt-br"));
         assert!(emitted[0].is_final);
-        assert_eq!(emitted[1].text, "PT Second");
+        assert_eq!(emitted[1].text, "PT Second.");
         assert_eq!(
             (emitted[0].segment_id, emitted[1].segment_id),
             (1, 2),
@@ -1058,6 +1229,179 @@ mod tests {
     }
 
     #[test]
+    fn unfinished_tails_split_off_after_the_last_sentence_mark() {
+        assert_eq!(split_unfinished_tail("Done here."), ("Done here.", ""));
+        assert_eq!(
+            split_unfinished_tail("Done here. And then"),
+            ("Done here.", "And then")
+        );
+        assert_eq!(split_unfinished_tail("no mark yet"), ("", "no mark yet"));
+        assert_eq!(split_unfinished_tail("Wait… so"), ("Wait…", "so"));
+    }
+
+    #[test]
+    fn continuations_lose_the_recognizer_capital_but_keep_names() {
+        assert_eq!(
+            join_continuation("Because it is a", "Swedish store up there."),
+            "Because it is a swedish store up there."
+        );
+        assert_eq!(
+            join_continuation("Porque é um", "Lá em cima."),
+            "Porque é um lá em cima."
+        );
+        assert_eq!(join_continuation("And then", "I left."), "And then I left.");
+        assert_eq!(
+            join_continuation("And then", "I'm out."),
+            "And then I'm out."
+        );
+        assert_eq!(
+            join_continuation("They work at", "NASA now."),
+            "They work at NASA now."
+        );
+        assert_eq!(join_continuation("", "Hello."), "Hello.");
+    }
+
+    fn collecting_stage(
+        translator: MockTranslator,
+    ) -> (TranslationStage, Arc<Mutex<Vec<CaptionUpdate>>>) {
+        let emitted = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&emitted);
+        let stage = TranslationStage::spawn(
+            Box::new(translator),
+            crate::domain::PT_BR,
+            Some("en-US"),
+            move |event| match event {
+                StageEvent::Translated(update) => {
+                    sink.lock().unwrap().push(update);
+                    true
+                }
+                StageEvent::Failed => false,
+            },
+        )
+        .unwrap();
+        (stage, emitted)
+    }
+
+    #[test]
+    fn fragments_of_one_sentence_are_translated_together() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "Because it is a swedish store up there.")
+            .times(1)
+            .returning(|_, _, _| Ok("Porque é uma loja sueca lá em cima.".to_owned()));
+        let (stage, emitted) = collecting_stage(translator);
+
+        stage
+            .submit(final_update(1, "Because it is a", Some("en-US")))
+            .unwrap();
+        stage
+            .submit(final_update(2, "Swedish store up there.", Some("en-US")))
+            .unwrap();
+        stage.finish();
+
+        let emitted = emitted.lock().unwrap();
+        assert_eq!(emitted.len(), 1, "one translation for the whole sentence");
+        assert_eq!(emitted[0].text, "Porque é uma loja sueca lá em cima.");
+        assert_eq!(emitted[0].segment_id, 2, "shown with the newest segment");
+        assert!(emitted[0].is_final);
+    }
+
+    #[test]
+    fn finished_sentences_go_now_and_only_the_tail_waits() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == FIRST_SENTENCE)
+            .times(1)
+            .returning(|_, _, _| Ok("Um.".to_owned()));
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "And then we left.")
+            .times(1)
+            .returning(|_, _, _| Ok("E então saímos.".to_owned()));
+        let (stage, emitted) = collecting_stage(translator);
+
+        stage
+            .submit(final_update(1, &format!("{FIRST_SENTENCE} And then"), None))
+            .unwrap();
+        wait_until(|| emitted.lock().unwrap().len() == 1);
+        {
+            let first = &emitted.lock().unwrap()[0];
+            assert_eq!(first.text, "Um.");
+            assert!(!first.is_final, "the held tail still belongs to segment 1");
+        }
+        stage.submit(final_update(2, "We left.", None)).unwrap();
+        stage.finish();
+
+        let emitted = emitted.lock().unwrap();
+        assert_eq!(emitted.len(), 2);
+        assert_eq!(emitted[1].text, "E então saímos.");
+        assert!(emitted[1].is_final);
+    }
+
+    #[test]
+    fn a_held_tail_is_translated_alone_after_the_wait() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "So that is it")
+            .times(1)
+            .returning(|_, _, _| Ok("Então é isso".to_owned()));
+        let (stage, emitted) = collecting_stage(translator);
+
+        let start = Instant::now();
+        stage
+            .submit(final_update(4, "So that is it", None))
+            .unwrap();
+        wait_until(|| !emitted.lock().unwrap().is_empty());
+        assert!(start.elapsed() >= CARRY_MAX_WAIT - Duration::from_millis(50));
+        {
+            let emitted = emitted.lock().unwrap();
+            assert_eq!(emitted[0].text, "Então é isso");
+            assert_eq!(emitted[0].segment_id, 4);
+            assert!(emitted[0].is_final);
+        }
+        stage.finish();
+    }
+
+    #[test]
+    fn the_provisional_translation_includes_the_held_tail() {
+        let mut translator = MockTranslator::new();
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "Because it is a swedish store up")
+            .times(1)
+            .returning(|_, _, _| Ok("Porque é uma loja sueca".to_owned()));
+        translator
+            .expect_translate()
+            .withf(|text, _, _| text == "Because it is a swedish store up there.")
+            .times(1)
+            .returning(|_, _, _| Ok("Porque é uma loja sueca lá em cima.".to_owned()));
+        let (stage, emitted) = collecting_stage(translator);
+
+        stage
+            .submit(final_update(1, "Because it is a", None))
+            .unwrap();
+        stage
+            .submit_partial(interim_update(2, 3, "Swedish store up there"))
+            .unwrap();
+        wait_until(|| !emitted.lock().unwrap().is_empty());
+        stage
+            .submit(final_update(2, "Swedish store up there.", None))
+            .unwrap();
+        stage.finish();
+
+        let emitted = emitted.lock().unwrap();
+        assert_eq!(emitted.len(), 2);
+        assert!(emitted[0].provisional);
+        assert_eq!(emitted[0].segment_id, 2);
+        assert_eq!(emitted[1].text, "Porque é uma loja sueca lá em cima.");
+        assert_eq!(emitted[1].segment_id, 2);
+        assert!(emitted[1].is_final && !emitted[1].provisional);
+    }
+
+    #[test]
     fn repeated_translator_errors_surface_once_and_stop_the_worker() {
         let mut translator = MockTranslator::new();
         translator
@@ -1081,7 +1425,7 @@ mod tests {
         .unwrap();
 
         for segment in 1..=(MAX_CONSECUTIVE_FAILURES as u32) {
-            stage.submit(final_update(segment, "Boom", None)).unwrap();
+            stage.submit(final_update(segment, "Boom.", None)).unwrap();
         }
         wait_until(|| failed.load(Ordering::Acquire));
         stage.finish();
@@ -1093,12 +1437,12 @@ mod tests {
         let mut translator = MockTranslator::new();
         translator
             .expect_translate()
-            .withf(|text, _, _| text == "Boom")
+            .withf(|text, _, _| text == "Boom.")
             .times(1)
             .returning(|_, _, _| Err(TranslatorError::TranslationFailed));
         translator
             .expect_translate()
-            .withf(|text, _, _| text == "Fine")
+            .withf(|text, _, _| text == "Fine.")
             .times(1)
             .returning(|_, _, _| Ok("Tudo bem".to_owned()));
 
@@ -1123,8 +1467,8 @@ mod tests {
         )
         .unwrap();
 
-        stage.submit(final_update(1, "Boom", None)).unwrap();
-        stage.submit(final_update(2, "Fine", None)).unwrap();
+        stage.submit(final_update(1, "Boom.", None)).unwrap();
+        stage.submit(final_update(2, "Fine.", None)).unwrap();
         stage.finish();
 
         assert!(

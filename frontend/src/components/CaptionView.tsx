@@ -50,10 +50,20 @@ export function CaptionView({
       });
     const resize = () => instance.refreshLayout();
     window.addEventListener("resize", resize);
+    // The caption's own height changes with its text (a new line, shown or
+    // hidden), which would fire this observer after every such caption and
+    // lay the same text out a second time. Only a new width changes where
+    // lines break.
+    let width = element.clientWidth;
     const observer =
       typeof ResizeObserver === "undefined"
         ? undefined
-        : new ResizeObserver(resize);
+        : new ResizeObserver(() => {
+            const next = element.clientWidth;
+            if (next === width) return;
+            width = next;
+            resize();
+          });
     observer?.observe(element);
     return () => {
       cancelled = true;

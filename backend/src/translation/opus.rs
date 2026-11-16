@@ -186,7 +186,29 @@ impl NativeOpusTranslator {
         Ok(loaded)
     }
 
+    /// Translates `text` one sentence at a time. OPUS-MT is trained on single
+    /// sentences: given "Can you hear me? I think my microphone is broken." it
+    /// returned only the second sentence (measured 2026-11-16), and the
+    /// translation stage deliberately merges short sentences with their
+    /// neighbor, so whole questions vanished from translated captions.
     fn translate_direction(
+        &mut self,
+        english_to_portuguese: bool,
+        text: &str,
+        prefix: &str,
+    ) -> Result<String, TranslatorError> {
+        let pieces = sentence_pieces(text);
+        if pieces.len() <= 1 {
+            return self.translate_piece(english_to_portuguese, text, prefix);
+        }
+        let mut out = Vec::with_capacity(pieces.len());
+        for piece in pieces {
+            out.push(self.translate_piece(english_to_portuguese, piece, prefix)?);
+        }
+        Ok(out.join(" "))
+    }
+
+    fn translate_piece(
         &mut self,
         english_to_portuguese: bool,
         text: &str,
@@ -223,6 +245,32 @@ impl NativeOpusTranslator {
             Ok(translated)
         }
     }
+}
+
+/// Splits on sentence marks followed by whitespace, keeping each mark with its
+/// sentence ("Hi! Ok." -> ["Hi!", "Ok."]). Decimals ("2.5") and marks without a
+/// following space stay inside their sentence.
+fn sentence_pieces(text: &str) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    let mut start = 0;
+    let mut chars = text.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if matches!(ch, '.' | '!' | '?' | '…')
+            && chars.peek().is_some_and(|(_, next)| next.is_whitespace())
+        {
+            let end = index + ch.len_utf8();
+            let piece = text[start..end].trim();
+            if !piece.is_empty() {
+                pieces.push(piece);
+            }
+            start = end;
+        }
+    }
+    let rest = text[start..].trim();
+    if !rest.is_empty() {
+        pieces.push(rest);
+    }
+    pieces
 }
 
 impl Translator for NativeOpusTranslator {
@@ -308,5 +356,20 @@ mod tests {
             Err(TranslatorError::ModelUnavailable)
         ));
         assert!(!paths.translation_available());
+    }
+
+    #[test]
+    fn merged_captions_split_back_into_single_sentences() {
+        assert_eq!(
+            sentence_pieces("Can you hear me? I think my microphone is broken."),
+            ["Can you hear me?", "I think my microphone is broken."]
+        );
+        assert_eq!(sentence_pieces("Ok. Go!  Wait…"), ["Ok.", "Go!", "Wait…"]);
+        assert_eq!(
+            sentence_pieces("Version 2.5 is out"),
+            ["Version 2.5 is out"]
+        );
+        assert_eq!(sentence_pieces("no mark at all"), ["no mark at all"]);
+        assert!(sentence_pieces("   ").is_empty());
     }
 }

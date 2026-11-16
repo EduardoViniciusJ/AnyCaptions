@@ -161,11 +161,12 @@ describe("caption presenter", () => {
         .slice(0, -1)
         .every((span) => !span.classList.contains("caption-sentence-in")),
     ).toBe(true);
-    // A quarta estoura as 3 linhas: a mais antiga sai por cima.
+    // A quarta não cabe nas 3 linhas: a página vira e só a última linha
+    // completa ("Terceira frase.") fica, no topo.
     presenter.accept(update(4, "Quarta frase."));
-    expect(element.textContent).toBe(
-      "Segunda frase. Terceira frase. Quarta frase.",
-    );
+    expect(element.textContent).toBe("Terceira frase. Quarta frase.");
+    expect(element.querySelector(".caption-page-in")).not.toBeNull();
+    // Enquanto cabe, nada já mostrado muda de lugar.
     presenter.accept(update(5, "Quinta frase."));
     const rolled = "Terceira frase. Quarta frase. Quinta frase.";
     expect(element.textContent).toBe(rolled);
@@ -173,6 +174,47 @@ describe("caption presenter", () => {
     vi.advanceTimersByTime(60_000);
     expect(element.hidden).toBe(false);
     expect(element.textContent).toBe(rolled);
+    presenter.dispose();
+  });
+
+  it("keeps a page turn when the provisional translation is replaced", () => {
+    const element = document.createElement("p");
+    document.body.append(element);
+    const presenter = new CaptionPresenter(
+      element,
+      undefined,
+      undefined,
+      (text, maxLines = 1) => captionWords(text).length <= 2 * maxLines,
+    );
+    presenter.setContext(7, "translate-pt-br");
+    const update = (
+      segmentId: number,
+      revision: number,
+      text: string,
+      provisional = false,
+    ): CaptionUpdate => ({
+      sessionId: 7,
+      mode: "translate-pt-br",
+      segmentId,
+      revision,
+      text,
+      language: "pt-br",
+      isFinal: !provisional,
+      provisional,
+      speakers: [],
+    });
+    presenter.accept(update(1, 1, "Um dois. Três quatro."));
+    // A provisória longa vira a página no meio da própria frase.
+    // Página cheia: "Um dois." / "Três quatro." / "a b"; "c d e" não cabe,
+    // então "a b" (a última linha) sobe para o topo.
+    presenter.accept(update(2, 5, "a b c d e", true));
+    expect(element.textContent).toBe("a b c d e");
+    // A provisória cresce e vira a página no meio da própria frase.
+    presenter.accept(update(2, 6, "a b c d e f g", true));
+    expect(element.textContent).toBe("e f g");
+    // A tradução final repete o começo da frase; ele não volta à tela.
+    presenter.accept(update(2, 1, "a b c d e f g h."));
+    expect(element.textContent).toBe("e f g h.");
     presenter.dispose();
   });
 

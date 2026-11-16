@@ -196,6 +196,15 @@ export function SettingsPanel({
         <p id="speaker-labels-hint" className="muted">
           {t("speakerLabelsHint")}
         </p>
+        {state.speakerLabels &&
+          !state.resources.speakerLabels &&
+          downloads.models.some((model) => model.kind === "diarization" && model.installed) && (
+            // Installed but not loading: said here, never over the captions.
+            // A missing model is covered by the download offer below.
+            <p id="speaker-labels-unavailable" className="text-warning text-xs" role="status">
+              {t("speakerLabelsUnavailable")}
+            </p>
+          )}
       </fieldset>
       <ModelDownload
         backend={backend}

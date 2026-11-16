@@ -208,12 +208,20 @@ describe("speaker labels", () => {
     expect(app.backend.setSpeakerLabels).toHaveBeenCalledTimes(1);
   });
 
-  it("tells the user when labels are on but the diarizer is unavailable", async () => {
+  it("never covers the captions with a notice about the diarizer", async () => {
     const app = setup(snapshot({ speakerLabels: true }));
     await app.ready();
-    const notice = app.get("#notice");
-    expect(notice.hidden).toBe(false);
-    expect(notice.textContent).toBe(
+    expect(app.root.querySelector("#notice")).toBeNull();
+    // Model missing: the settings offer the download, with no extra warning.
+    await app.openSettings();
+    expect(app.root.querySelector("#speaker-labels-unavailable")).toBeNull();
+  });
+
+  it("says in the settings when the installed diarizer does not load", async () => {
+    const app = setup(snapshot({ speakerLabels: true }), true);
+    await app.ready();
+    await app.openSettings();
+    expect(app.get("#speaker-labels-unavailable").textContent).toBe(
       "Identificação de falantes indisponível; as legendas seguem sem rótulos.",
     );
     await app.emit(
@@ -223,9 +231,7 @@ describe("speaker labels", () => {
         resources: { ...snapshot().resources, speakerLabels: true },
       }),
     );
-    expect(app.get("#notice").hidden).toBe(true);
-    await app.emit(snapshot({ revision: 2, speakerLabels: false }));
-    expect(app.get("#notice").hidden).toBe(true);
+    expect(app.root.querySelector("#speaker-labels-unavailable")).toBeNull();
   });
 
   it("offers the diarization model download on its own row", async () => {
