@@ -29,6 +29,8 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       partialColor: "#B8B8B8",
       background: false,
       font: "inter",
+      panelColor: "#0F0F0F",
+      panelOpacity: 65,
     },
     resources: {
       audioCapture: false,
@@ -634,6 +636,13 @@ describe("overlay controls", () => {
     fireEvent.change(partialColor, { target: { value: "#ff77aa" } });
     const background = app.get<HTMLInputElement>("#caption-background");
     fireEvent.click(background);
+    fireEvent.change(app.get<HTMLInputElement>("#panel-color"), {
+      target: { value: "#102a43" },
+    });
+    fireEvent.change(app.get<HTMLInputElement>("#panel-opacity"), {
+      target: { value: "40" },
+    });
+    expect(app.get("#panel-opacity-value").textContent).toBe("40%");
 
     const preview = app.get<HTMLElement>("#appearance-preview");
     expect(preview.style.getPropertyValue("--caption-base-size")).toBe("72px");
@@ -642,6 +651,16 @@ describe("overlay controls", () => {
       "#FF77AA",
     );
     expect(preview.hasAttribute("data-background")).toBe(true);
+    // The window color is previewed too, and the real window keeps its own
+    // until Save.
+    expect(preview.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(16, 42, 67, 0.4)",
+    );
+    expect(
+      app.get<HTMLElement>(".overlay").style.getPropertyValue(
+        "--panel-background",
+      ),
+    ).toBe("rgba(15, 15, 15, 0.65)");
     expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(
       false,
     );
@@ -658,6 +677,8 @@ describe("overlay controls", () => {
         partialColor: "#FF77AA",
         background: true,
         font: "inter",
+        panelColor: "#102A43",
+        panelOpacity: 40,
       }),
     );
     await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
@@ -668,6 +689,32 @@ describe("overlay controls", () => {
     ).toBe("#33CCFF");
     expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(
       true,
+    );
+    const overlay = app.get<HTMLElement>(".overlay");
+    expect(overlay.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(16, 42, 67, 0.4)",
+    );
+    expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
+      "#FFFFFF",
+    );
+  });
+
+  it("keeps the app name readable over a light, solid window color", async () => {
+    const light = (revision: number, panelOpacity: number) =>
+      snapshot({
+        revision,
+        appearance: { ...snapshot().appearance, panelColor: "#F5F5F5", panelOpacity },
+      });
+    const app = setup(light(0, 90));
+    await app.ready();
+    const overlay = app.get<HTMLElement>(".overlay");
+    expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
+      "#111111",
+    );
+    // See-through: what is behind the window decides, so the light text stays.
+    app.emit(light(1, 20));
+    expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
+      "#FFFFFF",
     );
   });
 
@@ -680,6 +727,8 @@ describe("overlay controls", () => {
           partialColor: "#0088FF",
           background: true,
           font: "inter",
+          panelColor: "#0F0F0F",
+          panelOpacity: 65,
         },
       }),
     );

@@ -353,6 +353,8 @@ mod tests {
             partial_color: CaptionColor::DEFAULT_PARTIAL,
             background: true,
             font: crate::domain::CaptionFont::from_id("georgia").unwrap(),
+            panel_color: CaptionColor::YELLOW,
+            panel_opacity: 30,
         };
         snapshot.shortcut = "Ctrl+Alt+K".into();
         snapshot.speaker_labels = true;
@@ -379,6 +381,8 @@ mod tests {
             CaptionColor::DEFAULT_PARTIAL
         );
         assert!(restored.appearance.background);
+        assert_eq!(restored.appearance.panel_color, CaptionColor::YELLOW);
+        assert_eq!(restored.appearance.panel_opacity, 30);
         assert!(restored.speaker_labels);
         assert!(restored.update_check);
         assert_eq!(restored.appearance.font.id(), "georgia");

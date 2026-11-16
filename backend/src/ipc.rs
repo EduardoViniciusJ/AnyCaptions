@@ -1054,6 +1054,7 @@ mod tests {
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
                     background: false,
                     font: crate::domain::CaptionFont::default(),
+                    ..Appearance::default()
                 }))
                 .is_err()
         );

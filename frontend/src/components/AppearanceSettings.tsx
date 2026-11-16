@@ -1,6 +1,11 @@
 ﻿import type { CSSProperties } from "react";
 import type { Appearance } from "../contracts";
-import { CAPTION_FONTS, captionFontFamily, normalizeCaptionColor } from "../appearance";
+import {
+  CAPTION_FONTS,
+  captionFontFamily,
+  normalizeCaptionColor,
+  panelBackground,
+} from "../appearance";
 import { t } from "../i18n";
 import { Field } from "./Field";
 export function appearanceStyle(value: Appearance): CSSProperties {
@@ -9,6 +14,7 @@ export function appearanceStyle(value: Appearance): CSSProperties {
     "--caption-color": value.color,
     "--caption-partial-color": value.partialColor,
     "--caption-font": captionFontFamily(value.font),
+    "--panel-background": panelBackground(value),
   } as CSSProperties;
 }
 export function AppearanceSettings({
@@ -20,7 +26,11 @@ export function AppearanceSettings({
 }) {
   return (
     <>
-      <div className="appearance-preview" aria-label={t("previewAria")}>
+      <div
+        className="appearance-preview"
+        aria-label={t("previewAria")}
+        style={{ "--panel-background": panelBackground(value) } as CSSProperties}
+      >
         <span className="appearance-preview-label">{t("preview")}</span>
         <p
           id="appearance-preview"
@@ -67,6 +77,13 @@ export function AppearanceSettings({
             "pickRecentColor",
             "recentColorHex",
           ],
+          [
+            "panelColor",
+            "panel-color",
+            "panelColor",
+            "pickPanelColor",
+            "panelColorHex",
+          ],
         ] as const
       ).map(([key, id, label, pickerLabel, hexLabel]) => (
         <Field key={key} id={id} label={t(label)}>
@@ -99,6 +116,25 @@ export function AppearanceSettings({
           </div>
         </Field>
       ))}
+      <Field id="panel-opacity" label={t("panelOpacity")}>
+        <div>
+          <output id="panel-opacity-value" htmlFor="panel-opacity">
+            {value.panelOpacity}%
+          </output>
+          <input
+            className="range range-xs range-primary"
+            id="panel-opacity"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={value.panelOpacity}
+            onChange={(event) =>
+              onChange({ ...value, panelOpacity: Number(event.target.value) })
+            }
+          />
+        </div>
+      </Field>
       <Field id="caption-font" label={t("captionFont")}>
         <select
           className="select select-sm"

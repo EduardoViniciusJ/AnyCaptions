@@ -96,7 +96,8 @@ export function SettingsPanel({
   }, [backend, open]);
   const valid =
     !!normalizeCaptionColor(appearance.color) &&
-    !!normalizeCaptionColor(appearance.partialColor);
+    !!normalizeCaptionColor(appearance.partialColor) &&
+    !!normalizeCaptionColor(appearance.panelColor);
   // Appearance, the lock shortcut and dictation are drafts applied by Save;
   // everything else applies as soon as it is changed.
   const dirty =
@@ -113,6 +114,7 @@ export function SettingsPanel({
         ...appearance,
         color: normalizeCaptionColor(appearance.color)!,
         partialColor: normalizeCaptionColor(appearance.partialColor)!,
+        panelColor: normalizeCaptionColor(appearance.panelColor)!,
       };
       if (!sameAppearance(normalized, saved.appearance))
         saved = await backend.setAppearance(normalized);

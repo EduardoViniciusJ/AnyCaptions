@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import { panelBackground, panelForeground } from "../appearance";
 import { useEffect, useRef, useState } from "react";
 import type { Backend, CaptionMode } from "../contracts";
 import { TRANSLATION_TARGETS, engineServes } from "../languages";
@@ -28,6 +30,13 @@ export function App({ backend }: { backend: Backend }) {
       data-theme="anycaptions"
       data-mode={state?.windowMode ?? "edit"}
       data-settings={settings ? "open" : "closed"}
+      style={
+        state &&
+        ({
+          "--panel-background": panelBackground(state.appearance),
+          "--panel-foreground": panelForeground(state.appearance),
+        } as CSSProperties)
+      }
       aria-label={t("captionWindow")}
       onKeyDown={(event) => {
         if (event.key === "Escape" && settings) closeSettings();

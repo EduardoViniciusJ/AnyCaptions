@@ -14,6 +14,10 @@ export interface Appearance {
   partialColor: CaptionColor;
   background: boolean;
   font: CaptionFont;
+  /** Cor da janela atrás das legendas (e da faixa das legendas). */
+  panelColor: CaptionColor;
+  /** Opacidade dessa cor, de 0 (transparente) a 100 (sólida). */
+  panelOpacity: number;
 }
 
 export interface AppSnapshot {

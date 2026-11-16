@@ -346,6 +346,8 @@ impl CaptionColor {
     pub const WHITE: Self = Self(0xFFFFFF);
     pub const YELLOW: Self = Self(0xFFE600);
     pub const DEFAULT_PARTIAL: Self = Self(0xB8B8B8);
+    /// The near-black the window always had.
+    pub const DEFAULT_PANEL: Self = Self(0x0F0F0F);
 
     fn parse(value: &str) -> Option<Self> {
         let value = match value {
@@ -457,10 +459,29 @@ pub struct Appearance {
     /// Caption typeface; preferences saved before this option keep Inter.
     #[serde(default)]
     pub font: CaptionFont,
+    /// Color of the window behind the captions (and of the caption band).
+    /// Preferences saved before this option keep the original near-black.
+    #[serde(default = "default_panel_color")]
+    pub panel_color: CaptionColor,
+    /// How solid that color is, in percent: 0 is fully see-through, 100 hides
+    /// what is behind the window. Older preferences keep the original 65.
+    #[serde(default = "default_panel_opacity")]
+    pub panel_opacity: u8,
 }
+
+/// Opacity of the window before it became a setting.
+pub const DEFAULT_PANEL_OPACITY: u8 = 65;
 
 fn default_partial_color() -> CaptionColor {
     CaptionColor::DEFAULT_PARTIAL
+}
+
+fn default_panel_color() -> CaptionColor {
+    CaptionColor::DEFAULT_PANEL
+}
+
+fn default_panel_opacity() -> u8 {
+    DEFAULT_PANEL_OPACITY
 }
 
 impl Default for Appearance {
@@ -471,6 +492,8 @@ impl Default for Appearance {
             partial_color: CaptionColor::DEFAULT_PARTIAL,
             font: CaptionFont::default(),
             background: false,
+            panel_color: CaptionColor::DEFAULT_PANEL,
+            panel_opacity: DEFAULT_PANEL_OPACITY,
         }
     }
 }
@@ -479,6 +502,9 @@ impl Appearance {
     pub(crate) fn validate(self) -> Result<(), DomainError> {
         if !(16..=80).contains(&self.font_size) {
             return Err(DomainError::InvalidFontSize);
+        }
+        if self.panel_opacity > 100 {
+            return Err(DomainError::InvalidOpacity);
         }
         Ok(())
     }
@@ -515,6 +541,7 @@ impl Resources {
 pub enum DomainError {
     InvalidTransition,
     InvalidFontSize,
+    InvalidOpacity,
     CaptureUnavailable,
     TranscriptionUnavailable,
     TranslationUnavailable,
@@ -1075,6 +1102,7 @@ mod tests {
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
                     font: CaptionFont::default(),
                     background: false,
+                    ..Appearance::default()
                 }),
                 Err(DomainError::InvalidFontSize)
             );
@@ -1088,6 +1116,7 @@ mod tests {
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
                     font: CaptionFont::default(),
                     background: false,
+                    ..Appearance::default()
                 })
                 .unwrap();
             assert_eq!(state.snapshot().appearance.font_size, size);
@@ -1255,6 +1284,36 @@ mod tests {
         .unwrap();
         assert_eq!(legacy.color, CaptionColor::YELLOW);
         assert_eq!(legacy.partial_color, CaptionColor::DEFAULT_PARTIAL);
+        // Preferences from before the window color keep the original look.
+        assert_eq!(legacy.panel_color, CaptionColor::DEFAULT_PANEL);
+        assert_eq!(legacy.panel_opacity, DEFAULT_PANEL_OPACITY);
+        let wire = serde_json::to_value(legacy).unwrap();
+        assert_eq!(wire["panelColor"], "#0F0F0F");
+        assert_eq!(wire["panelOpacity"], 65);
+
+        let tinted = serde_json::from_value::<Appearance>(serde_json::json!({
+            "fontSize": 32, "color": "#FFFFFF", "panelColor": "#102a43", "panelOpacity": 0
+        }))
+        .unwrap();
+        assert_eq!(tinted.panel_color.as_hex(), "#102A43");
+        assert_eq!(tinted.validate(), Ok(()));
+        let mut state = AppState::default();
+        for opacity in [101, u8::MAX] {
+            assert_eq!(
+                state.set_appearance(Appearance {
+                    panel_opacity: opacity,
+                    ..Appearance::default()
+                }),
+                Err(DomainError::InvalidOpacity)
+            );
+        }
+        assert_eq!(state.snapshot().appearance, Appearance::default());
+        assert!(
+            serde_json::from_value::<Appearance>(serde_json::json!({
+                "fontSize": 32, "color": "#FFFFFF", "panelColor": "black"
+            }))
+            .is_err()
+        );
         assert_eq!(serde_json::to_value(legacy).unwrap()["color"], "#FFE600");
     }
 }

@@ -22,6 +22,8 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       partialColor: "#B8B8B8",
       background: false,
       font: "inter",
+      panelColor: "#0F0F0F",
+      panelOpacity: 65,
     },
     resources: {
       audioCapture: true,

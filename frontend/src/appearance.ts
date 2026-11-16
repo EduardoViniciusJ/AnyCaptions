@@ -8,6 +8,8 @@ export const DEFAULT_APPEARANCE: Appearance = {
   partialColor: "#B8B8B8",
   background: false,
   font: "inter",
+  panelColor: "#0F0F0F",
+  panelOpacity: 65,
 };
 
 /**
@@ -50,7 +52,37 @@ export function sameAppearance(left: Appearance, right: Appearance): boolean {
     && left.color === right.color
     && left.partialColor === right.partialColor
     && left.background === right.background
-    && left.font === right.font;
+    && left.font === right.font
+    && left.panelColor === right.panelColor
+    && left.panelOpacity === right.panelOpacity;
+}
+
+/** The three channels of a `#RRGGBB` color; the default panel when invalid. */
+function channels(color: string): [number, number, number] {
+  const hex = normalizeCaptionColor(color) ?? DEFAULT_APPEARANCE.panelColor;
+  return [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+/** The window color with its opacity, as a CSS color. */
+export function panelBackground(appearance: Appearance): string {
+  const [red, green, blue] = channels(appearance.panelColor);
+  const alpha = Math.min(100, Math.max(0, appearance.panelOpacity)) / 100;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+/**
+ * Text color that stays readable over the window color: dark over light
+ * colors, light otherwise. A see-through window shows whatever is behind it,
+ * so below half opacity the light text (with its outline) is kept.
+ */
+export function panelForeground(appearance: Appearance): string {
+  const [red, green, blue] = channels(appearance.panelColor);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.6 && appearance.panelOpacity >= 50 ? "#111111" : "#FFFFFF";
 }
 
 export function applyAppearance(element: HTMLElement, appearance: Appearance): void {
@@ -58,5 +90,6 @@ export function applyAppearance(element: HTMLElement, appearance: Appearance): v
   element.style.setProperty("--caption-color", appearance.color);
   element.style.setProperty("--caption-partial-color", appearance.partialColor);
   element.style.setProperty("--caption-font", captionFontFamily(appearance.font));
+  element.style.setProperty("--panel-background", panelBackground(appearance));
   element.toggleAttribute("data-background", appearance.background);
 }

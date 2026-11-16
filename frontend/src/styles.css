@@ -57,7 +57,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: rgba(15, 15, 15, 0.65);
+  background: var(--panel-background, rgba(15, 15, 15, 0.65));
   border: 1px dashed rgba(255, 255, 255, 0.5);
   border-radius: 8px;
 }
@@ -102,7 +102,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 /* Fundo escuro opcional: com ele, o contorno é dispensável. */
 .caption[data-background] {
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--panel-background, rgba(0, 0, 0, 0.6));
   -webkit-text-stroke: 0;
   text-shadow: none;
 }
@@ -395,3 +395,11 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .settings-unsaved { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; color: #d4d4d4; font-size: 12px; animation: settings-unsaved-in 0.2s ease; }
 .settings-unsaved-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #f5c26b; box-shadow: 0 0 0 3px rgba(245, 194, 107, 0.16); }
 @keyframes settings-unsaved-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+/* The window color is the user's (Appearance). The app name follows it so it
+   stays readable over a light color; the settings keep their own dark panel,
+   whose controls are drawn for it. */
+.overlay[data-settings="closed"] .brand { color: var(--panel-foreground, inherit); }
+.overlay[data-settings="closed"] .brand-mark { border-color: currentColor; }
+/* The preview shows the chosen color over a checkerboard, so transparency is visible. */
+.appearance-preview { background: linear-gradient(var(--panel-background, #090909), var(--panel-background, #090909)), repeating-conic-gradient(#3a3a3a 0% 25%, #1c1c1c 0% 50%) 0 0 / 16px 16px; }
+.appearance-preview-label { text-shadow: 0 1px 2px #000; color: #e5e5e5; }
