@@ -3,6 +3,10 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement } from "react";
 import { UpdateAction } from "./components/UpdateAction";
 import type { Backend, UpdateCheck, UpdateProgress } from "./contracts";
+import { setLocale } from "./i18n";
+
+// The assertions read the Portuguese texts; English is the app default.
+setLocale("pt-br");
 
 afterEach(cleanup);
 

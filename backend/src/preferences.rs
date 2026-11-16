@@ -219,6 +219,17 @@ mod tests {
     use super::*;
     use crate::domain::CaptionColor;
 
+    #[test]
+    fn a_fresh_install_transcribes_automatically_in_english() {
+        let fresh = Preferences::default();
+        assert_eq!(fresh.mode, CaptionMode::Auto, "Transcribe, no translation");
+        assert_eq!(fresh.source_language, None, "spoken language detected");
+        assert_eq!(fresh.ui_language.tag(), "en");
+        assert_eq!(fresh.dictation.language, None, "dictation detects too");
+        assert_eq!(fresh.dictation.translate_to, None);
+        assert!(!fresh.speaker_labels);
+    }
+
     fn isolated() -> PathBuf {
         std::env::temp_dir().join(format!(
             "anycaptions-preferences-{}-{}",
