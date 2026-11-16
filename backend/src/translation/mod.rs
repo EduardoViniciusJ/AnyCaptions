@@ -2,6 +2,7 @@
 //! implement it today — `opus` (fast, CPU, English–Portuguese) and `riva`
 //! (GPU, 37 languages) — and captions never leave the machine.
 
+mod ct2;
 pub mod opus;
 pub mod riva;
 pub mod stage;
