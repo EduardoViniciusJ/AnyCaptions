@@ -234,6 +234,8 @@ impl DownloadManager {
 }
 
 const CHUNK_BYTES: usize = 64 * 1024;
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Downloads and installs one model; returns the byte count on success.
 /// Kept free of Tauri types so tests can drive it against a local server.
@@ -249,7 +251,14 @@ fn run(
     fs::create_dir_all(dir).map_err(|_| DownloadFailure::Disk)?;
     let part_path = dir.join(format!("{}.part", profile.filename));
 
-    let agent = ureq::Agent::new_with_defaults();
+    // Without these a server that accepts the connection and then says
+    // nothing kept the download "running" forever: cancel is only seen
+    // between reads, and no other download or update could start.
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_recv_response(Some(RESPONSE_TIMEOUT))
+        .build()
+        .into();
     let mut response = agent
         .get(url)
         .call()
@@ -267,7 +276,11 @@ fn run(
         .inspect_err(|_| {
             let _ = fs::remove_file(&part_path);
         })?;
-    fs::rename(&part_path, &final_path).map_err(|_| DownloadFailure::Disk)?;
+    fs::rename(&part_path, &final_path).map_err(|_| {
+        // Gigabytes of verified data are useless under the partial name.
+        let _ = fs::remove_file(&part_path);
+        DownloadFailure::Disk
+    })?;
     Ok(received)
 }
 

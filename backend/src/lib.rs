@@ -52,6 +52,12 @@ pub fn run() -> tauri::Result<()> {
     use tauri::Manager;
 
     builder(tauri::Builder::default())
+        // Must be the first plugin. A second launch would load every model
+        // again (another ~1 GB of VRAM, ~4 GB with Riva) and fight over the
+        // global shortcuts; instead it exits and brings this overlay forward.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            recovery::edit(app);
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // Files a previous update could not delete while it was running.
