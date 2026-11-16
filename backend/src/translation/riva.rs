@@ -165,9 +165,25 @@ pub struct NativeRivaTranslator {
 // calls from any thread.
 unsafe impl Send for NativeRivaTranslator {}
 
+/// Where the Riva weights live. The pinned C API offers no partial offload
+/// (`n_gpu_layers` is all-or-nothing), so the model sits entirely in VRAM or
+/// entirely in system RAM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RivaDevice {
+    /// GPU (Vulkan device 0) with CPU fallback: fastest, takes ~3 GB of VRAM.
+    Auto,
+    /// System RAM only: leaves the GPU to games, at a higher latency.
+    Cpu,
+}
+
 impl NativeRivaTranslator {
     /// Loads the model on the GPU (Vulkan device 0) and falls back to the CPU.
     pub fn load(paths: &RivaPaths) -> Result<Self, TranslatorError> {
+        Self::load_on(paths, RivaDevice::Auto)
+    }
+
+    /// Loads the model on `device` (see [`RivaDevice`]).
+    pub fn load_on(paths: &RivaPaths, target: RivaDevice) -> Result<Self, TranslatorError> {
         RIVA_TRANSLATE_Q4
             .verify(&paths.model)
             .map_err(|_| TranslatorError::ModelUnavailable)?;
@@ -181,7 +197,11 @@ impl NativeRivaTranslator {
         let load_start = std::time::Instant::now();
         let mut device = "cpu";
         let mut translator = ptr::null_mut();
-        for gpu in [0, -1] {
+        let candidates: &[i32] = match target {
+            RivaDevice::Auto => &[0, -1],
+            RivaDevice::Cpu => &[-1],
+        };
+        for &gpu in candidates {
             let backend = BackendConfig {
                 size: size_of::<BackendConfig>(),
                 gpu,
