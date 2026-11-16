@@ -120,6 +120,12 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
   to { opacity: 1; }
 }
 .caption-content { display: block; }
+/* Virada de página no modo tradução: só opacidade, rápida. */
+.caption-page-in { animation: caption-sentence-in 160ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .caption-page-in,
+  .caption-sentence-in { animation: none; }
+}
 .caption-partial {
   color: var(--caption-partial-color);
   font-style: normal;

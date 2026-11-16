@@ -30,7 +30,11 @@ function turns(parts: readonly CaptionPart[]): CaptionPart[][] {
 export function CaptionText({ frame }: { frame?: CaptionFrame }) {
   if (!frame?.text) return null;
   return (
-    <span className="caption-content">
+    // A new key per page remounts the content, so a page turn fades in.
+    <span
+      key={frame.page ?? 0}
+      className={frame.page ? "caption-content caption-page-in" : "caption-content"}
+    >
       {frame.parts && frame.lines === "multi" ? (
         // Rótulos ligados: um turno de fala por linha.
         turns(frame.parts).map((turn, index) => (

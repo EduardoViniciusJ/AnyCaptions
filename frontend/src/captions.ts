@@ -19,8 +19,10 @@ const browserClock: CaptionClock = {
 
 const CLEAR_FADE_MS = 120;
 
-// Modo frases (tradutor rápido): o texto flui preenchendo a largura, quebrando
-// em até este número de linhas; estourou, a sentença mais antiga sai inteira.
+// Modo frases (tradução): o texto flui preenchendo a largura em até este número
+// de linhas. Sem rótulos de falante, a legenda é paginada: quando a próxima
+// linha não cabe, a página vira e só a última linha completa fica, no topo,
+// para não perder o fio. Uma linha já cheia nunca muda de lugar.
 // Espelhado no CSS de `.caption[data-lines="multi"]`.
 const SENTENCE_LINES = 3;
 
@@ -196,6 +198,8 @@ export interface CaptionFrame {
   sentenceSpeakers?: (number | undefined)[];
   /** Modo tradução: tradução provisória da frase em andamento, depois das sentenças. */
   provisionalText?: string;
+  /** Modo tradução sem rótulos: número da página; muda a cada virada (anima a troca). */
+  page?: number;
   /** Rótulo da provisória quando o falante muda em relação à sentença anterior. */
   provisionalSpeaker?: number;
   animateNewest: boolean;
@@ -239,6 +243,14 @@ export class CaptionPresenter {
    */
   private provisional: Sentence | undefined;
   private activeProvisional = false;
+  /** Páginas viradas na sessão (modo tradução sem rótulos). */
+  private page = 0;
+  /**
+   * Palavras iniciais da frase em andamento que já saíram numa virada de
+   * página: a provisória seguinte e a tradução final do mesmo segmento
+   * repetem o começo da frase, que não deve voltar à tela.
+   */
+  private hiddenLead = { segment: 0, words: 0 };
   /** Anima (fade 120 ms) só a sentença recém-chegada no próximo render. */
   private animateNewestSentence = false;
   private activeSegmentId = 0;
@@ -313,7 +325,9 @@ export class CaptionPresenter {
     // immediately. As in the speaker-label layout, a speaker's text flows
     // together over up to SENTENCE_LINES lines and the oldest text leaves first.
     if (this.mode !== "auto") {
-      const sentence = update.text.trim();
+      const skip =
+        this.hiddenLead.segment === update.segmentId ? this.hiddenLead.words : 0;
+      const sentence = captionWords(update.text).slice(skip).join(" ");
       // A translated sentence belongs to one speaker (the stage translates
       // each speaker's span on its own); several spans mean no safe label.
       const spans = update.speakers ?? [];
@@ -324,6 +338,7 @@ export class CaptionPresenter {
       } else {
         // The final translation supersedes whatever was provisional.
         this.provisional = undefined;
+        this.hiddenLead = { segment: 0, words: 0 };
         if (sentence) {
           this.sentences.push({ text: sentence, speaker });
           this.animateNewestSentence = true;
@@ -374,7 +389,62 @@ export class CaptionPresenter {
       : [...this.sentences];
   }
 
+  /**
+   * Sem rótulos: enche as linhas sem mexer no que já está na tela; ao estourar,
+   * vira a página mantendo a última linha completa no topo.
+   */
+  private layoutSentencePages(): void {
+    const words = this.shownSentences().flatMap((sentence) => captionWords(sentence.text));
+    if (words.length === 0) {
+      this.current = undefined;
+      return;
+    }
+    const lines = paginateCaption(words.join(" "), (text) => this.fitsCaption(text, 1));
+    if (lines.length > SENTENCE_LINES) {
+      // Keep the last full line of the page that just filled up; a long
+      // arrival may need several turns, each keeping one line of context.
+      let start = SENTENCE_LINES - 1;
+      while (lines.length - start > SENTENCE_LINES) start += SENTENCE_LINES - 1;
+      const dropped = lines
+        .slice(0, start)
+        .reduce((total, line) => total + captionWords(line).length, 0);
+      this.dropLeadingWords(dropped);
+      this.page += 1;
+    }
+    const text = this.shownSentences()
+      .map((sentence) => sentence.text)
+      .join(" ");
+    this.current = text ? { text, segmentId: this.activeSegmentId } : undefined;
+  }
+
+  /** Tira `count` palavras do começo: sentenças fechadas primeiro, depois a provisória. */
+  private dropLeadingWords(count: number): void {
+    let remaining = count;
+    while (remaining > 0 && this.sentences.length > 0) {
+      const first = this.sentences[0]!;
+      const words = captionWords(first.text);
+      if (words.length <= remaining) {
+        remaining -= words.length;
+        this.sentences.shift();
+      } else {
+        this.sentences[0] = { ...first, text: words.slice(remaining).join(" ") };
+        remaining = 0;
+      }
+    }
+    if (remaining > 0 && this.provisional) {
+      const words = captionWords(this.provisional.text);
+      this.provisional = { ...this.provisional, text: words.slice(remaining).join(" ") };
+      const already =
+        this.hiddenLead.segment === this.activeSegmentId ? this.hiddenLead.words : 0;
+      this.hiddenLead = { segment: this.activeSegmentId, words: already + remaining };
+    }
+  }
+
   private layoutSentences(): void {
+    if (!this.speakerLabelsMode) {
+      this.layoutSentencePages();
+      return;
+    }
     const fitsLines = (text: string) => this.fitsCaption(text, SENTENCE_LINES);
     // Encheu as linhas: as sentenças mais antigas saem por cima, como os turnos
     // do modo por pessoa. A provisória conta como a mais nova e sempre fica.
@@ -535,6 +605,7 @@ export class CaptionPresenter {
             )
           : undefined,
       provisionalText: sentenceMode ? this.provisional?.text : undefined,
+      page: sentenceMode && !this.speakerLabelsMode ? this.page : undefined,
       provisionalSpeaker:
         sentenceMode && this.provisional && sentenceStarts.has(provisionalIndex)
           ? this.provisional.speaker
@@ -557,6 +628,8 @@ export class CaptionPresenter {
     this.sentences = [];
     this.provisional = undefined;
     this.activeProvisional = false;
+    this.page = 0;
+    this.hiddenLead = { segment: 0, words: 0 };
     this.animateNewestSentence = false;
     this.current = undefined;
     this.render(immediate);
