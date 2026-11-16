@@ -389,5 +389,5 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .engine-card .model-download-progress { width: calc(100% - 28px); margin: 6px 0 0 28px; }
 /* The actions stay in reach on every tab, however long it is. */
 .settings { padding-bottom: 0; }
-.settings-footer { position: sticky; bottom: 0; margin-top: 12px; padding: 10px 0 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); background: #0f0f0f; }
-.settings-unsaved { color: #fbbf24; font-size: 11px; white-space: nowrap; }
+.settings-footer { position: sticky; bottom: 0; margin-top: 4px; padding: 22px 0 14px; background: linear-gradient(to bottom, transparent, #0f0f0f 16px); }
+.settings-footer #save-settings { transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }

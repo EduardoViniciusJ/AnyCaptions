@@ -466,10 +466,13 @@ describe("overlay controls", () => {
     });
     expect(hint.hidden).toBe(false);
     expect(hint.textContent).toBe("Alterações não salvas");
+    // Save only stands out while there is something to save.
+    expect(app.get("#save-settings").className).toContain("btn-primary");
     fireEvent.change(app.get<HTMLInputElement>("#shortcut"), {
       target: { value: snapshot().shortcut },
     });
     expect(hint.hidden).toBe(true);
+    expect(app.get("#save-settings").className).not.toContain("btn-primary");
   });
 
   it("warns when dictation translates into a language the model cannot write", async () => {

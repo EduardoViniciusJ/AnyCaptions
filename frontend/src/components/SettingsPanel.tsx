@@ -423,7 +423,7 @@ export function SettingsPanel({
           {" "}
           <span className="credit-name">EduardoViniciusJ</span>
         </button>
-        <span id="unsaved-changes" className="settings-unsaved" role="status" hidden={!dirty}>
+        <span id="unsaved-changes" className="sr-only" role="status" hidden={!dirty}>
           {t("unsavedChanges")}
         </span>
         <button
@@ -435,8 +435,10 @@ export function SettingsPanel({
           {t("restoreDefault")}
         </button>
         <button
-          className="btn btn-sm btn-primary"
+          // Stands out only while there is something to save.
+          className={`btn btn-sm${dirty ? " btn-primary" : ""}`}
           id="save-settings"
+          data-dirty={dirty}
           disabled={busy || outputBusy || !valid}
           onClick={() => void save()}
         >
