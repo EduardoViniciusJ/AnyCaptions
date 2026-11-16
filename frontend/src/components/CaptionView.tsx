@@ -5,6 +5,7 @@ import { applyAppearance } from "../appearance";
 import { appearanceStyle } from "./AppearanceSettings";
 import { CaptionText } from "./CaptionText";
 import { t } from "../i18n";
+import { attach } from "../app/subscription";
 /** Streaming layout is independent of React; all visible text is rendered declaratively. */
 export function CaptionView({
   backend,
@@ -30,24 +31,14 @@ export function CaptionView({
     presenter.current = instance;
     const initial = current.current;
     if (initial) instance.setContext(initial.sessionId, initial.mode);
-    let cancelled = false;
-    let release: (() => void) | undefined;
-    void backend
-      .subscribeCaptions((update) => {
-        if (
-          !cancelled &&
-          current.current &&
-          current.current.capture !== "stopped"
-        )
+    const detach = attach(
+      backend.subscribeCaptions.bind(backend),
+      (update) => {
+        if (current.current && current.current.capture !== "stopped")
           instance.accept(update);
-      })
-      .then((unsubscribe) => {
-        if (cancelled) unsubscribe();
-        else release = unsubscribe;
-      })
-      .catch(() => {
-        if (!cancelled) report.current(t("errConnect"));
-      });
+      },
+      { failed: () => report.current(t("errConnect")) },
+    );
     const resize = () => instance.refreshLayout();
     window.addEventListener("resize", resize);
     // The caption's own height changes with its text (a new line, shown or
@@ -66,8 +57,7 @@ export function CaptionView({
           });
     observer?.observe(element);
     return () => {
-      cancelled = true;
-      release?.();
+      detach();
       observer?.disconnect();
       window.removeEventListener("resize", resize);
       instance.dispose();

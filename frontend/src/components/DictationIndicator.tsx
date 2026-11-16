@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { t } from "../i18n";
+import { attach } from "../app/subscription";
 import type { Backend } from "../contracts";
 import {
   DictationIndicator as Indicator,
@@ -25,22 +26,13 @@ export function DictationIndicator({
     const indicator = new Indicator(setFrame, (message) =>
       report.current(message),
     );
-    let cancelled = false;
-    let release: (() => void) | undefined;
-    void backend
-      .subscribeDictation((event) => {
-        if (!cancelled) indicator.accept(event);
-      })
-      .then((unsubscribe) => {
-        if (cancelled) unsubscribe();
-        else release = unsubscribe;
-      })
-      .catch(() => {
-        if (!cancelled) report.current(t("errConnect"));
-      });
+    const detach = attach(
+      backend.subscribeDictation.bind(backend),
+      (event) => indicator.accept(event),
+      { failed: () => report.current(t("errConnect")) },
+    );
     return () => {
-      cancelled = true;
-      release?.();
+      detach();
       indicator.dispose();
     };
   }, [backend]);

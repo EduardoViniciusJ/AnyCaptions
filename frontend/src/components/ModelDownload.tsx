@@ -7,6 +7,7 @@ import type {
   TranslationEngine,
 } from "../contracts";
 import { t, type MessageKey } from "../i18n";
+import { attach } from "../app/subscription";
 
 export interface ModelDownloads {
   models: ModelDownloadState[];
@@ -22,36 +23,28 @@ export function useModelDownloads(backend: Backend): ModelDownloads {
   const [models, setModels] = useState<ModelDownloadState[]>([]);
   const [update, setUpdate] = useState<ModelDownloadUpdate | null>(null);
   useEffect(() => {
-    let cancelled = false;
-    let release: (() => void) | undefined;
+    let mounted = true;
     const refresh = async () => {
       try {
         const result = await backend.getModelDownloads();
-        if (!cancelled) setModels(result);
+        if (mounted) setModels(result);
       } catch {
         /* No offer without an authoritative catalog. */
       }
     };
-    void (async () => {
-      try {
-        const unsubscribe = await backend.subscribeModelDownloads((event) => {
-          if (cancelled) return;
-          setUpdate(event);
-          if (event.phase === "ready") void refresh();
-        });
-        if (cancelled) {
-          unsubscribe();
-          return;
-        }
-        release = unsubscribe;
-        await refresh();
-      } catch {
-        /* Optional download status; capture is independent. */
-      }
-    })();
+    // A failed subscription is silent: the download status is optional and
+    // capture does not depend on it.
+    const detach = attach(
+      backend.subscribeModelDownloads.bind(backend),
+      (event) => {
+        setUpdate(event);
+        if (event.phase === "ready") void refresh();
+      },
+      { ready: refresh },
+    );
     return () => {
-      cancelled = true;
-      release?.();
+      mounted = false;
+      detach();
     };
   }, [backend]);
   return { models, update, setUpdate };
