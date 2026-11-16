@@ -40,9 +40,9 @@ export const fr: Messages = {
   uiLanguage: "Langue de l'interface",
   sourceLanguage: "Langue parlée (source)",
   translationEngine: "Modèle de traduction",
-  engineOpus: "Le plus rapide. Anglais ↔ portugais uniquement.",
-  engineM2m100: "34 langues, dans n'importe quel sens. Environ 3× plus lent qu'OPUS-MT, encore adapté aux sous-titres en direct.",
-  engineRiva: "37 langues et les traductions les plus naturelles. Demande une carte graphique avec environ 3 Go de mémoire vidéo libre et peut ralentir les jeux.",
+  engineOpus: "Anglais ↔ portugais uniquement.",
+  engineM2m100: "34 langues, dans n'importe quel sens. Il peut être plus lent qu'OPUS-MT, selon votre PC.",
+  engineRiva: "37 langues. Demande une carte graphique avec environ 3 Go de mémoire vidéo libre et peut ralentir les jeux.",
   modelDownloadMissing: "Le modèle de ce moteur n'a pas encore été téléchargé.",
   modelDownloadAction: "Télécharger ({size} Go)",
 

@@ -39,9 +39,9 @@ export const ptBR = {
   uiLanguage: "Idioma da interface",
   sourceLanguage: "Idioma falado (origem)",
   translationEngine: "Modelo de tradução",
-  engineOpus: "O mais rápido. Só inglês ↔ português.",
-  engineM2m100: "34 idiomas, em qualquer direção. Cerca de 3× mais lento que o OPUS-MT, ainda bom para legendas ao vivo.",
-  engineRiva: "37 idiomas e as traduções mais naturais. Precisa de uma placa de vídeo com cerca de 3 GB de memória de vídeo livre e pode deixar jogos mais lentos.",
+  engineOpus: "Só inglês ↔ português.",
+  engineM2m100: "34 idiomas, em qualquer direção. Pode ser mais lento que o OPUS-MT, dependendo do seu PC.",
+  engineRiva: "37 idiomas. Precisa de uma placa de vídeo com cerca de 3 GB de memória de vídeo livre e pode deixar jogos mais lentos.",
   modelDownloadMissing: "O modelo deste mecanismo ainda não foi baixado.",
   modelDownloadAction: "Baixar ({size} GB)",
 

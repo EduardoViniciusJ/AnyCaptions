@@ -40,9 +40,9 @@ export const en: Messages = {
   uiLanguage: "Interface language",
   sourceLanguage: "Spoken language (source)",
   translationEngine: "Translation model",
-  engineOpus: "The fastest. English ↔ Portuguese only.",
-  engineM2m100: "34 languages, in any direction. About 3× slower than OPUS-MT, still fine for live captions.",
-  engineRiva: "37 languages and the most natural translations. Needs a graphics card with about 3 GB of free video memory and can slow down games.",
+  engineOpus: "English ↔ Portuguese only.",
+  engineM2m100: "34 languages, in any direction. It can be slower than OPUS-MT, depending on your PC.",
+  engineRiva: "37 languages. Needs a graphics card with about 3 GB of free video memory and can slow down games.",
   modelDownloadMissing: "This engine's model has not been downloaded yet.",
   modelDownloadAction: "Download ({size} GB)",
 

@@ -40,9 +40,9 @@ export const zhCN: Messages = {
   uiLanguage: "界面语言",
   sourceLanguage: "语音语言（来源）",
   translationEngine: "翻译模型",
-  engineOpus: "速度最快。仅支持英语 ↔ 葡萄牙语。",
-  engineM2m100: "34 种语言，任意方向互译。比 OPUS-MT 慢约 3 倍，仍适合实时字幕。",
-  engineRiva: "37 种语言，译文最自然。需要显卡有约 3 GB 可用显存，可能会拖慢游戏。",
+  engineOpus: "仅支持英语 ↔ 葡萄牙语。",
+  engineM2m100: "34 种语言，任意方向互译。可能比 OPUS-MT 慢，取决于你的电脑。",
+  engineRiva: "37 种语言。需要显卡有约 3 GB 可用显存，可能会拖慢游戏。",
   modelDownloadMissing: "该引擎的模型尚未下载。",
   modelDownloadAction: "下载（{size} GB）",
 
