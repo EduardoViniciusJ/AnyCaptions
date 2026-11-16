@@ -117,13 +117,15 @@ export const en: SiteMessages = {
     },
     models: {
       heading: 'Models and languages',
-      intro: 'AnyCaptions uses three AI models, all running locally:',
+      intro: 'AnyCaptions uses the AI models below, all running locally on your computer:',
       items: [
-        { name: 'Nemotron Streaming (NVIDIA)', desc: ' — real-time speech recognition. Ships with the installer.' },
-        { name: 'OPUS-MT (Helsinki-NLP)', desc: ' — English ↔ Portuguese translation on the CPU. Ships with the installer.' },
-        { name: 'Riva Translate (NVIDIA)', desc: ' — translation into 37 languages on the GPU. Not in the installer: when you select the Riva model in the settings, the app shows a Download (2.8 GB) button and installs everything itself, with integrity verification.' },
+        { name: 'Nemotron 3.5 ASR Streaming (NVIDIA)', url: 'https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b', desc: ' — real-time speech recognition. Ships with the installer.' },
+        { name: 'OPUS-MT (Helsinki-NLP)', url: 'https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt', desc: ' — English ↔ Portuguese translation on the CPU, the fastest option. Ships with the installer.' },
+        { name: 'M2M100 418M (Meta)', url: 'https://huggingface.co/facebook/m2m100_418M', desc: ' — direct translation between 34 languages on the CPU, no graphics card needed. Slower than OPUS-MT. Not in the installer: select M2M100 in the settings and the app shows a Download (491 MB) button.' },
+        { name: 'Riva Translate 4B (NVIDIA)', url: 'https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2', desc: ' — translation into 37 languages on the GPU. Not in the installer: select Riva in the settings and the app shows a Download (2.8 GB) button.' },
+        { name: 'Nemotron 3 Diarization (NVIDIA)', url: 'https://huggingface.co/nvidia/Nemotron-3-Diarization', desc: ' — optional speaker labels (Person 1, Person 2…). Not in the installer: turn the option on in the settings and the app shows a Download (107 MB) button.' },
       ],
-      summary: 'In short: after installing, you only need to download something if you want Riva’s 37 languages — and that is one click inside the app itself.',
+      summary: 'In short: after installing, you only need to download something if you want more languages (M2M100 or Riva) or speaker labels — and each is one click inside the app, with integrity verification.',
     },
     privacy: {
       heading: 'Privacy',
@@ -135,11 +137,14 @@ export const en: SiteMessages = {
     },
     licenses: {
       heading: 'Licenses',
-      intro: 'The models have their own licenses, which allow this use and this redistribution:',
-      nvidiaName: 'Nemotron Streaming and Riva Translate',
-      nvidia: { before: ' — Licensed by NVIDIA Corporation under the ', link: 'NVIDIA Open Model License', after: '.' },
-      opusName: 'OPUS-MT (Helsinki-NLP)',
-      opus: { before: ' — ', link: 'CC-BY 4.0', after: ' license.' },
+      intro: 'Each model has its own license, which allows this use and this redistribution:',
+      items: [
+        { name: 'Nemotron ASR and Nemotron 3 Diarization (NVIDIA)', before: ' — ', link: 'OpenMDW-1.1', url: 'https://openmdw.ai/license/1-1/', after: ' license.' },
+        { name: 'Riva Translate', before: ' — Licensed by NVIDIA Corporation under the ', link: 'NVIDIA Open Model License', url: 'https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/', after: '.' },
+        { name: 'OPUS-MT English → Portuguese (Helsinki-NLP)', before: ' — ', link: 'CC-BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/', after: ' license; converted to CTranslate2 int8.' },
+        { name: 'OPUS-MT Portuguese → English (Helsinki-NLP)', before: ' — ', link: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0', after: ' license; converted to CTranslate2 int8.' },
+        { name: 'M2M100 (Meta)', before: ' — ', link: 'MIT', url: 'https://opensource.org/license/mit', after: ' license; converted to CTranslate2 int8.' },
+      ],
       code: { before: 'The AnyCaptions source code is on ', link: 'GitHub', after: '.' },
     },
     trouble: {
