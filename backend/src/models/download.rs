@@ -378,12 +378,7 @@ fn stream_to_part(
     }
     file.sync_all().map_err(|_| DownloadFailure::Disk)?;
     drop(file);
-    let digest: String = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    if !digest.eq_ignore_ascii_case(profile.sha256) {
+    if !super::digest_matches(hasher, profile.sha256) {
         return Err(DownloadFailure::Corrupted);
     }
     report(received, total);

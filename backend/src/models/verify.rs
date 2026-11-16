@@ -69,12 +69,7 @@ pub fn verify_model_file(
         }
         hasher.update(&buffer[..count]);
     }
-    let digest: String = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    if !digest.eq_ignore_ascii_case(sha256) {
+    if !digest_matches(hasher, sha256) {
         let _ = fs::remove_file(stamp_path(path));
         return Err(ModelProfileError::Corrupted);
     }
@@ -84,6 +79,17 @@ pub fn verify_model_file(
     }
     remember(entry);
     Ok(())
+}
+
+/// Whether the finished hash equals `expected` (hexadecimal, any case).
+/// Shared by everything that checks a download against a published SHA-256.
+pub(crate) fn digest_matches(hasher: Sha256, expected: &str) -> bool {
+    use std::fmt::Write;
+    let mut hex = String::with_capacity(64);
+    for byte in hasher.finalize() {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex.eq_ignore_ascii_case(expected)
 }
 
 fn remember(entry: VerifiedFile) {
@@ -129,6 +135,19 @@ mod tests {
 
     // SHA-256 of the bytes "model".
     const MODEL_SHA256: &str = "9372c470eeadd5ecd9c3c74c2b3cb633f8e2f2fad799250a0f70d652b6b825e4";
+
+    #[test]
+    fn digests_compare_as_hexadecimal_in_any_case() {
+        let hashed = || {
+            let mut hasher = Sha256::new();
+            hasher.update(b"model");
+            hasher
+        };
+        assert!(digest_matches(hashed(), MODEL_SHA256));
+        assert!(digest_matches(hashed(), &MODEL_SHA256.to_ascii_uppercase()));
+        assert!(!digest_matches(hashed(), &"0".repeat(64)));
+        assert!(!digest_matches(hashed(), ""));
+    }
 
     #[test]
     fn accepts_a_matching_model_file() {
