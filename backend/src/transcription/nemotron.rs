@@ -283,11 +283,33 @@ impl NemotronModel {
         if recognizer.is_null() {
             return Err(RecognizerError::ModelUnavailable);
         }
-        Ok(Arc::new(Self {
+        let model = Arc::new(Self {
             recognizer,
             api,
             diarizer,
-        }))
+        });
+        model.warm_up();
+        Ok(model)
+    }
+
+    /// Streams one second of faint noise through a throwaway stream so the GPU
+    /// pipelines compile now: measured on 2026-11-16 (RX 6600, Vulkan), the
+    /// first block of a cold model took ~2 s against ~20 ms afterwards, which
+    /// delayed the first caption of every session. No audio is involved.
+    fn warm_up(self: &Arc<Self>) {
+        let start = std::time::Instant::now();
+        if let Ok(mut stream) =
+            NativeNemotron::open(Arc::clone(self), None, super::tuning::DICTATION, false)
+        {
+            let noise: Vec<f32> = (0..16_000_u32)
+                .map(|i| ((i.wrapping_mul(7_919) % 2_000) as f32 / 2_000.0 - 0.5) * 0.01)
+                .collect();
+            for block in noise.chunks(2_048) {
+                let _ = stream.push(block);
+            }
+            let _ = stream.finish();
+        }
+        eprintln!("[asr] warmup_ms={}", start.elapsed().as_millis());
     }
 
     /// Whether the diarizer is loaded, i.e. streams opened over this model
