@@ -10,11 +10,13 @@ export const zhCN: Messages = {
   stop: "停止",
   captureHint: "捕获需要音频输出和可用的模型",
   captionLanguage: "字幕语言",
-  autoMode: "自动",
+  autoMode: "自动",
+
   transcribeMode: "转写",
   autoModeHint: "检测语言并按所说语言转写",
   translateTo: "翻译为",
-  translationMissing: "请安装翻译模型",
+  translationMissing: "请安装翻译模型",
+
   moreLanguagesRiva: "更多语言（中文、日语、西班牙语……）：请在设置中下载 Riva 模型",
   settings: "设置",
   settingsAria: "字幕设置",
@@ -39,6 +41,7 @@ export const zhCN: Messages = {
   sourceLanguage: "语音语言（来源）",
   translationEngine: "翻译模型",
   engineOpus: "OPUS-MT——快速（CPU），英语 ↔ 葡萄牙语",
+  engineM2m100: "M2M100——34 种语言（CPU）",
   engineRiva: "Riva——37 种语言（GPU）",
   modelDownloadMissing: "该引擎的模型尚未下载。",
   modelDownloadAction: "下载（{size} GB）",
@@ -56,10 +59,12 @@ export const zhCN: Messages = {
   speakerLabelsHint: "每个声音仅根据音频获得一个通用标签（说话人 1、说话人 2……）；应用不会识别身份或姓名。需要额外的模型和更多 GPU/CPU 资源；重叠的声音可能被归为同一个人。",
   speakerLabelsModelMissing: "说话人识别模型尚未下载。",
   speakerLabelsUnavailable: "说话人识别不可用；字幕将继续显示但没有标签。",
-  speakerLabel: "说话人 {n}",
+  speakerLabel: "说话人 {n}",
+
   captionFont: "字体",
   developedBy: "开发者",
-  updates: "更新",
+  updates: "更新",
+
   appVersion: "版本",
   updateCheckOnStart: "打开应用时检查新版本",
   updateCheckNow: "立即检查",

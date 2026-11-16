@@ -13,12 +13,23 @@ export interface TranslationEngineOption {
 
 export const TRANSLATION_ENGINES: TranslationEngineOption[] = [
   { id: "opus", labelKey: "engineOpus" },
+  { id: "m2m100", labelKey: "engineM2m100" },
   { id: "riva", labelKey: "engineRiva" },
 ];
 
 /** Modos servidos por cada mecanismo; o backend valida, esta tabela só filtra o menu. */
 const ENGINE_MODES: Record<TranslationEngine, "all" | ReadonlySet<CaptionMode>> = {
   opus: new Set<CaptionMode>(["translate-en", "translate-pt-br", "translate-pt-pt"]),
+  // Espelha `M2M100_TARGETS` do backend: um alvo por idioma do modelo, sem as
+  // variantes regionais que ele não distingue (PT de Portugal, ES da América
+  // Latina, chinês tradicional).
+  m2m100: new Set<CaptionMode>(
+    [
+      "en", "pt-br", "es-es", "fr", "de", "it", "nl", "pl", "cs", "sk", "sl",
+      "hr", "hu", "ro", "bg", "el", "et", "lt", "lv", "fi", "sv", "da", "no",
+      "ar", "hi", "id", "ja", "ko", "ru", "th", "tr", "uk", "vi", "zh-cn",
+    ].map((tag) => `translate-${tag}` as CaptionMode),
+  ),
   riva: "all",
 };
 

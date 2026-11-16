@@ -1,5 +1,5 @@
 export type CaptionMode = "auto" | `translate-${string}`;
-export type TranslationEngine = "opus" | "riva";
+export type TranslationEngine = "opus" | "m2m100" | "riva";
 export type CaptureState = "stopped" | "preparing" | "listening" | "processing" | "error";
 export type WindowMode = "edit" | "locked";
 export type ResizeDirection = "East" | "West" | "South";

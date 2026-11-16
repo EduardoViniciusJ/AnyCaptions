@@ -9,11 +9,13 @@ export const ptBR = {
   stop: "Parar",
   captureHint: "A captura precisa de uma saída de áudio e de modelos disponíveis",
   captionLanguage: "Idioma das legendas",
-  autoMode: "Automático",
+  autoMode: "Automático",
+
   transcribeMode: "Transcrever",
   autoModeHint: "Detecta o idioma e transcreve no idioma falado",
   translateTo: "Traduzir para",
-  translationMissing: "instale o modelo de tradução",
+  translationMissing: "instale o modelo de tradução",
+
   moreLanguagesRiva: "Outros idiomas (chinês, japonês, espanhol…): baixe o modelo Riva nas configurações",
   settings: "Configurações",
   settingsAria: "Configurações de legendas",
@@ -38,6 +40,7 @@ export const ptBR = {
   sourceLanguage: "Idioma falado (origem)",
   translationEngine: "Modelo de tradução",
   engineOpus: "OPUS-MT — rápido (CPU), inglês ↔ português",
+  engineM2m100: "M2M100 — 34 idiomas (CPU)",
   engineRiva: "Riva — 37 idiomas (GPU)",
   modelDownloadMissing: "O modelo deste mecanismo ainda não foi baixado.",
   modelDownloadAction: "Baixar ({size} GB)",
@@ -55,10 +58,12 @@ export const ptBR = {
   speakerLabelsHint: "Cada voz recebe um rótulo genérico (Pessoa 1, Pessoa 2…) a partir do som; o app não reconhece identidades nem nomes. Usa um modelo adicional e mais GPU/CPU; vozes sobrepostas podem ser atribuídas a uma só pessoa.",
   speakerLabelsModelMissing: "O modelo de identificação de falantes ainda não foi baixado.",
   speakerLabelsUnavailable: "Identificação de falantes indisponível; as legendas seguem sem rótulos.",
-  speakerLabel: "Pessoa {n}",
+  speakerLabel: "Pessoa {n}",
+
   captionFont: "Fonte",
   developedBy: "desenvolvido por",
-  updates: "Atualizações",
+  updates: "Atualizações",
+
   appVersion: "Versão",
   updateCheckOnStart: "Verificar nova versão ao abrir o app",
   updateCheckNow: "Verificar agora",

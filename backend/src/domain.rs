@@ -84,6 +84,47 @@ pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
 /// Targets the OPUS engine serves (English–Portuguese, both directions).
 pub const OPUS_TARGETS: &[TargetLanguage] = &[EN, PT_BR, PT_PT];
 
+/// Targets the M2M100 engine serves: one per language of the model. It has a
+/// single code per language, so the regional variants it cannot tell apart
+/// (European Portuguese, Latin American Spanish, Traditional Chinese) are not
+/// offered rather than promised.
+pub const M2M100_TARGETS: &[TargetLanguage] = &[
+    EN,
+    PT_BR,
+    TargetLanguage("es-es"),
+    TargetLanguage("fr"),
+    TargetLanguage("de"),
+    TargetLanguage("it"),
+    TargetLanguage("nl"),
+    TargetLanguage("pl"),
+    TargetLanguage("cs"),
+    TargetLanguage("sk"),
+    TargetLanguage("sl"),
+    TargetLanguage("hr"),
+    TargetLanguage("hu"),
+    TargetLanguage("ro"),
+    TargetLanguage("bg"),
+    TargetLanguage("el"),
+    TargetLanguage("et"),
+    TargetLanguage("lt"),
+    TargetLanguage("lv"),
+    TargetLanguage("fi"),
+    TargetLanguage("sv"),
+    TargetLanguage("da"),
+    TargetLanguage("no"),
+    TargetLanguage("ar"),
+    TargetLanguage("hi"),
+    TargetLanguage("id"),
+    TargetLanguage("ja"),
+    TargetLanguage("ko"),
+    TargetLanguage("ru"),
+    TargetLanguage("th"),
+    TargetLanguage("tr"),
+    TargetLanguage("uk"),
+    TargetLanguage("vi"),
+    TargetLanguage("zh-cn"),
+];
+
 /// Every language the ASR model recognizes: the prompt dictionary embedded in
 /// the Nemotron GGUF (`asr.rnnt.prompt_dictionary` metadata; "auto" is the
 /// detection prompt). One canonical tag per language, mirrored by the
@@ -143,6 +184,9 @@ pub enum TranslationEngine {
     Opus,
     /// Riva/NMT on the GPU: every target in [`TRANSLATION_TARGETS`].
     Riva,
+    /// M2M100 via CTranslate2 on the CPU: one model, any pair of its languages.
+    #[serde(rename = "m2m100")]
+    M2m100,
 }
 
 impl TranslationEngine {
@@ -150,6 +194,7 @@ impl TranslationEngine {
         match self {
             Self::Opus => OPUS_TARGETS,
             Self::Riva => TRANSLATION_TARGETS,
+            Self::M2m100 => M2M100_TARGETS,
         }
     }
 
@@ -943,6 +988,35 @@ mod tests {
         for target in OPUS_TARGETS {
             assert!(TranslationEngine::Riva.supports(*target));
         }
+    }
+
+    #[test]
+    fn the_m2m100_engine_offers_one_target_per_language() {
+        assert_eq!(
+            serde_json::to_value(TranslationEngine::M2m100).unwrap(),
+            "m2m100"
+        );
+        assert_eq!(
+            serde_json::from_value::<TranslationEngine>(serde_json::json!("m2m100")).unwrap(),
+            TranslationEngine::M2m100
+        );
+        // Every target is a catalog target, so it can travel in a caption mode.
+        for target in M2M100_TARGETS {
+            assert_eq!(TargetLanguage::from_tag(target.tag()), Some(*target));
+        }
+        let japanese = TargetLanguage::from_tag("ja").unwrap();
+        assert!(TranslationEngine::M2m100.supports(japanese));
+        // Regional variants the model cannot tell apart are not promised.
+        assert!(!TranslationEngine::M2m100.supports(PT_PT));
+        // Switching to it keeps a shared target and drops an unsupported one.
+        let mut state = ready();
+        state.set_mode(CaptionMode::Translate(PT_PT)).unwrap();
+        state
+            .set_translation_engine(TranslationEngine::M2m100)
+            .unwrap();
+        assert_eq!(state.snapshot().mode, CaptionMode::Translate(PT_BR));
+        state.set_mode(CaptionMode::Translate(japanese)).unwrap();
+        assert_eq!(state.snapshot().mode, CaptionMode::Translate(japanese));
     }
 
     #[test]

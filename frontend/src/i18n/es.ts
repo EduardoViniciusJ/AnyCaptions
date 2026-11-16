@@ -10,11 +10,13 @@ export const es: Messages = {
   stop: "Detener",
   captureHint: "La captura necesita una salida de audio y modelos disponibles",
   captionLanguage: "Idioma de los subtítulos",
-  autoMode: "Automático",
+  autoMode: "Automático",
+
   transcribeMode: "Transcribir",
   autoModeHint: "Detecta el idioma y transcribe el idioma hablado",
   translateTo: "Traducir a",
-  translationMissing: "instala el modelo de traducción",
+  translationMissing: "instala el modelo de traducción",
+
   moreLanguagesRiva: "Más idiomas (chino, japonés, español…): descarga el modelo Riva en la configuración",
   settings: "Configuración",
   settingsAria: "Configuración de subtítulos",
@@ -39,6 +41,7 @@ export const es: Messages = {
   sourceLanguage: "Idioma hablado (origen)",
   translationEngine: "Modelo de traducción",
   engineOpus: "OPUS-MT — rápido (CPU), inglés ↔ portugués",
+  engineM2m100: "M2M100 — 34 idiomas (CPU)",
   engineRiva: "Riva — 37 idiomas (GPU)",
   modelDownloadMissing: "El modelo de este motor aún no se ha descargado.",
   modelDownloadAction: "Descargar ({size} GB)",
@@ -56,10 +59,12 @@ export const es: Messages = {
   speakerLabelsHint: "Cada voz recibe una etiqueta genérica (Persona 1, Persona 2…) a partir del sonido; la app no reconoce identidades ni nombres. Usa un modelo adicional y más GPU/CPU; las voces superpuestas pueden atribuirse a una sola persona.",
   speakerLabelsModelMissing: "El modelo de identificación de hablantes aún no se ha descargado.",
   speakerLabelsUnavailable: "Identificación de hablantes no disponible; los subtítulos continúan sin etiquetas.",
-  speakerLabel: "Persona {n}",
+  speakerLabel: "Persona {n}",
+
   captionFont: "Fuente",
   developedBy: "desarrollado por",
-  updates: "Actualizaciones",
+  updates: "Actualizaciones",
+
   appVersion: "Versión",
   updateCheckOnStart: "Buscar una versión nueva al abrir la app",
   updateCheckNow: "Buscar ahora",

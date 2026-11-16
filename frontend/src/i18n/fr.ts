@@ -10,11 +10,13 @@ export const fr: Messages = {
   stop: "Arrêter",
   captureHint: "La capture nécessite une sortie audio et des modèles disponibles",
   captionLanguage: "Langue des sous-titres",
-  autoMode: "Automatique",
+  autoMode: "Automatique",
+
   transcribeMode: "Transcrire",
   autoModeHint: "Détecte la langue et transcrit la langue parlée",
   translateTo: "Traduire en",
-  translationMissing: "installez le modèle de traduction",
+  translationMissing: "installez le modèle de traduction",
+
   moreLanguagesRiva: "Autres langues (chinois, japonais, espagnol…) : téléchargez le modèle Riva dans les réglages",
   settings: "Paramètres",
   settingsAria: "Paramètres des sous-titres",
@@ -39,6 +41,7 @@ export const fr: Messages = {
   sourceLanguage: "Langue parlée (source)",
   translationEngine: "Modèle de traduction",
   engineOpus: "OPUS-MT — rapide (CPU), anglais ↔ portugais",
+  engineM2m100: "M2M100 — 34 langues (CPU)",
   engineRiva: "Riva — 37 langues (GPU)",
   modelDownloadMissing: "Le modèle de ce moteur n'a pas encore été téléchargé.",
   modelDownloadAction: "Télécharger ({size} Go)",
@@ -56,10 +59,12 @@ export const fr: Messages = {
   speakerLabelsHint: "Chaque voix reçoit une étiquette générique (Personne 1, Personne 2…) d’après le son seul ; l’application ne reconnaît ni identités ni noms. Elle utilise un modèle supplémentaire et plus de GPU/CPU ; des voix qui se chevauchent peuvent être attribuées à une seule personne.",
   speakerLabelsModelMissing: "Le modèle d’identification des locuteurs n’a pas encore été téléchargé.",
   speakerLabelsUnavailable: "Identification des locuteurs indisponible ; les sous-titres continuent sans étiquettes.",
-  speakerLabel: "Personne {n}",
+  speakerLabel: "Personne {n}",
+
   captionFont: "Police",
   developedBy: "développé par",
-  updates: "Mises à jour",
+  updates: "Mises à jour",
+
   appVersion: "Version",
   updateCheckOnStart: "Vérifier une nouvelle version à l’ouverture",
   updateCheckNow: "Vérifier maintenant",

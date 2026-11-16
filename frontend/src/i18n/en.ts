@@ -10,11 +10,13 @@ export const en: Messages = {
   stop: "Stop",
   captureHint: "Capture needs an audio output and available models",
   captionLanguage: "Caption language",
-  autoMode: "Automatic",
+  autoMode: "Automatic",
+
   transcribeMode: "Transcribe",
   autoModeHint: "Detects the language and transcribes the spoken language",
   translateTo: "Translate to",
-  translationMissing: "install the translation model",
+  translationMissing: "install the translation model",
+
   moreLanguagesRiva: "More languages (Chinese, Japanese, Spanish…): download the Riva model in the settings",
   settings: "Settings",
   settingsAria: "Caption settings",
@@ -39,6 +41,7 @@ export const en: Messages = {
   sourceLanguage: "Spoken language (source)",
   translationEngine: "Translation model",
   engineOpus: "OPUS-MT — fast (CPU), English ↔ Portuguese",
+  engineM2m100: "M2M100 — 34 languages (CPU)",
   engineRiva: "Riva — 37 languages (GPU)",
   modelDownloadMissing: "This engine's model has not been downloaded yet.",
   modelDownloadAction: "Download ({size} GB)",
@@ -56,10 +59,12 @@ export const en: Messages = {
   speakerLabelsHint: "Each voice gets a generic label (Person 1, Person 2…) from the sound alone; the app does not recognize identities or names. It uses an extra model and more GPU/CPU; overlapping voices may be attributed to one person.",
   speakerLabelsModelMissing: "The speaker identification model has not been downloaded yet.",
   speakerLabelsUnavailable: "Speaker identification unavailable; captions continue without labels.",
-  speakerLabel: "Person {n}",
+  speakerLabel: "Person {n}",
+
   captionFont: "Font",
   developedBy: "developed by",
-  updates: "Updates",
+  updates: "Updates",
+
   appVersion: "Version",
   updateCheckOnStart: "Check for a new version when the app opens",
   updateCheckNow: "Check now",

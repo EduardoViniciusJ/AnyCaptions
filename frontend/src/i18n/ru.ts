@@ -10,11 +10,13 @@ export const ru: Messages = {
   stop: "Стоп",
   captureHint: "Для захвата нужны аудиовыход и доступные модели",
   captionLanguage: "Язык субтитров",
-  autoMode: "Автоматически",
+  autoMode: "Автоматически",
+
   transcribeMode: "Транскрибировать",
   autoModeHint: "Определяет язык и транскрибирует устную речь",
   translateTo: "Перевести на",
-  translationMissing: "установите модель перевода",
+  translationMissing: "установите модель перевода",
+
   moreLanguagesRiva: "Другие языки (китайский, японский, испанский…): скачайте модель Riva в настройках",
   settings: "Настройки",
   settingsAria: "Настройки субтитров",
@@ -39,6 +41,7 @@ export const ru: Messages = {
   sourceLanguage: "Язык речи (источник)",
   translationEngine: "Модель перевода",
   engineOpus: "OPUS-MT — быстрая (CPU), английский ↔ португальский",
+  engineM2m100: "M2M100 — 34 языка (CPU)",
   engineRiva: "Riva — 37 языков (GPU)",
   modelDownloadMissing: "Модель этого движка ещё не загружена.",
   modelDownloadAction: "Скачать ({size} ГБ)",
@@ -56,10 +59,12 @@ export const ru: Messages = {
   speakerLabelsHint: "Каждый голос получает условную метку (Участник 1, Участник 2…) только по звуку; приложение не распознаёт личности и имена. Нужна дополнительная модель и больше ресурсов GPU/CPU; перекрывающиеся голоса могут быть отнесены к одному человеку.",
   speakerLabelsModelMissing: "Модель определения говорящих ещё не загружена.",
   speakerLabelsUnavailable: "Определение говорящих недоступно; субтитры продолжаются без меток.",
-  speakerLabel: "Участник {n}",
+  speakerLabel: "Участник {n}",
+
   captionFont: "Шрифт",
   developedBy: "разработано",
-  updates: "Обновления",
+  updates: "Обновления",
+
   appVersion: "Версия",
   updateCheckOnStart: "Проверять новую версию при запуске",
   updateCheckNow: "Проверить сейчас",

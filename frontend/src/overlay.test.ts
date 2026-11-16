@@ -364,6 +364,39 @@ describe("overlay controls", () => {
     ).toBe(false);
   });
 
+  it("offers the M2M100 engine with one target per language", async () => {
+    const app = setup(
+      snapshot({
+        translationEngine: "m2m100",
+        resources: {
+          audioCapture: true,
+          transcription: true,
+          translation: true,
+          speakerLabels: false,
+        },
+      }),
+    );
+    await app.ready();
+    const hidden = (mode: string) =>
+      app.get<HTMLLIElement>(`#language-menu li[data-value="${mode}"]`).hidden;
+    // Any pair of its languages, directly: Japanese, Russian and French show.
+    expect(hidden("translate-ja")).toBe(false);
+    expect(hidden("translate-ru")).toBe(false);
+    expect(hidden("translate-fr")).toBe(false);
+    expect(hidden("translate-pt-br")).toBe(false);
+    // The model has one code per language, so the regional variants it
+    // cannot tell apart are not promised.
+    expect(hidden("translate-pt-pt")).toBe(true);
+    expect(hidden("translate-es-us")).toBe(true);
+    expect(hidden("translate-zh-tw")).toBe(true);
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    const select = app.get<HTMLSelectElement>("#translation-engine");
+    expect(select.value).toBe("m2m100");
+    expect(
+      Array.from(select.options).map((option) => option.value),
+    ).toEqual(["opus", "m2m100", "riva"]);
+  });
+
   it("switches the interface language and applies the texts", async () => {
     const app = setup();
     await app.ready();

@@ -867,6 +867,9 @@ pub fn get_model_downloads<R: Runtime>(
     let riva_installed = sessions
         .as_ref()
         .is_some_and(|sessions| sessions.translation_available(TranslationEngine::Riva));
+    let m2m100_installed = sessions
+        .as_ref()
+        .is_some_and(|sessions| sessions.translation_available(TranslationEngine::M2m100));
     let diarization_installed = sessions
         .as_ref()
         .is_some_and(|sessions| sessions.speaker_labels_available());
@@ -879,6 +882,15 @@ pub fn get_model_downloads<R: Runtime>(
             downloadable: download::riva_source_configured(),
             downloading: downloads.active_model() == Some(catalog::RIVA_TRANSLATE_Q4.id),
             total_bytes: download::RIVA_DOWNLOAD_BYTES,
+        },
+        ModelDownloadState {
+            model: catalog::M2M100_418M.id,
+            kind: catalog::M2M100_418M.kind,
+            engine: Some(TranslationEngine::M2m100),
+            installed: m2m100_installed,
+            downloadable: download::source_configured(catalog::M2M100_418M.id),
+            downloading: downloads.active_model() == Some(catalog::M2M100_418M.id),
+            total_bytes: download::M2M100_DOWNLOAD_BYTES,
         },
         ModelDownloadState {
             model: catalog::NEMOTRON_3_DIARIZATION_Q8.id,
