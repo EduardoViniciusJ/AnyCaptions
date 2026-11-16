@@ -167,16 +167,9 @@ export function App({ backend }: { backend: Backend }) {
           />
         )}
       </div>
-      <DictationIndicator backend={backend} onError={setError} feedbackOnly />
+      <DictationIndicator backend={backend} onError={setError} feedbackOnly />
+
       <UpdateNotice backend={backend} state={state} report={report} />
-      <p
-        id="notice"
-        className="notice"
-        role="status"
-        hidden={!state?.speakerLabels || state.resources.speakerLabels}
-      >
-        {t("speakerLabelsUnavailable")}
-      </p>
       <p
         id="error"
         className="error"
