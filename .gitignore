@@ -30,6 +30,8 @@ node_modules/
 !/backend/models/manifest.json
 
 /backend/local-data/
+/backend/native/opus-ct2/deps/
+/backend/native/opus-ct2/build/
 /backend/benchmarks/local/
 /frontend/test-results/
 /frontend/playwright-report/
