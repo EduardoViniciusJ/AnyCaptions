@@ -44,6 +44,7 @@ export function SettingsPanel({
   perform,
   report,
   onClose,
+  onPreview,
 }: {
   backend: Backend;
   state: AppSnapshot;
@@ -52,6 +53,8 @@ export function SettingsPanel({
   perform(action: () => Promise<AppSnapshot>): Promise<boolean>;
   report(error: unknown): void;
   onClose(): void;
+  /** The look being edited, shown on the real window before Save; `null` ends it. */
+  onPreview(appearance: AppSnapshot["appearance"] | null): void;
 }) {
   const [tab, setTab] = useState<TabId>("captions");
   const [appearance, setAppearance] = useState(state.appearance);
@@ -94,6 +97,11 @@ export function SettingsPanel({
     };
     // Snapshot events must not overwrite unsaved edits while this panel is open.
   }, [backend, open]);
+  // The window itself takes the color and opacity being edited, so the user
+  // sees the real result while choosing; closing without Save puts it back.
+  useEffect(() => {
+    onPreview(open ? appearance : null);
+  }, [appearance, open, onPreview]);
   const valid =
     !!normalizeCaptionColor(appearance.color) &&
     !!normalizeCaptionColor(appearance.partialColor) &&

@@ -2,6 +2,7 @@
 import type { Appearance } from "../contracts";
 import {
   CAPTION_FONTS,
+  DEFAULT_APPEARANCE,
   captionFontFamily,
   normalizeCaptionColor,
   panelBackground,
@@ -17,6 +18,48 @@ export function appearanceStyle(value: Appearance): CSSProperties {
     "--panel-background": panelBackground(value),
   } as CSSProperties;
 }
+/**
+ * Puts one option back to its default without touching the others (the
+ * footer's "Restore default" resets everything at once). Like the option
+ * itself, it changes the draft; Save applies it.
+ */
+function ResetOption({
+  field,
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  field: keyof Appearance;
+  id: string;
+  label: string;
+  value: Appearance;
+  onChange(value: Appearance): void;
+}) {
+  const initial = DEFAULT_APPEARANCE[field];
+  const current = value[field];
+  const changed =
+    typeof current === "string" && typeof initial === "string"
+      ? current.trim().toUpperCase() !== initial.toUpperCase()
+      : current !== initial;
+  const name = `${t("restoreDefault")}: ${label}`;
+  return (
+    <button
+      className="btn btn-ghost btn-xs setting-reset"
+      id={`${id}-reset`}
+      type="button"
+      title={name}
+      aria-label={name}
+      disabled={!changed}
+      onClick={() => onChange({ ...value, [field]: initial })}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v2.4h2.4" />
+      </svg>
+    </button>
+  );
+}
+
 export function AppearanceSettings({
   value,
   onChange,
@@ -43,6 +86,7 @@ export function AppearanceSettings({
         </p>
       </div>
       <Field id="font-size" label={t("fontSize")}>
+        <div className="setting-with-reset">
         <div>
           <output id="font-value" htmlFor="font-size">
             {value.fontSize} px
@@ -59,6 +103,8 @@ export function AppearanceSettings({
               onChange({ ...value, fontSize: Number(event.target.value) })
             }
           />
+        </div>
+          <ResetOption field="fontSize" id="font-size" label={t("fontSize")} value={value} onChange={onChange} />
         </div>
       </Field>
       {(
@@ -87,7 +133,7 @@ export function AppearanceSettings({
         ] as const
       ).map(([key, id, label, pickerLabel, hexLabel]) => (
         <Field key={key} id={id} label={t(label)}>
-          <div className="color-control">
+          <div className="color-control setting-with-reset">
             <input
               id={id}
               type="color"
@@ -113,10 +159,12 @@ export function AppearanceSettings({
                 if (normalized) onChange({ ...value, [key]: normalized });
               }}
             />
+            <ResetOption field={key} id={id} label={t(label)} value={value} onChange={onChange} />
           </div>
         </Field>
       ))}
       <Field id="panel-opacity" label={t("panelOpacity")}>
+        <div className="setting-with-reset">
         <div>
           <output id="panel-opacity-value" htmlFor="panel-opacity">
             {value.panelOpacity}%
@@ -134,8 +182,11 @@ export function AppearanceSettings({
             }
           />
         </div>
+          <ResetOption field="panelOpacity" id="panel-opacity" label={t("panelOpacity")} value={value} onChange={onChange} />
+        </div>
       </Field>
       <Field id="caption-font" label={t("captionFont")}>
+        <div className="setting-with-reset">
         <select
           className="select select-sm"
           id="caption-font"
@@ -149,8 +200,11 @@ export function AppearanceSettings({
             </option>
           ))}
         </select>
+          <ResetOption field="font" id="caption-font" label={t("captionFont")} value={value} onChange={onChange} />
+        </div>
       </Field>
       <Field id="caption-background" label={t("captionBackground")}>
+        <div className="setting-with-reset">
         <input
           className="toggle toggle-sm toggle-primary"
           id="caption-background"
@@ -160,6 +214,8 @@ export function AppearanceSettings({
             onChange({ ...value, background: event.target.checked })
           }
         />
+          <ResetOption field="background" id="caption-background" label={t("captionBackground")} value={value} onChange={onChange} />
+        </div>
       </Field>
     </>
   );

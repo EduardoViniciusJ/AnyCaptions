@@ -62,7 +62,6 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
   border-radius: 8px;
 }
 .toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 10px 0; flex: 0 0 auto; }
-.overlay[data-settings="open"][data-mode="edit"] { background: rgba(15, 15, 15, 0.96); }
 .brand { display: flex; align-items: center; gap: 8px; align-self: stretch; flex-shrink: 0; cursor: move; }
 .drag-region { flex: 1; align-self: stretch; cursor: move; }
 .brand-mark { font-size: 12px; font-weight: 700; border: 1px solid #ffffff80; border-radius: 4px; padding: 0 4px 2px; line-height: 17px; }
@@ -398,8 +397,18 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 /* The window color is the user's (Appearance). The app name follows it so it
    stays readable over a light color; the settings keep their own dark panel,
    whose controls are drawn for it. */
-.overlay[data-settings="closed"] .brand { color: var(--panel-foreground, inherit); }
-.overlay[data-settings="closed"] .brand-mark { border-color: currentColor; }
+.brand { color: var(--panel-foreground, inherit); }
+.brand-mark { border-color: currentColor; }
+/* With the settings open the window still wears the chosen color, so it is
+   seen for real while being picked; the settings sit on their own dark card. */
+.settings { margin-bottom: 8px; border-radius: 10px; background: rgba(15, 15, 15, 0.96); }
+.settings-footer { border-radius: 0 0 10px 10px; }
+/* One option back to its default. */
+.setting-with-reset { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.setting-with-reset > :first-child:not(input[type="color"]):not(.toggle) { flex: 1 1 auto; min-width: 0; }
+.setting-reset { flex: none; margin-left: auto; width: 26px; height: 26px; min-height: 0; padding: 0; color: #c4c4c4; }
+.setting-reset svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.setting-reset:disabled { opacity: 0.25; background: none; }
 /* The preview shows the chosen color over a checkerboard, so transparency is visible. */
 .appearance-preview { background: linear-gradient(var(--panel-background, #090909), var(--panel-background, #090909)), repeating-conic-gradient(#3a3a3a 0% 25%, #1c1c1c 0% 50%) 0 0 / 16px 16px; }
 .appearance-preview-label { text-shadow: 0 1px 2px #000; color: #e5e5e5; }

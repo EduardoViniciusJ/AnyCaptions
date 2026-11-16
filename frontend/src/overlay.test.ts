@@ -651,8 +651,7 @@ describe("overlay controls", () => {
       "#FF77AA",
     );
     expect(preview.hasAttribute("data-background")).toBe(true);
-    // The window color is previewed too, and the real window keeps its own
-    // until Save.
+    // The real window wears the color being picked, before Save.
     expect(preview.style.getPropertyValue("--panel-background")).toBe(
       "rgba(16, 42, 67, 0.4)",
     );
@@ -660,7 +659,7 @@ describe("overlay controls", () => {
       app.get<HTMLElement>(".overlay").style.getPropertyValue(
         "--panel-background",
       ),
-    ).toBe("rgba(15, 15, 15, 0.65)");
+    ).toBe("rgba(16, 42, 67, 0.4)");
     expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(
       false,
     );
@@ -697,6 +696,61 @@ describe("overlay controls", () => {
     expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
       "#FFFFFF",
     );
+  });
+
+  it("puts the window back when the settings close without saving", async () => {
+    const app = setup();
+    await app.ready();
+    const overlay = app.get<HTMLElement>(".overlay");
+    const toggle = app.get<HTMLButtonElement>("#settings-toggle");
+    fireEvent.click(toggle);
+    fireEvent.change(app.get<HTMLInputElement>("#panel-opacity"), {
+      target: { value: "100" },
+    });
+    expect(overlay.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(15, 15, 15, 1)",
+    );
+    fireEvent.click(toggle);
+    expect(overlay.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(15, 15, 15, 0.65)",
+    );
+    expect(app.backend.setAppearance).not.toHaveBeenCalled();
+  });
+
+  it("resets one appearance option without touching the others", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    const reset = (id: string) => app.get<HTMLButtonElement>(`#${id}-reset`);
+    // Nothing to reset while every option is at its default.
+    for (const id of [
+      "font-size",
+      "font-color",
+      "partial-color",
+      "panel-color",
+      "panel-opacity",
+      "caption-font",
+      "caption-background",
+    ])
+      expect(reset(id).disabled).toBe(true);
+    fireEvent.change(app.get<HTMLInputElement>("#font-size"), {
+      target: { value: "60" },
+    });
+    fireEvent.change(app.get<HTMLInputElement>("#panel-color"), {
+      target: { value: "#102a43" },
+    });
+    expect(reset("panel-color").disabled).toBe(false);
+    expect(reset("panel-color").getAttribute("aria-label")).toBe(
+      "Restaurar padrão: Cor da janela",
+    );
+    fireEvent.click(reset("panel-color"));
+    expect(app.get<HTMLInputElement>("#panel-color-value").value).toBe(
+      "#0F0F0F",
+    );
+    expect(reset("panel-color").disabled).toBe(true);
+    // The other change is still there.
+    expect(app.get<HTMLInputElement>("#font-size").value).toBe("60");
+    expect(reset("font-size").disabled).toBe(false);
   });
 
   it("keeps the app name readable over a light, solid window color", async () => {

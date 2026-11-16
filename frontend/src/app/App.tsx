@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { AppSnapshot } from "../contracts";
 import { panelBackground, panelForeground } from "../appearance";
 import { useEffect, useRef, useState } from "react";
 import type { Backend, CaptionMode } from "../contracts";
@@ -15,6 +16,9 @@ export function App({ backend }: { backend: Backend }) {
   const { state, busy, error, perform, report, setError } =
     useApplication(backend);
   const [settings, setSettings] = useState(false);
+  // The look being edited in the settings; the window wears it before Save.
+  const [preview, setPreview] = useState<AppSnapshot["appearance"] | null>(null);
+  const look = preview ?? state?.appearance;
   const toggle = useRef<HTMLButtonElement>(null);
   const closeSettings = () => {
     setSettings(false);
@@ -31,10 +35,10 @@ export function App({ backend }: { backend: Backend }) {
       data-mode={state?.windowMode ?? "edit"}
       data-settings={settings ? "open" : "closed"}
       style={
-        state &&
+        look &&
         ({
-          "--panel-background": panelBackground(state.appearance),
-          "--panel-foreground": panelForeground(state.appearance),
+          "--panel-background": panelBackground(look),
+          "--panel-foreground": panelForeground(look),
         } as CSSProperties)
       }
       aria-label={t("captionWindow")}
@@ -173,6 +177,7 @@ export function App({ backend }: { backend: Backend }) {
             perform={perform}
             report={report}
             onClose={closeSettings}
+            onPreview={setPreview}
           />
         )}
       </div>
