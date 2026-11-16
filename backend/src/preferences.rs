@@ -223,6 +223,11 @@ mod tests {
     fn a_fresh_install_transcribes_automatically_in_english() {
         let fresh = Preferences::default();
         assert_eq!(fresh.mode, CaptionMode::Auto, "Transcribe, no translation");
+        assert_eq!(
+            fresh.translation_engine,
+            TranslationEngine::Opus,
+            "the engine the installer ships"
+        );
         assert_eq!(fresh.source_language, None, "spoken language detected");
         assert_eq!(fresh.ui_language.tag(), "en");
         assert_eq!(fresh.dictation.language, None, "dictation detects too");
