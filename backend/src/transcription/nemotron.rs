@@ -6,7 +6,7 @@ use std::{
     ffi::{CStr, CString, c_char, c_void},
     path::{Path, PathBuf},
     ptr,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use libloading::Library;
@@ -16,7 +16,7 @@ use super::{
     streaming::{RecognizerError, SpeechResult, StreamingRecognizer, TaggedWord},
     tuning::RecognizerTuning,
 };
-use crate::{models::catalog::NEMOTRON_STREAMING_Q8, native::open_library};
+use crate::{models::catalog::NEMOTRON_STREAMING_Q8, native::open_library_for_process};
 
 #[cfg(windows)]
 pub const LIBRARY_FILENAME: &str = "nemo_speech_asr_c.dll";
@@ -152,25 +152,10 @@ struct Api {
     _library: &'static Library,
 }
 
-/// Opens the NeMo-Speech library once per process and never unloads it. The
-/// ggml runtime inside it installs a C++ terminate handler from a static
-/// initializer; unloading and loading the DLL again (last model dropped, next
-/// model created) re-runs that initializer, which the ggml in NeMo-Speech.cpp
-/// v0.3.0 rejects with a fatal assertion. Inference libraries are not meant
-/// to be cycled anyway (earlier reloads also leaked GPU memory).
+/// Opens the NeMo-Speech library once per process and never unloads it
+/// (see [`open_library_for_process`] for why it cannot be cycled).
 pub(super) fn load_library(path: &Path) -> Result<&'static Library, RecognizerError> {
-    static LIBRARIES: Mutex<Vec<(PathBuf, &'static Library)>> = Mutex::new(Vec::new());
-    let mut loaded = LIBRARIES
-        .lock()
-        .map_err(|_| RecognizerError::LibraryUnavailable)?;
-    if let Some((_, library)) = loaded.iter().find(|(loaded, _)| loaded == path) {
-        return Ok(library);
-    }
-    let library: &'static Library = Box::leak(Box::new(
-        open_library(path).map_err(|_| RecognizerError::LibraryUnavailable)?,
-    ));
-    loaded.push((path.to_path_buf(), library));
-    Ok(library)
+    open_library_for_process(path).ok_or(RecognizerError::LibraryUnavailable)
 }
 
 impl Api {
