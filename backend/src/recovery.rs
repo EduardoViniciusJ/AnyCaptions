@@ -20,11 +20,13 @@ fn save_position<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-fn edit<R: Runtime>(app: &AppHandle<R>) {
+pub(crate) fn edit<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("overlay") {
         let _ = app
             .state::<Controller>()
             .change_window_mode(&window, WindowMode::Edit);
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     }
 }
 
