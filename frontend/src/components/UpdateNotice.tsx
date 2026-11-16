@@ -35,6 +35,9 @@ export function UpdateNotice({
       });
     return () => {
       cancelled = true;
+      // The answer of a cancelled check is dropped, so the next run of this
+      // effect must be allowed to ask again (otherwise the notice never shows).
+      started.current = false;
     };
   }, [backend, enabled]);
   if (!check?.available || dismissed) return null;
