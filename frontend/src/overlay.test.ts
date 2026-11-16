@@ -31,6 +31,8 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       font: "inter",
       panelColor: "#0F0F0F",
       panelOpacity: 65,
+      backgroundColor: "#000000",
+      backgroundOpacity: 60,
     },
     resources: {
       audioCapture: false,
@@ -643,6 +645,14 @@ describe("overlay controls", () => {
       target: { value: "40" },
     });
     expect(app.get("#panel-opacity-value").textContent).toBe("40%");
+    // The band behind the captions has its own color and opacity.
+    fireEvent.change(app.get<HTMLInputElement>("#background-color"), {
+      target: { value: "#402000" },
+    });
+    fireEvent.change(app.get<HTMLInputElement>("#background-opacity"), {
+      target: { value: "90" },
+    });
+    expect(app.get("#background-opacity-value").textContent).toBe("90%");
 
     const preview = app.get<HTMLElement>("#appearance-preview");
     expect(preview.style.getPropertyValue("--caption-base-size")).toBe("72px");
@@ -651,10 +661,10 @@ describe("overlay controls", () => {
       "#FF77AA",
     );
     expect(preview.hasAttribute("data-background")).toBe(true);
-    // The real window wears the color being picked, before Save.
-    expect(preview.style.getPropertyValue("--panel-background")).toBe(
-      "rgba(16, 42, 67, 0.4)",
+    expect(preview.style.getPropertyValue("--caption-background")).toBe(
+      "rgba(64, 32, 0, 0.9)",
     );
+    // The real window wears the color being picked, before Save.
     expect(
       app.get<HTMLElement>(".overlay").style.getPropertyValue(
         "--panel-background",
@@ -678,6 +688,8 @@ describe("overlay controls", () => {
         font: "inter",
         panelColor: "#102A43",
         panelOpacity: 40,
+        backgroundColor: "#402000",
+        backgroundOpacity: 90,
       }),
     );
     await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
@@ -696,6 +708,63 @@ describe("overlay controls", () => {
     expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
       "#FFFFFF",
     );
+  });
+
+  it("offers the band's color and opacity only while the band is on", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    expect(app.root.querySelector("#background-color")).toBeNull();
+    expect(app.root.querySelector("#background-opacity")).toBeNull();
+    fireEvent.click(app.get<HTMLInputElement>("#caption-background"));
+    expect(app.get<HTMLInputElement>("#background-color-value").value).toBe(
+      "#000000",
+    );
+    expect(app.get("#background-opacity-value").textContent).toBe("60%");
+    expect(app.get<HTMLButtonElement>("#background-opacity-reset").disabled).toBe(
+      true,
+    );
+  });
+
+  it("explains each option from the i next to its label", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await app.ready();
+    // Every tab has them: captions, dictation, appearance and general.
+    for (const id of [
+      "source-language",
+      "audio-output",
+      "dictation-enabled",
+      "dictation-translate",
+      "dictation-duration",
+      "font-size",
+      "font-color",
+      "caption-background",
+      "panel-color",
+      "panel-opacity",
+      "ui-language",
+      "shortcut",
+      "update-check",
+    ]) {
+      const button = app.get<HTMLButtonElement>(`#${id}-info`);
+      const note = app.get(`#${id}-info-text`);
+      expect(button.getAttribute("aria-describedby")).toBe(note.id);
+      expect(note.getAttribute("role")).toBe("tooltip");
+      expect(note.textContent?.length).toBeGreaterThan(10);
+    }
+    const info = app.get<HTMLButtonElement>("#panel-opacity-info");
+    expect(info.getAttribute("aria-label")).toBe(
+      "Mais informações: Opacidade da janela",
+    );
+    expect(app.get("#panel-opacity-info-text").textContent).toBe(
+      "O quanto a janela é sólida: 0% é transparente, 100% esconde o que está atrás dela.",
+    );
+    // Escape closes the note only; the settings stay open.
+    info.focus();
+    fireEvent.keyDown(info, { key: "Escape" });
+    expect(document.activeElement).not.toBe(info);
+    expect(app.get("#settings").hidden).toBe(false);
   });
 
   it("puts the window back when the settings close without saving", async () => {
@@ -783,6 +852,8 @@ describe("overlay controls", () => {
           font: "inter",
           panelColor: "#0F0F0F",
           panelOpacity: 65,
+          backgroundColor: "#000000",
+          backgroundOpacity: 60,
         },
       }),
     );

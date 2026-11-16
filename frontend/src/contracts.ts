@@ -18,6 +18,10 @@ export interface Appearance {
   panelColor: CaptionColor;
   /** Opacidade dessa cor, de 0 (transparente) a 100 (sólida). */
   panelOpacity: number;
+  /** Cor da faixa atrás das legendas (com `background` ligado). */
+  backgroundColor: CaptionColor;
+  /** Opacidade da faixa, de 0 (transparente) a 100 (sólida). */
+  backgroundOpacity: number;
 }
 
 export interface AppSnapshot {

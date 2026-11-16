@@ -101,7 +101,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 /* Fundo escuro opcional: com ele, o contorno é dispensável. */
 .caption[data-background] {
   border-radius: 8px;
-  background: var(--panel-background, rgba(0, 0, 0, 0.6));
+  background: var(--caption-background, rgba(0, 0, 0, 0.6));
   -webkit-text-stroke: 0;
   text-shadow: none;
 }
@@ -412,3 +412,15 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 /* The preview shows the chosen color over a checkerboard, so transparency is visible. */
 .appearance-preview { background: linear-gradient(var(--panel-background, #090909), var(--panel-background, #090909)), repeating-conic-gradient(#3a3a3a 0% 25%, #1c1c1c 0% 50%) 0 0 / 16px 16px; }
 .appearance-preview-label { text-shadow: 0 1px 2px #000; color: #e5e5e5; }
+/* The "i" next to a label: what the option does, in a small black-on-white
+   note that opens on hover or focus and never moves the layout. */
+.setting-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.setting-info { position: relative; flex: none; display: inline-flex; }
+.setting-info-button { width: 15px; height: 15px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 50%; background: none; color: #a3a3a3; font: italic 600 10px/1 Georgia, "Times New Roman", serif; cursor: help; transition: color 0.15s ease, border-color 0.15s ease; }
+.setting-info-button:hover, .setting-info-button:focus-visible { border-color: #fff; color: #fff; outline: none; }
+.setting-info-text { position: absolute; top: calc(100% + 8px); left: -10px; z-index: 30; width: max-content; max-width: 250px; padding: 8px 10px; border-radius: 8px; background: #fafafa; color: #111; font-size: 12px; font-weight: 400; line-height: 1.45; white-space: normal; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.12s ease, visibility 0.12s ease; }
+.setting-info-text::before { content: ""; position: absolute; top: -4px; left: 13px; width: 8px; height: 8px; background: inherit; transform: rotate(45deg); }
+.setting-info:hover .setting-info-text, .setting-info:focus-within .setting-info-text { opacity: 1; visibility: visible; }
+/* Room for the label and its "i" on one line. */
+.setting-row:not(.model-download):not(.update-status-row) { grid-template-columns: 170px minmax(0, 1fr); }
+@media (max-width: 480px) { .setting-row:not(.model-download):not(.update-status-row) { grid-template-columns: 1fr; } }

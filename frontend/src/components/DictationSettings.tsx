@@ -28,13 +28,13 @@ export function DictationSettings({
       <h3 className="settings-subtitle">{t("dictation")}</h3>
       {(
         [
-          ["enabled", "dictation-enabled", "dictationEnable"],
-          ["soundCue", "dictation-sound", "dictationSound"],
-          ["showLiveText", "dictation-show-text", "dictationShowText"],
-          ["limitDuration", "dictation-limit", "dictationLimitDuration"],
+          ["enabled", "dictation-enabled", "dictationEnable", "hintDictationEnable"],
+          ["soundCue", "dictation-sound", "dictationSound", "hintDictationSound"],
+          ["showLiveText", "dictation-show-text", "dictationShowText", "hintDictationShowText"],
+          ["limitDuration", "dictation-limit", "dictationLimitDuration", "hintDictationLimit"],
         ] as const
-      ).map(([key, id, label]) => (
-        <Field key={key} id={id} label={t(label)}>
+      ).map(([key, id, label, hint]) => (
+        <Field key={key} id={id} label={t(label)} hint={t(hint)}>
           <input
             className="toggle toggle-sm toggle-primary"
             id={id}
@@ -46,7 +46,7 @@ export function DictationSettings({
           />
         </Field>
       ))}
-      <Field id="dictation-mic" label={t("dictationMic")}>
+      <Field id="dictation-mic" label={t("dictationMic")} hint={t("hintDictationMic")}>
         <select
           className="select select-sm"
           id="dictation-mic"
@@ -71,7 +71,7 @@ export function DictationSettings({
             )}
         </select>
       </Field>
-      <Field id="dictation-shortcut" label={t("dictationShortcut")}>
+      <Field id="dictation-shortcut" label={t("dictationShortcut")} hint={t("hintDictationShortcut")}>
         <input
           className="input input-sm"
           id="dictation-shortcut"
@@ -83,7 +83,7 @@ export function DictationSettings({
           }
         />
       </Field>
-      <Field id="dictation-language" label={t("dictationLanguage")}>
+      <Field id="dictation-language" label={t("dictationLanguage")} hint={t("hintDictationLanguage")}>
         <LanguagePicker
           id="dictation-language"
           label={t("dictationLanguage")}
@@ -101,7 +101,7 @@ export function DictationSettings({
           ]}
         />
       </Field>
-      <Field id="dictation-translate" label={t("dictationTranslate")}>
+      <Field id="dictation-translate" label={t("dictationTranslate")} hint={t("hintDictationTranslate")}>
         <LanguagePicker
           id="dictation-translate"
           label={t("dictationTranslate")}
@@ -126,7 +126,7 @@ export function DictationSettings({
           {t("dictationTranslateUnsupported")}
         </p>
       )}
-      <Field id="dictation-activation" label={t("dictationActivation")}>
+      <Field id="dictation-activation" label={t("dictationActivation")} hint={t("hintDictationActivation")}>
         <select
           className="select select-sm"
           id="dictation-activation"
@@ -142,7 +142,7 @@ export function DictationSettings({
           <option value="toggle">{t("dictationToggle")}</option>
         </select>
       </Field>
-      <Field id="dictation-duration" label={t("dictationMaxDuration")}>
+      <Field id="dictation-duration" label={t("dictationMaxDuration")} hint={t("hintDictationMaxDuration")}>
         <input
           className="input input-sm"
           id="dictation-duration"

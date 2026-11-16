@@ -56,7 +56,7 @@ export function UpdateSettings({
   return (
     <>
       <h3 className="settings-subtitle">{t("updates")}</h3>
-      <Field id="update-check-now" label={t("appVersion")}>
+      <Field id="update-check-now" label={t("appVersion")} hint={t("hintAppVersion")}>
         <div className="version-row">
           <span id="app-version">v{state.version}</span>
           <button
@@ -70,7 +70,7 @@ export function UpdateSettings({
           </button>
         </div>
       </Field>
-      <Field id="update-check" label={t("updateCheckOnStart")}>
+      <Field id="update-check" label={t("updateCheckOnStart")} hint={t("hintUpdateCheck")}>
         <input
           className="toggle toggle-sm toggle-primary"
           id="update-check"

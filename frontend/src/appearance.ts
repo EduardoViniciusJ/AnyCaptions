@@ -10,6 +10,8 @@ export const DEFAULT_APPEARANCE: Appearance = {
   font: "inter",
   panelColor: "#0F0F0F",
   panelOpacity: 65,
+  backgroundColor: "#000000",
+  backgroundOpacity: 60,
 };
 
 /**
@@ -54,12 +56,14 @@ export function sameAppearance(left: Appearance, right: Appearance): boolean {
     && left.background === right.background
     && left.font === right.font
     && left.panelColor === right.panelColor
-    && left.panelOpacity === right.panelOpacity;
+    && left.panelOpacity === right.panelOpacity
+    && left.backgroundColor === right.backgroundColor
+    && left.backgroundOpacity === right.backgroundOpacity;
 }
 
-/** The three channels of a `#RRGGBB` color; the default panel when invalid. */
+/** The three channels of a `#RRGGBB` color; black when it is not valid yet. */
 function channels(color: string): [number, number, number] {
-  const hex = normalizeCaptionColor(color) ?? DEFAULT_APPEARANCE.panelColor;
+  const hex = normalizeCaptionColor(color) ?? "#000000";
   return [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16)) as [
     number,
     number,
@@ -67,11 +71,21 @@ function channels(color: string): [number, number, number] {
   ];
 }
 
-/** The window color with its opacity, as a CSS color. */
-export function panelBackground(appearance: Appearance): string {
-  const [red, green, blue] = channels(appearance.panelColor);
-  const alpha = Math.min(100, Math.max(0, appearance.panelOpacity)) / 100;
+/** A color at `opacity` percent, as a CSS color. */
+function translucent(color: string, opacity: number): string {
+  const [red, green, blue] = channels(color);
+  const alpha = Math.min(100, Math.max(0, opacity)) / 100;
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+/** The window color with its opacity. */
+export function panelBackground(appearance: Appearance): string {
+  return translucent(appearance.panelColor, appearance.panelOpacity);
+}
+
+/** The band behind the captions with its opacity. */
+export function captionBackground(appearance: Appearance): string {
+  return translucent(appearance.backgroundColor, appearance.backgroundOpacity);
 }
 
 /**
@@ -90,6 +104,6 @@ export function applyAppearance(element: HTMLElement, appearance: Appearance): v
   element.style.setProperty("--caption-color", appearance.color);
   element.style.setProperty("--caption-partial-color", appearance.partialColor);
   element.style.setProperty("--caption-font", captionFontFamily(appearance.font));
-  element.style.setProperty("--panel-background", panelBackground(appearance));
+  element.style.setProperty("--caption-background", captionBackground(appearance));
   element.toggleAttribute("data-background", appearance.background);
 }

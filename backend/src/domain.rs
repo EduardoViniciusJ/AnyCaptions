@@ -348,6 +348,7 @@ impl CaptionColor {
     pub const DEFAULT_PARTIAL: Self = Self(0xB8B8B8);
     /// The near-black the window always had.
     pub const DEFAULT_PANEL: Self = Self(0x0F0F0F);
+    pub const BLACK: Self = Self(0x000000);
 
     fn parse(value: &str) -> Option<Self> {
         let value = match value {
@@ -467,6 +468,24 @@ pub struct Appearance {
     /// what is behind the window. Older preferences keep the original 65.
     #[serde(default = "default_panel_opacity")]
     pub panel_opacity: u8,
+    /// Color of the band behind the captions, used while `background` is on.
+    /// Older preferences keep the original black.
+    #[serde(default = "default_background_color")]
+    pub background_color: CaptionColor,
+    /// How solid the band is, in percent; older preferences keep 60.
+    #[serde(default = "default_background_opacity")]
+    pub background_opacity: u8,
+}
+
+/// Opacity of the caption band before it became a setting.
+pub const DEFAULT_BACKGROUND_OPACITY: u8 = 60;
+
+fn default_background_color() -> CaptionColor {
+    CaptionColor::BLACK
+}
+
+fn default_background_opacity() -> u8 {
+    DEFAULT_BACKGROUND_OPACITY
 }
 
 /// Opacity of the window before it became a setting.
@@ -494,6 +513,8 @@ impl Default for Appearance {
             background: false,
             panel_color: CaptionColor::DEFAULT_PANEL,
             panel_opacity: DEFAULT_PANEL_OPACITY,
+            background_color: CaptionColor::BLACK,
+            background_opacity: DEFAULT_BACKGROUND_OPACITY,
         }
     }
 }
@@ -503,7 +524,7 @@ impl Appearance {
         if !(16..=80).contains(&self.font_size) {
             return Err(DomainError::InvalidFontSize);
         }
-        if self.panel_opacity > 100 {
+        if self.panel_opacity > 100 || self.background_opacity > 100 {
             return Err(DomainError::InvalidOpacity);
         }
         Ok(())
@@ -1290,6 +1311,16 @@ mod tests {
         let wire = serde_json::to_value(legacy).unwrap();
         assert_eq!(wire["panelColor"], "#0F0F0F");
         assert_eq!(wire["panelOpacity"], 65);
+        // The caption band keeps its original black at 60% as well.
+        assert_eq!(wire["backgroundColor"], "#000000");
+        assert_eq!(wire["backgroundOpacity"], 60);
+        assert_eq!(
+            AppState::default().set_appearance(Appearance {
+                background_opacity: 101,
+                ..Appearance::default()
+            }),
+            Err(DomainError::InvalidOpacity)
+        );
 
         let tinted = serde_json::from_value::<Appearance>(serde_json::json!({
             "fontSize": 32, "color": "#FFFFFF", "panelColor": "#102a43", "panelOpacity": 0

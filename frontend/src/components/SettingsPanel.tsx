@@ -105,7 +105,8 @@ export function SettingsPanel({
   const valid =
     !!normalizeCaptionColor(appearance.color) &&
     !!normalizeCaptionColor(appearance.partialColor) &&
-    !!normalizeCaptionColor(appearance.panelColor);
+    !!normalizeCaptionColor(appearance.panelColor) &&
+    !!normalizeCaptionColor(appearance.backgroundColor);
   // Appearance, the lock shortcut and dictation are drafts applied by Save;
   // everything else applies as soon as it is changed.
   const dirty =
@@ -123,6 +124,7 @@ export function SettingsPanel({
         color: normalizeCaptionColor(appearance.color)!,
         partialColor: normalizeCaptionColor(appearance.partialColor)!,
         panelColor: normalizeCaptionColor(appearance.panelColor)!,
+        backgroundColor: normalizeCaptionColor(appearance.backgroundColor)!,
       };
       if (!sameAppearance(normalized, saved.appearance))
         saved = await backend.setAppearance(normalized);
@@ -212,7 +214,7 @@ export function SettingsPanel({
         hidden={tab !== "captions"}
       >
         <fieldset disabled={busy || outputBusy}>
-          <Field id="source-language" label={t("sourceLanguage")}>
+          <Field id="source-language" label={t("sourceLanguage")} hint={t("hintSourceLanguage")}>
             <LanguagePicker
               id="source-language"
               label={t("sourceLanguage")}
@@ -231,7 +233,7 @@ export function SettingsPanel({
               }}
             />
           </Field>
-          <Field id="audio-output" label={t("audioOutput")}>
+          <Field id="audio-output" label={t("audioOutput")} hint={t("hintAudioOutput")}>
             <select
               className="select select-sm"
               id="audio-output"
@@ -377,7 +379,7 @@ export function SettingsPanel({
         hidden={tab !== "general"}
       >
         <fieldset disabled={busy || outputBusy}>
-          <Field id="ui-language" label={t("uiLanguage")}>
+          <Field id="ui-language" label={t("uiLanguage")} hint={t("hintUiLanguage")}>
             <LanguagePicker
               id="ui-language"
               label={t("uiLanguage")}
@@ -393,7 +395,7 @@ export function SettingsPanel({
               }}
             />
           </Field>
-          <Field id="shortcut" label={t("lockShortcut")}>
+          <Field id="shortcut" label={t("lockShortcut")} hint={t("hintLockShortcut")}>
             <input
               className="input input-sm"
               id="shortcut"
