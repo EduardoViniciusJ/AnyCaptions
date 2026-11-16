@@ -18,6 +18,9 @@ import { LanguagePicker } from "./LanguagePicker";
 import { ModelDownload, useModelDownloads } from "./ModelDownload";
 import { UpdateSettings } from "./UpdateSettings";
 import { Field } from "./Field";
+
+/** Interface language of a fresh install (the backend's `UiLanguage::default`). */
+const DEFAULT_UI_LANGUAGE = "en";
 export function SettingsPanel({
   backend,
   state,
@@ -106,6 +109,25 @@ export function SettingsPanel({
       return saved;
     });
     if (ok) onClose();
+  };
+  // "Restore default" brings back what a fresh install shows: the default
+  // look, the interface in English, and automatic language detection for
+  // captions and dictation. The look and the dictation language are drafts
+  // (applied by Save, like their fields); the two languages apply right away,
+  // exactly as picking them in their lists does.
+  const restoreDefaults = async () => {
+    setAppearance({ ...DEFAULT_APPEARANCE });
+    setDraft((current) => current && { ...current, language: null });
+    const resetInterface = state.uiLanguage !== DEFAULT_UI_LANGUAGE;
+    const resetSpoken = state.sourceLanguage != null;
+    if (!resetInterface && !resetSpoken) return;
+    await perform(async () => {
+      let saved = state;
+      if (resetInterface)
+        saved = await backend.setUiLanguage(DEFAULT_UI_LANGUAGE);
+      if (resetSpoken) saved = await backend.setSourceLanguage(null);
+      return saved;
+    });
   };
   return (
     <section
@@ -311,7 +333,7 @@ export function SettingsPanel({
           className="btn btn-sm"
           id="reset-appearance"
           disabled={busy || outputBusy}
-          onClick={() => setAppearance({ ...DEFAULT_APPEARANCE })}
+          onClick={() => void restoreDefaults()}
         >
           {t("restoreDefault")}
         </button>
