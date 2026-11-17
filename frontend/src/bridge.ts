@@ -36,6 +36,7 @@ export const backend: Backend = {
   getModelDownloads: () => invoke("get_model_downloads"),
   downloadModel: (model) => invoke("download_model", { request: { model } }),
   cancelModelDownload: () => invoke("cancel_model_download"),
+  removeModel: (model) => invoke("remove_model", { request: { model } }),
   subscribeModelDownloads: (listener) => getCurrentWindow().listen<ModelDownloadUpdate>("model-download-changed", (event) => listener(event.payload)),
   resize: (direction) => getCurrentWindow().startResizeDragging(direction),
   close: () => getCurrentWindow().close(),

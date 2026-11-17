@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Backend, UpdateCheck, UpdateProgress } from "../contracts";
 import { t } from "../i18n";
+import { attach } from "../app/subscription";
 
 /**
  * Ação de uma versão nova: "Atualizar" baixa e instala pelo próprio app, com o
@@ -24,11 +25,11 @@ export function UpdateAction({
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (!check.installable) return;
-    let cancelled = false;
-    let release: (() => void) | undefined;
-    void backend
-      .subscribeUpdateProgress((event) => {
-        if (cancelled) return;
+    // Falha ao inscrever é silenciosa: sem progresso a mostrar, o botão de
+    // baixar continua disponível.
+    return attach(
+      backend.subscribeUpdateProgress.bind(backend),
+      (event) => {
         if (event.phase === "failed") {
           setProgress(undefined);
           setFailed(true);
@@ -36,18 +37,8 @@ export function UpdateAction({
           setFailed(false);
           setProgress(event);
         }
-      })
-      .then((unsubscribe) => {
-        if (cancelled) unsubscribe();
-        else release = unsubscribe;
-      })
-      .catch(() => {
-        /* Sem progresso a mostrar; o botão de baixar continua disponível. */
-      });
-    return () => {
-      cancelled = true;
-      release?.();
-    };
+      },
+    );
   }, [backend, check.installable]);
 
   const size = compact ? "btn-xs" : "btn-sm";

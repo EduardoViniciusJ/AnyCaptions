@@ -84,6 +84,47 @@ pub const TRANSLATION_TARGETS: &[TargetLanguage] = &[
 /// Targets the OPUS engine serves (English–Portuguese, both directions).
 pub const OPUS_TARGETS: &[TargetLanguage] = &[EN, PT_BR, PT_PT];
 
+/// Targets the M2M100 engine serves: one per language of the model. It has a
+/// single code per language, so the regional variants it cannot tell apart
+/// (European Portuguese, Latin American Spanish, Traditional Chinese) are not
+/// offered rather than promised.
+pub const M2M100_TARGETS: &[TargetLanguage] = &[
+    EN,
+    PT_BR,
+    TargetLanguage("es-es"),
+    TargetLanguage("fr"),
+    TargetLanguage("de"),
+    TargetLanguage("it"),
+    TargetLanguage("nl"),
+    TargetLanguage("pl"),
+    TargetLanguage("cs"),
+    TargetLanguage("sk"),
+    TargetLanguage("sl"),
+    TargetLanguage("hr"),
+    TargetLanguage("hu"),
+    TargetLanguage("ro"),
+    TargetLanguage("bg"),
+    TargetLanguage("el"),
+    TargetLanguage("et"),
+    TargetLanguage("lt"),
+    TargetLanguage("lv"),
+    TargetLanguage("fi"),
+    TargetLanguage("sv"),
+    TargetLanguage("da"),
+    TargetLanguage("no"),
+    TargetLanguage("ar"),
+    TargetLanguage("hi"),
+    TargetLanguage("id"),
+    TargetLanguage("ja"),
+    TargetLanguage("ko"),
+    TargetLanguage("ru"),
+    TargetLanguage("th"),
+    TargetLanguage("tr"),
+    TargetLanguage("uk"),
+    TargetLanguage("vi"),
+    TargetLanguage("zh-cn"),
+];
+
 /// Every language the ASR model recognizes: the prompt dictionary embedded in
 /// the Nemotron GGUF (`asr.rnnt.prompt_dictionary` metadata; "auto" is the
 /// detection prompt). One canonical tag per language, mirrored by the
@@ -143,6 +184,9 @@ pub enum TranslationEngine {
     Opus,
     /// Riva/NMT on the GPU: every target in [`TRANSLATION_TARGETS`].
     Riva,
+    /// M2M100 via CTranslate2 on the CPU: one model, any pair of its languages.
+    #[serde(rename = "m2m100")]
+    M2m100,
 }
 
 impl TranslationEngine {
@@ -150,6 +194,7 @@ impl TranslationEngine {
         match self {
             Self::Opus => OPUS_TARGETS,
             Self::Riva => TRANSLATION_TARGETS,
+            Self::M2m100 => M2M100_TARGETS,
         }
     }
 
@@ -301,6 +346,9 @@ impl CaptionColor {
     pub const WHITE: Self = Self(0xFFFFFF);
     pub const YELLOW: Self = Self(0xFFE600);
     pub const DEFAULT_PARTIAL: Self = Self(0xB8B8B8);
+    /// The near-black the window always had.
+    pub const DEFAULT_PANEL: Self = Self(0x0F0F0F);
+    pub const BLACK: Self = Self(0x000000);
 
     fn parse(value: &str) -> Option<Self> {
         let value = match value {
@@ -412,10 +460,47 @@ pub struct Appearance {
     /// Caption typeface; preferences saved before this option keep Inter.
     #[serde(default)]
     pub font: CaptionFont,
+    /// Color of the window behind the captions (and of the caption band).
+    /// Preferences saved before this option keep the original near-black.
+    #[serde(default = "default_panel_color")]
+    pub panel_color: CaptionColor,
+    /// How solid that color is, in percent: 0 is fully see-through, 100 hides
+    /// what is behind the window. Older preferences keep the original 65.
+    #[serde(default = "default_panel_opacity")]
+    pub panel_opacity: u8,
+    /// Color of the band behind the captions, used while `background` is on.
+    /// Older preferences keep the original black.
+    #[serde(default = "default_background_color")]
+    pub background_color: CaptionColor,
+    /// How solid the band is, in percent; older preferences keep 60.
+    #[serde(default = "default_background_opacity")]
+    pub background_opacity: u8,
 }
+
+/// Opacity of the caption band before it became a setting.
+pub const DEFAULT_BACKGROUND_OPACITY: u8 = 60;
+
+fn default_background_color() -> CaptionColor {
+    CaptionColor::BLACK
+}
+
+fn default_background_opacity() -> u8 {
+    DEFAULT_BACKGROUND_OPACITY
+}
+
+/// Opacity of the window before it became a setting.
+pub const DEFAULT_PANEL_OPACITY: u8 = 65;
 
 fn default_partial_color() -> CaptionColor {
     CaptionColor::DEFAULT_PARTIAL
+}
+
+fn default_panel_color() -> CaptionColor {
+    CaptionColor::DEFAULT_PANEL
+}
+
+fn default_panel_opacity() -> u8 {
+    DEFAULT_PANEL_OPACITY
 }
 
 impl Default for Appearance {
@@ -426,6 +511,10 @@ impl Default for Appearance {
             partial_color: CaptionColor::DEFAULT_PARTIAL,
             font: CaptionFont::default(),
             background: false,
+            panel_color: CaptionColor::DEFAULT_PANEL,
+            panel_opacity: DEFAULT_PANEL_OPACITY,
+            background_color: CaptionColor::BLACK,
+            background_opacity: DEFAULT_BACKGROUND_OPACITY,
         }
     }
 }
@@ -434,6 +523,9 @@ impl Appearance {
     pub(crate) fn validate(self) -> Result<(), DomainError> {
         if !(16..=80).contains(&self.font_size) {
             return Err(DomainError::InvalidFontSize);
+        }
+        if self.panel_opacity > 100 || self.background_opacity > 100 {
+            return Err(DomainError::InvalidOpacity);
         }
         Ok(())
     }
@@ -470,6 +562,7 @@ impl Resources {
 pub enum DomainError {
     InvalidTransition,
     InvalidFontSize,
+    InvalidOpacity,
     CaptureUnavailable,
     TranscriptionUnavailable,
     TranslationUnavailable,
@@ -540,6 +633,20 @@ impl AppState {
             return Err(DomainError::InvalidShortcut);
         }
         Ok(format!("Ctrl+Alt+{key}"))
+    }
+
+    /// Counter that advances with every change the overlay must hear about.
+    pub fn revision(&self) -> u32 {
+        self.revision
+    }
+
+    /// Whether `session_id` is the current session and it is still capturing.
+    pub fn is_session_active(&self, session_id: u32) -> bool {
+        self.session_id == session_id
+            && matches!(
+                self.capture,
+                CaptureState::Preparing | CaptureState::Listening | CaptureState::Processing
+            )
     }
 
     pub fn snapshot(&self) -> AppSnapshot {
@@ -946,6 +1053,35 @@ mod tests {
     }
 
     #[test]
+    fn the_m2m100_engine_offers_one_target_per_language() {
+        assert_eq!(
+            serde_json::to_value(TranslationEngine::M2m100).unwrap(),
+            "m2m100"
+        );
+        assert_eq!(
+            serde_json::from_value::<TranslationEngine>(serde_json::json!("m2m100")).unwrap(),
+            TranslationEngine::M2m100
+        );
+        // Every target is a catalog target, so it can travel in a caption mode.
+        for target in M2M100_TARGETS {
+            assert_eq!(TargetLanguage::from_tag(target.tag()), Some(*target));
+        }
+        let japanese = TargetLanguage::from_tag("ja").unwrap();
+        assert!(TranslationEngine::M2m100.supports(japanese));
+        // Regional variants the model cannot tell apart are not promised.
+        assert!(!TranslationEngine::M2m100.supports(PT_PT));
+        // Switching to it keeps a shared target and drops an unsupported one.
+        let mut state = ready();
+        state.set_mode(CaptionMode::Translate(PT_PT)).unwrap();
+        state
+            .set_translation_engine(TranslationEngine::M2m100)
+            .unwrap();
+        assert_eq!(state.snapshot().mode, CaptionMode::Translate(PT_BR));
+        state.set_mode(CaptionMode::Translate(japanese)).unwrap();
+        assert_eq!(state.snapshot().mode, CaptionMode::Translate(japanese));
+    }
+
+    #[test]
     fn pinning_the_source_language_invalidates_the_session() {
         let mut state = ready();
         state.start().unwrap();
@@ -987,6 +1123,7 @@ mod tests {
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
                     font: CaptionFont::default(),
                     background: false,
+                    ..Appearance::default()
                 }),
                 Err(DomainError::InvalidFontSize)
             );
@@ -1000,6 +1137,7 @@ mod tests {
                     partial_color: CaptionColor::DEFAULT_PARTIAL,
                     font: CaptionFont::default(),
                     background: false,
+                    ..Appearance::default()
                 })
                 .unwrap();
             assert_eq!(state.snapshot().appearance.font_size, size);
@@ -1167,6 +1305,46 @@ mod tests {
         .unwrap();
         assert_eq!(legacy.color, CaptionColor::YELLOW);
         assert_eq!(legacy.partial_color, CaptionColor::DEFAULT_PARTIAL);
+        // Preferences from before the window color keep the original look.
+        assert_eq!(legacy.panel_color, CaptionColor::DEFAULT_PANEL);
+        assert_eq!(legacy.panel_opacity, DEFAULT_PANEL_OPACITY);
+        let wire = serde_json::to_value(legacy).unwrap();
+        assert_eq!(wire["panelColor"], "#0F0F0F");
+        assert_eq!(wire["panelOpacity"], 65);
+        // The caption band keeps its original black at 60% as well.
+        assert_eq!(wire["backgroundColor"], "#000000");
+        assert_eq!(wire["backgroundOpacity"], 60);
+        assert_eq!(
+            AppState::default().set_appearance(Appearance {
+                background_opacity: 101,
+                ..Appearance::default()
+            }),
+            Err(DomainError::InvalidOpacity)
+        );
+
+        let tinted = serde_json::from_value::<Appearance>(serde_json::json!({
+            "fontSize": 32, "color": "#FFFFFF", "panelColor": "#102a43", "panelOpacity": 0
+        }))
+        .unwrap();
+        assert_eq!(tinted.panel_color.as_hex(), "#102A43");
+        assert_eq!(tinted.validate(), Ok(()));
+        let mut state = AppState::default();
+        for opacity in [101, u8::MAX] {
+            assert_eq!(
+                state.set_appearance(Appearance {
+                    panel_opacity: opacity,
+                    ..Appearance::default()
+                }),
+                Err(DomainError::InvalidOpacity)
+            );
+        }
+        assert_eq!(state.snapshot().appearance, Appearance::default());
+        assert!(
+            serde_json::from_value::<Appearance>(serde_json::json!({
+                "fontSize": 32, "color": "#FFFFFF", "panelColor": "black"
+            }))
+            .is_err()
+        );
         assert_eq!(serde_json::to_value(legacy).unwrap()["color"], "#FFE600");
     }
 }

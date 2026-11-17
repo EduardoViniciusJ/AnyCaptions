@@ -10,17 +10,32 @@ import {
   normalizeCaptionColor,
   sameAppearance,
 } from "../appearance";
-import { ASR_LANGUAGES, TRANSLATION_ENGINES } from "../languages";
-import { t, UI_LANGUAGES } from "../i18n";
+import { ASR_LANGUAGES } from "../languages";
+import { t, UI_LANGUAGES, type MessageKey } from "../i18n";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { DictationSettings } from "./DictationSettings";
 import { LanguagePicker } from "./LanguagePicker";
 import { ModelDownload, useModelDownloads } from "./ModelDownload";
+import { TranslationModels } from "./TranslationModels";
 import { UpdateSettings } from "./UpdateSettings";
 import { Field } from "./Field";
 
 /** Interface language of a fresh install (the backend's `UiLanguage::default`). */
 const DEFAULT_UI_LANGUAGE = "en";
+
+/**
+ * The settings are split by what the user came to do, one tab each, instead
+ * of one long list: every tab fits the window without hunting by scrolling.
+ */
+type TabId = "captions" | "translation" | "dictation" | "appearance" | "general";
+const TABS: { id: TabId; labelKey: MessageKey }[] = [
+  { id: "captions", labelKey: "tabCaptions" },
+  { id: "translation", labelKey: "tabTranslation" },
+  { id: "dictation", labelKey: "tabDictation" },
+  { id: "appearance", labelKey: "tabAppearance" },
+  { id: "general", labelKey: "tabGeneral" },
+];
+
 export function SettingsPanel({
   backend,
   state,
@@ -29,6 +44,7 @@ export function SettingsPanel({
   perform,
   report,
   onClose,
+  onPreview,
 }: {
   backend: Backend;
   state: AppSnapshot;
@@ -37,7 +53,10 @@ export function SettingsPanel({
   perform(action: () => Promise<AppSnapshot>): Promise<boolean>;
   report(error: unknown): void;
   onClose(): void;
+  /** The look being edited, shown on the real window before Save; `null` ends it. */
+  onPreview(appearance: AppSnapshot["appearance"] | null): void;
 }) {
+  const [tab, setTab] = useState<TabId>("captions");
   const [appearance, setAppearance] = useState(state.appearance);
   const [shortcut, setShortcut] = useState(state.shortcut);
   const [outputs, setOutputs] = useState<OutputSelection>();
@@ -78,9 +97,24 @@ export function SettingsPanel({
     };
     // Snapshot events must not overwrite unsaved edits while this panel is open.
   }, [backend, open]);
+  // The window itself takes the color and opacity being edited, so the user
+  // sees the real result while choosing; closing without Save puts it back.
+  useEffect(() => {
+    onPreview(open ? appearance : null);
+  }, [appearance, open, onPreview]);
   const valid =
     !!normalizeCaptionColor(appearance.color) &&
-    !!normalizeCaptionColor(appearance.partialColor);
+    !!normalizeCaptionColor(appearance.partialColor) &&
+    !!normalizeCaptionColor(appearance.panelColor) &&
+    !!normalizeCaptionColor(appearance.backgroundColor);
+  // Appearance, the lock shortcut and dictation are drafts applied by Save;
+  // everything else applies as soon as it is changed.
+  const dirty =
+    !sameAppearance(appearance, state.appearance) ||
+    shortcut !== state.shortcut ||
+    (!!draft &&
+      !!dictation &&
+      JSON.stringify(draft) !== JSON.stringify(dictation.settings));
   const save = async () => {
     if (!valid) return;
     const ok = await perform(async () => {
@@ -89,6 +123,8 @@ export function SettingsPanel({
         ...appearance,
         color: normalizeCaptionColor(appearance.color)!,
         partialColor: normalizeCaptionColor(appearance.partialColor)!,
+        panelColor: normalizeCaptionColor(appearance.panelColor)!,
+        backgroundColor: normalizeCaptionColor(appearance.backgroundColor)!,
       };
       if (!sameAppearance(normalized, saved.appearance))
         saved = await backend.setAppearance(normalized);
@@ -137,197 +173,259 @@ export function SettingsPanel({
       hidden={!open}
     >
       <h2>{t("settings")}</h2>
-      <fieldset disabled={busy || outputBusy}>
-        <AppearanceSettings value={appearance} onChange={setAppearance} />
-        <Field id="ui-language" label={t("uiLanguage")}>
-          <LanguagePicker
-            id="ui-language"
-            label={t("uiLanguage")}
-            value={state.uiLanguage}
-            options={UI_LANGUAGES.map((item) => ({
-              value: item.tag,
-              label: item.name,
-              country: item.country,
-            }))}
-            onChange={(tag) => {
-              if (tag !== state.uiLanguage)
-                void perform(() => backend.setUiLanguage(tag));
-            }}
-          />
-        </Field>
-        <Field id="source-language" label={t("sourceLanguage")}>
-          <LanguagePicker
-            id="source-language"
-            label={t("sourceLanguage")}
-            value={state.sourceLanguage ?? ""}
-            options={[
-              { value: "", label: t("autoMode") },
-              ...ASR_LANGUAGES.map((item) => ({
+      <div
+        className="settings-tabs"
+        role="tablist"
+        aria-label={t("settingsTabs")}
+        onKeyDown={(event) => {
+          // Arrow keys move between tabs, as in any tab list.
+          const step =
+            event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+          if (!step) return;
+          event.preventDefault();
+          const index = TABS.findIndex((item) => item.id === tab);
+          const next = TABS[(index + step + TABS.length) % TABS.length];
+          if (!next) return;
+          setTab(next.id);
+          document.getElementById(`settings-tab-${next.id}`)?.focus();
+        }}
+      >
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            id={`settings-tab-${item.id}`}
+            className="settings-tab"
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            aria-controls={`settings-panel-${item.id}`}
+            tabIndex={tab === item.id ? 0 : -1}
+            onClick={() => setTab(item.id)}
+          >
+            {t(item.labelKey)}
+          </button>
+        ))}
+      </div>
+      <div
+        id="settings-panel-captions"
+        className="settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby="settings-tab-captions"
+        hidden={tab !== "captions"}
+      >
+        <fieldset disabled={busy || outputBusy}>
+          <Field id="source-language" label={t("sourceLanguage")} hint={t("hintSourceLanguage")}>
+            <LanguagePicker
+              id="source-language"
+              label={t("sourceLanguage")}
+              value={state.sourceLanguage ?? ""}
+              options={[
+                { value: "", label: t("autoMode") },
+                ...ASR_LANGUAGES.map((item) => ({
+                  value: item.tag,
+                  label: item.name,
+                  country: item.country,
+                })),
+              ]}
+              onChange={(tag) => {
+                if (tag !== (state.sourceLanguage ?? ""))
+                  void perform(() => backend.setSourceLanguage(tag || null));
+              }}
+            />
+          </Field>
+          <Field id="audio-output" label={t("audioOutput")} hint={t("hintAudioOutput")}>
+            <select
+              className="select select-sm"
+              id="audio-output"
+              disabled={!outputs?.devices.length}
+              value={outputs?.selectedId ?? ""}
+              onChange={(event) => {
+                const id = event.target.value;
+                if (!id || outputBusy) return;
+                setOutputBusy(true);
+                void backend
+                  .selectAudioOutput(id)
+                  .then(setOutputs)
+                  .catch(async (error) => {
+                    report(error);
+                    try {
+                      setOutputs(await backend.getAudioOutputs());
+                    } catch {
+                      /* Keep previous selection. */
+                    }
+                  })
+                  .finally(() => setOutputBusy(false));
+              }}
+            >
+              {!outputs && <option value="">{t("checkingOutputs")}</option>}
+              {outputs && !outputs.devices.length && (
+                <option value="">{t("noOutputs")}</option>
+              )}
+              {!!outputs?.devices.length && !outputs.selectedId && (
+                <option value="">{t("selectOutput")}</option>
+              )}
+              {outputs?.devices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.name}
+                </option>
+              ))}
+              {outputs?.selectedId && !outputs.selectedAvailable && (
+                <option value={outputs.selectedId}>
+                  {t("savedOutputUnavailable")}
+                </option>
+              )}
+            </select>
+          </Field>
+          <p
+            id="audio-output-status"
+            className="muted"
+            hidden={
+              !outputs || (outputs.selectedAvailable && !!outputs.devices.length)
+            }
+          >
+            {outputs?.selectedId && !outputs.selectedAvailable
+              ? t("savedOutputDisconnected")
+              : t("noActiveOutput")}
+          </p>
+          <h3 className="settings-subtitle">{t("speakerLabels")}</h3>
+          <Field id="speaker-labels" label={t("speakerLabelsEnable")}>
+            <input
+              className="toggle toggle-sm toggle-primary"
+              id="speaker-labels"
+              type="checkbox"
+              checked={state.speakerLabels}
+              aria-describedby="speaker-labels-hint"
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                if (enabled !== state.speakerLabels)
+                  void perform(() => backend.setSpeakerLabels(enabled));
+              }}
+            />
+          </Field>
+          <p id="speaker-labels-hint" className="muted">
+            {t("speakerLabelsHint")}
+          </p>
+          {state.speakerLabels &&
+            !state.resources.speakerLabels &&
+            downloads.models.some((model) => model.kind === "diarization" && model.installed) && (
+              // Installed but not loading: said here, never over the captions.
+              // A missing model is covered by the download offer below.
+              <p id="speaker-labels-unavailable" className="text-warning text-xs" role="status">
+                {t("speakerLabelsUnavailable")}
+              </p>
+            )}
+        </fieldset>
+        <ModelDownload
+          backend={backend}
+          downloads={downloads}
+          kind="diarization"
+          idPrefix="diarization-download"
+          missingKey="speakerLabelsModelMissing"
+          report={report}
+        />
+      </div>
+      <div
+        id="settings-panel-translation"
+        className="settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby="settings-tab-translation"
+        hidden={tab !== "translation"}
+      >
+        <TranslationModels
+          backend={backend}
+          downloads={downloads}
+          engine={state.translationEngine}
+          disabled={busy || outputBusy}
+          onSelect={(engine) =>
+            void perform(() => backend.setTranslationEngine(engine))
+          }
+          report={report}
+        />
+      </div>
+      <div
+        id="settings-panel-dictation"
+        className="settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby="settings-tab-dictation"
+        hidden={tab !== "dictation"}
+      >
+        <fieldset disabled={busy || outputBusy}>
+          {dictation && draft && (
+            <DictationSettings
+              value={draft}
+              snapshot={dictation}
+              engine={state.translationEngine}
+              onChange={setDraft}
+            />
+          )}
+        </fieldset>
+      </div>
+      <div
+        id="settings-panel-appearance"
+        className="settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby="settings-tab-appearance"
+        hidden={tab !== "appearance"}
+      >
+        <fieldset disabled={busy || outputBusy}>
+          <AppearanceSettings value={appearance} onChange={setAppearance} />
+        </fieldset>
+      </div>
+      <div
+        id="settings-panel-general"
+        className="settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby="settings-tab-general"
+        hidden={tab !== "general"}
+      >
+        <fieldset disabled={busy || outputBusy}>
+          <Field id="ui-language" label={t("uiLanguage")} hint={t("hintUiLanguage")}>
+            <LanguagePicker
+              id="ui-language"
+              label={t("uiLanguage")}
+              value={state.uiLanguage}
+              options={UI_LANGUAGES.map((item) => ({
                 value: item.tag,
                 label: item.name,
                 country: item.country,
-              })),
-            ]}
-            onChange={(tag) => {
-              if (tag !== (state.sourceLanguage ?? ""))
-                void perform(() => backend.setSourceLanguage(tag || null));
-            }}
-          />
-        </Field>
-        <Field id="translation-engine" label={t("translationEngine")}>
-          <select
-            className="select select-sm"
-            id="translation-engine"
-            value={state.translationEngine}
-            onChange={(event) => {
-              const engine = event.target
-                .value as AppSnapshot["translationEngine"];
-              void perform(() => backend.setTranslationEngine(engine));
-            }}
+              }))}
+              onChange={(tag) => {
+                if (tag !== state.uiLanguage)
+                  void perform(() => backend.setUiLanguage(tag));
+              }}
+            />
+          </Field>
+          <Field id="shortcut" label={t("lockShortcut")} hint={t("hintLockShortcut")}>
+            <input
+              className="input input-sm"
+              id="shortcut"
+              value={shortcut}
+              onChange={(event) => setShortcut(event.target.value)}
+              maxLength={16}
+              spellCheck={false}
+              aria-describedby="shortcut-status"
+            />
+          </Field>
+          <p
+            id="shortcut-status"
+            className="muted"
+            hidden={state.shortcutAvailable}
           >
-            {TRANSLATION_ENGINES.map((engine) => (
-              <option key={engine.id} value={engine.id}>
-                {t(engine.labelKey)}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </fieldset>
-      <ModelDownload
-        backend={backend}
-        downloads={downloads}
-        engine={state.translationEngine}
-        report={report}
-      />
-      <fieldset disabled={busy || outputBusy}>
-        <h3 className="settings-subtitle">{t("speakerLabels")}</h3>
-        <Field id="speaker-labels" label={t("speakerLabelsEnable")}>
-          <input
-            className="toggle toggle-sm toggle-primary"
-            id="speaker-labels"
-            type="checkbox"
-            checked={state.speakerLabels}
-            aria-describedby="speaker-labels-hint"
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              if (enabled !== state.speakerLabels)
-                void perform(() => backend.setSpeakerLabels(enabled));
-            }}
-          />
-        </Field>
-        <p id="speaker-labels-hint" className="muted">
-          {t("speakerLabelsHint")}
-        </p>
-        {state.speakerLabels &&
-          !state.resources.speakerLabels &&
-          downloads.models.some((model) => model.kind === "diarization" && model.installed) && (
-            // Installed but not loading: said here, never over the captions.
-            // A missing model is covered by the download offer below.
-            <p id="speaker-labels-unavailable" className="text-warning text-xs" role="status">
-              {t("speakerLabelsUnavailable")}
-            </p>
-          )}
-      </fieldset>
-      <ModelDownload
-        backend={backend}
-        downloads={downloads}
-        kind="diarization"
-        idPrefix="diarization-download"
-        missingKey="speakerLabelsModelMissing"
-        report={report}
-      />
-      <fieldset disabled={busy || outputBusy}>
-        <Field id="audio-output" label={t("audioOutput")}>
-          <select
-            className="select select-sm"
-            id="audio-output"
-            disabled={!outputs?.devices.length}
-            value={outputs?.selectedId ?? ""}
-            onChange={(event) => {
-              const id = event.target.value;
-              if (!id || outputBusy) return;
-              setOutputBusy(true);
-              void backend
-                .selectAudioOutput(id)
-                .then(setOutputs)
-                .catch(async (error) => {
-                  report(error);
-                  try {
-                    setOutputs(await backend.getAudioOutputs());
-                  } catch {
-                    /* Keep previous selection. */
-                  }
-                })
-                .finally(() => setOutputBusy(false));
-            }}
-          >
-            {!outputs && <option value="">{t("checkingOutputs")}</option>}
-            {outputs && !outputs.devices.length && (
-              <option value="">{t("noOutputs")}</option>
-            )}
-            {!!outputs?.devices.length && !outputs.selectedId && (
-              <option value="">{t("selectOutput")}</option>
-            )}
-            {outputs?.devices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
-              </option>
-            ))}
-            {outputs?.selectedId && !outputs.selectedAvailable && (
-              <option value={outputs.selectedId}>
-                {t("savedOutputUnavailable")}
-              </option>
-            )}
-          </select>
-        </Field>
-        <p
-          id="audio-output-status"
-          className="muted"
-          hidden={
-            !outputs || (outputs.selectedAvailable && !!outputs.devices.length)
-          }
-        >
-          {outputs?.selectedId && !outputs.selectedAvailable
-            ? t("savedOutputDisconnected")
-            : t("noActiveOutput")}
-        </p>
-        <Field id="shortcut" label={t("lockShortcut")}>
-          <input
-            className="input input-sm"
-            id="shortcut"
-            value={shortcut}
-            onChange={(event) => setShortcut(event.target.value)}
-            maxLength={16}
-            spellCheck={false}
-            aria-describedby="shortcut-status"
-          />
-        </Field>
-        <p
-          id="shortcut-status"
-          className="muted"
-          hidden={state.shortcutAvailable}
-        >
-          {t("shortcutUnavailableTray")}
-        </p>
-        {dictation && draft && (
-          <DictationSettings
-            value={draft}
-            snapshot={dictation}
-            engine={state.translationEngine}
-            onChange={setDraft}
-          />
-        )}
-      </fieldset>
-      <UpdateSettings
-        backend={backend}
-        state={state}
-        perform={perform}
-        report={report}
-      />
+            {t("shortcutUnavailableTray")}
+          </p>
+        </fieldset>
+        <UpdateSettings
+          backend={backend}
+          state={state}
+          perform={perform}
+          report={report}
+        />
+      </div>
       <div className="settings-footer">
         <button
           className="btn btn-ghost btn-xs settings-credit"
           id="developer-credit"
+          hidden={dirty}
           title="github.com/EduardoViniciusJ"
           onClick={() => void backend.openProjectPage().catch(report)}
         >
@@ -338,6 +436,11 @@ export function SettingsPanel({
           {" "}
           <span className="credit-name">EduardoViniciusJ</span>
         </button>
+        {/* Takes the credit's place while something waits for Save. */}
+        <span id="unsaved-changes" className="settings-unsaved" role="status" hidden={!dirty}>
+          <span className="settings-unsaved-dot" aria-hidden="true" />
+          {t("unsavedChanges")}
+        </span>
         <button
           className="btn btn-sm"
           id="reset-appearance"
@@ -347,8 +450,10 @@ export function SettingsPanel({
           {t("restoreDefault")}
         </button>
         <button
-          className="btn btn-sm btn-primary"
+          // Stands out only while there is something to save.
+          className={`btn btn-sm${dirty ? " btn-primary" : ""}`}
           id="save-settings"
+          data-dirty={dirty}
           disabled={busy || outputBusy || !valid}
           onClick={() => void save()}
         >

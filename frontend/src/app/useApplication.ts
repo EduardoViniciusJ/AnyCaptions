@@ -2,6 +2,7 @@
 import type { AppSnapshot, Backend } from "../contracts";
 import { setLocale, t } from "../i18n";
 import { errorMessage } from "./errors";
+import { attach } from "./subscription";
 
 /** Backend snapshots are authoritative; stale events never overwrite newer commands. */
 export function useApplication(backend: Backend) {
@@ -23,28 +24,16 @@ export function useApplication(backend: Backend) {
   };
   useEffect(() => {
     alive.current = true;
-    let cancelled = false;
-    let release: (() => void) | undefined;
-    void (async () => {
-      try {
-        const unsubscribe = await backend.subscribe((value) => {
-          if (!cancelled) accept(value);
-        });
-        if (cancelled) {
-          unsubscribe();
-          return;
-        }
-        release = unsubscribe;
+    const detach = attach(backend.subscribe.bind(backend), accept, {
+      ready: async (active) => {
         const initial = await backend.getState();
-        if (!cancelled) accept(initial);
-      } catch {
-        if (!cancelled) setError(t("errConnect"));
-      }
-    })();
+        if (active()) accept(initial);
+      },
+      failed: () => setError(t("errConnect")),
+    });
     return () => {
-      cancelled = true;
       alive.current = false;
-      release?.();
+      detach();
     };
   }, [backend]);
   const perform = async (action: () => Promise<AppSnapshot>) => {

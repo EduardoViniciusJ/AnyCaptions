@@ -1,7 +1,11 @@
-//! Local text translation behind the [`Translator`] trait. Two engines
-//! implement it today — `opus` (fast, CPU, English–Portuguese) and `riva`
-//! (GPU, 37 languages) — and captions never leave the machine.
+//! Local text translation behind the [`Translator`] trait. Three engines
+//! implement it today — `opus` (fast, CPU, English–Portuguese), `m2m`
+//! (CPU, one model for every pair of 100 languages) and `riva` (GPU, 37
+//! languages) — and captions never leave the machine. `ct2` is the native
+//! wrapper the two CPU engines share.
 
+mod ct2;
+pub mod m2m;
 pub mod opus;
 pub mod riva;
 pub mod stage;

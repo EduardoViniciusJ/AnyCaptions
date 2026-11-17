@@ -1,5 +1,5 @@
 export type CaptionMode = "auto" | `translate-${string}`;
-export type TranslationEngine = "opus" | "riva";
+export type TranslationEngine = "opus" | "m2m100" | "riva";
 export type CaptureState = "stopped" | "preparing" | "listening" | "processing" | "error";
 export type WindowMode = "edit" | "locked";
 export type ResizeDirection = "East" | "West" | "South";
@@ -14,6 +14,14 @@ export interface Appearance {
   partialColor: CaptionColor;
   background: boolean;
   font: CaptionFont;
+  /** Cor da janela atrás das legendas (e da faixa das legendas). */
+  panelColor: CaptionColor;
+  /** Opacidade dessa cor, de 0 (transparente) a 100 (sólida). */
+  panelOpacity: number;
+  /** Cor da faixa atrás das legendas (com `background` ligado). */
+  backgroundColor: CaptionColor;
+  /** Opacidade da faixa, de 0 (transparente) a 100 (sólida). */
+  backgroundOpacity: number;
 }
 
 export interface AppSnapshot {
@@ -190,6 +198,8 @@ export interface Backend {
   getModelDownloads(): Promise<ModelDownloadState[]>;
   downloadModel(model: string): Promise<void>;
   cancelModelDownload(): Promise<void>;
+  /** Apaga um modelo baixado; devolve o novo estado de todos os modelos. */
+  removeModel(model: string): Promise<ModelDownloadState[]>;
   subscribe(listener: (state: AppSnapshot) => void): Promise<() => void>;
   subscribeCaptions(listener: (update: CaptionUpdate) => void): Promise<() => void>;
   subscribeDictation(listener: (event: DictationEvent) => void): Promise<() => void>;

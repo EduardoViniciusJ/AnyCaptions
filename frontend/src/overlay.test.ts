@@ -29,6 +29,10 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       partialColor: "#B8B8B8",
       background: false,
       font: "inter",
+      panelColor: "#0F0F0F",
+      panelOpacity: 65,
+      backgroundColor: "#000000",
+      backgroundOpacity: 60,
     },
     resources: {
       audioCapture: false,
@@ -154,6 +158,7 @@ function setup(initial = snapshot()) {
     ]),
     downloadModel: vi.fn().mockResolvedValue(undefined),
     cancelModelDownload: vi.fn().mockResolvedValue(undefined),
+    removeModel: vi.fn().mockResolvedValue([]),
     installUpdate: vi.fn().mockResolvedValue(undefined),
     subscribeUpdateProgress: vi.fn().mockResolvedValue(vi.fn()),
     subscribeModelDownloads: vi.fn(async (callback) => {
@@ -339,9 +344,12 @@ describe("overlay controls", () => {
         .hidden,
     ).toBe(false);
     fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
-    const select = app.get<HTMLSelectElement>("#translation-engine");
-    expect(select.value).toBe("opus");
-    fireEvent.change(select, { target: { value: "riva" } });
+    const choice = (engine: string) =>
+      app.get<HTMLInputElement>(
+        `#translation-engine input[type="radio"][value="${engine}"]`,
+      );
+    expect(choice("opus").checked).toBe(true);
+    fireEvent.click(choice("riva"));
     await vi.waitFor(() =>
       expect(app.backend.setTranslationEngine).toHaveBeenCalledWith("riva"),
     );
@@ -357,11 +365,160 @@ describe("overlay controls", () => {
         },
       }),
     );
-    expect(select.value).toBe("riva");
+    expect(choice("riva").checked).toBe(true);
+    expect(choice("opus").checked).toBe(false);
     expect(
       app.get<HTMLLIElement>('#language-menu li[data-value="translate-ja"]')
         .hidden,
     ).toBe(false);
+  });
+
+  it("offers the M2M100 engine with one target per language", async () => {
+    const app = setup(
+      snapshot({
+        translationEngine: "m2m100",
+        resources: {
+          audioCapture: true,
+          transcription: true,
+          translation: true,
+          speakerLabels: false,
+        },
+      }),
+    );
+    await app.ready();
+    const hidden = (mode: string) =>
+      app.get<HTMLLIElement>(`#language-menu li[data-value="${mode}"]`).hidden;
+    // Any pair of its languages, directly: Japanese, Russian and French show.
+    expect(hidden("translate-ja")).toBe(false);
+    expect(hidden("translate-ru")).toBe(false);
+    expect(hidden("translate-fr")).toBe(false);
+    expect(hidden("translate-pt-br")).toBe(false);
+    // The model has one code per language, so the regional variants it
+    // cannot tell apart are not promised.
+    expect(hidden("translate-pt-pt")).toBe(true);
+    expect(hidden("translate-es-us")).toBe(true);
+    expect(hidden("translate-zh-tw")).toBe(true);
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    const choices = Array.from(
+      app.root.querySelectorAll<HTMLInputElement>(
+        '#translation-engine input[type="radio"]',
+      ),
+    );
+    expect(choices.map((choice) => choice.value)).toEqual([
+      "opus",
+      "m2m100",
+      "riva",
+    ]);
+    expect(choices.find((choice) => choice.checked)?.value).toBe("m2m100");
+  });
+
+  it("says where each translation model runs before the user picks one", async () => {
+    const app = setup();
+    await app.ready();
+    const device = (engine: string) =>
+      app.get(`.engine-card[data-engine="${engine}"] .engine-device`)
+        .textContent;
+    expect(device("opus")).toBe("CPU");
+    expect(device("m2m100")).toBe("CPU");
+    expect(device("riva")).toBe("GPU");
+    // The general notice about CPU and GPU, and what each model is good at.
+    expect(app.get("#translation-engine-hint").textContent).toContain("CPU");
+    expect(app.get("#translation-engine-hint").textContent).toContain("GPU");
+    expect(app.get("#engine-riva-description").textContent).toContain(
+      "placa de vídeo",
+    );
+    // The bundled model has nothing to download or remove.
+    const bundled = app.get('.engine-card[data-engine="opus"]');
+    expect(bundled.textContent).toContain("Já vem com o app");
+    expect(bundled.querySelector("button")).toBeNull();
+  });
+
+  it("shows one settings tab at a time and moves between them with the arrows", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    const tabs = ["captions", "translation", "dictation", "appearance", "general"];
+    const visible = () =>
+      tabs.filter((tab) => !app.get(`#settings-panel-${tab}`).hidden);
+    expect(visible()).toEqual(["captions"]);
+    fireEvent.click(app.get("#settings-tab-translation"));
+    expect(visible()).toEqual(["translation"]);
+    expect(
+      app.get("#settings-tab-translation").getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.keyDown(app.get("#settings-tab-translation"), {
+      key: "ArrowRight",
+    });
+    expect(visible()).toEqual(["dictation"]);
+    fireEvent.keyDown(app.get("#settings-tab-dictation"), { key: "ArrowLeft" });
+    fireEvent.keyDown(app.get("#settings-tab-translation"), {
+      key: "ArrowLeft",
+    });
+    fireEvent.keyDown(app.get("#settings-tab-captions"), { key: "ArrowLeft" });
+    expect(visible()).toEqual(["general"]);
+  });
+
+  it("flags drafts that still need Save", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await app.ready();
+    const hint = app.get("#unsaved-changes");
+    expect(hint.hidden).toBe(true);
+    fireEvent.change(app.get<HTMLInputElement>("#shortcut"), {
+      target: { value: "F9" },
+    });
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toBe(
+      "Clique em Salvar para aplicar as alterações",
+    );
+    // The note takes the credit's place instead of squeezing it.
+    expect(app.get("#developer-credit").hidden).toBe(true);
+    // Save only stands out while there is something to save.
+    expect(app.get("#save-settings").className).toContain("btn-primary");
+    fireEvent.change(app.get<HTMLInputElement>("#shortcut"), {
+      target: { value: snapshot().shortcut },
+    });
+    expect(hint.hidden).toBe(true);
+    expect(app.get("#save-settings").className).not.toContain("btn-primary");
+    expect(app.get("#developer-credit").hidden).toBe(false);
+  });
+
+  it("warns when dictation translates into a language the model cannot write", async () => {
+    const app = setup();
+    vi.mocked(app.backend.getDictation).mockResolvedValue({
+      settings: {
+        enabled: true,
+        shortcut: "Ctrl+Space",
+        activation: "hold",
+        soundCue: true,
+        showLiveText: true,
+        limitDuration: true,
+        maxDurationSecs: 60,
+        inputId: null,
+        language: null,
+        translateTo: "pt-pt",
+      },
+      available: true,
+      phase: "idle",
+      inputs: { devices: [], selectedId: null, selectedAvailable: false },
+    });
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await app.ready();
+    // OPUS writes Portuguese of Portugal; M2M100 writes it as Portuguese.
+    expect(app.root.querySelector("#dictation-translate-status")).toBeNull();
+    app.emit(snapshot({ revision: 1, translationEngine: "m2m100" }));
+    expect(app.root.querySelector("#dictation-translate-status")).toBeNull();
+    fireEvent.click(
+      app.get('#dictation-translate-menu li[data-value="fr"]'),
+    );
+    expect(app.root.querySelector("#dictation-translate-status")).toBeNull();
+    // French needs M2M100 or Riva: with OPUS the warning explains it.
+    app.emit(snapshot({ revision: 2, translationEngine: "opus" }));
+    expect(app.get("#dictation-translate-status").textContent).toContain(
+      "não traduz para este idioma",
+    );
   });
 
   it("switches the interface language and applies the texts", async () => {
@@ -481,6 +638,21 @@ describe("overlay controls", () => {
     fireEvent.change(partialColor, { target: { value: "#ff77aa" } });
     const background = app.get<HTMLInputElement>("#caption-background");
     fireEvent.click(background);
+    fireEvent.change(app.get<HTMLInputElement>("#panel-color"), {
+      target: { value: "#102a43" },
+    });
+    fireEvent.change(app.get<HTMLInputElement>("#panel-opacity"), {
+      target: { value: "40" },
+    });
+    expect(app.get("#panel-opacity-value").textContent).toBe("40%");
+    // The band behind the captions has its own color and opacity.
+    fireEvent.change(app.get<HTMLInputElement>("#background-color"), {
+      target: { value: "#402000" },
+    });
+    fireEvent.change(app.get<HTMLInputElement>("#background-opacity"), {
+      target: { value: "90" },
+    });
+    expect(app.get("#background-opacity-value").textContent).toBe("90%");
 
     const preview = app.get<HTMLElement>("#appearance-preview");
     expect(preview.style.getPropertyValue("--caption-base-size")).toBe("72px");
@@ -489,6 +661,15 @@ describe("overlay controls", () => {
       "#FF77AA",
     );
     expect(preview.hasAttribute("data-background")).toBe(true);
+    expect(preview.style.getPropertyValue("--caption-background")).toBe(
+      "rgba(64, 32, 0, 0.9)",
+    );
+    // The real window wears the color being picked, before Save.
+    expect(
+      app.get<HTMLElement>(".overlay").style.getPropertyValue(
+        "--panel-background",
+      ),
+    ).toBe("rgba(16, 42, 67, 0.4)");
     expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(
       false,
     );
@@ -505,6 +686,10 @@ describe("overlay controls", () => {
         partialColor: "#FF77AA",
         background: true,
         font: "inter",
+        panelColor: "#102A43",
+        panelOpacity: 40,
+        backgroundColor: "#402000",
+        backgroundOpacity: 90,
       }),
     );
     await vi.waitFor(() => expect(app.get("#settings").hidden).toBe(true));
@@ -515,6 +700,144 @@ describe("overlay controls", () => {
     ).toBe("#33CCFF");
     expect(app.get("#caption-preview").hasAttribute("data-background")).toBe(
       true,
+    );
+    const overlay = app.get<HTMLElement>(".overlay");
+    expect(overlay.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(16, 42, 67, 0.4)",
+    );
+    expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
+      "#FFFFFF",
+    );
+  });
+
+  it("offers the band's color and opacity only while the band is on", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    expect(app.root.querySelector("#background-color")).toBeNull();
+    expect(app.root.querySelector("#background-opacity")).toBeNull();
+    fireEvent.click(app.get<HTMLInputElement>("#caption-background"));
+    expect(app.get<HTMLInputElement>("#background-color-value").value).toBe(
+      "#000000",
+    );
+    expect(app.get("#background-opacity-value").textContent).toBe("60%");
+    expect(app.get<HTMLButtonElement>("#background-opacity-reset").disabled).toBe(
+      true,
+    );
+  });
+
+  it("explains each option from the i next to its label", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    await app.ready();
+    // Every tab has them: captions, dictation, appearance and general.
+    for (const id of [
+      "source-language",
+      "audio-output",
+      "dictation-enabled",
+      "dictation-translate",
+      "dictation-duration",
+      "font-size",
+      "font-color",
+      "caption-background",
+      "panel-color",
+      "panel-opacity",
+      "ui-language",
+      "shortcut",
+      "update-check",
+    ]) {
+      const button = app.get<HTMLButtonElement>(`#${id}-info`);
+      const note = app.get(`#${id}-info-text`);
+      expect(button.getAttribute("aria-describedby")).toBe(note.id);
+      expect(note.getAttribute("role")).toBe("tooltip");
+      expect(note.textContent?.length).toBeGreaterThan(10);
+    }
+    const info = app.get<HTMLButtonElement>("#panel-opacity-info");
+    expect(info.getAttribute("aria-label")).toBe(
+      "Mais informações: Opacidade da janela",
+    );
+    expect(app.get("#panel-opacity-info-text").textContent).toBe(
+      "O quanto a janela é sólida: 0% é transparente, 100% esconde o que está atrás dela.",
+    );
+    // Escape closes the note only; the settings stay open.
+    info.focus();
+    fireEvent.keyDown(info, { key: "Escape" });
+    expect(document.activeElement).not.toBe(info);
+    expect(app.get("#settings").hidden).toBe(false);
+  });
+
+  it("puts the window back when the settings close without saving", async () => {
+    const app = setup();
+    await app.ready();
+    const overlay = app.get<HTMLElement>(".overlay");
+    const toggle = app.get<HTMLButtonElement>("#settings-toggle");
+    fireEvent.click(toggle);
+    fireEvent.change(app.get<HTMLInputElement>("#panel-opacity"), {
+      target: { value: "100" },
+    });
+    expect(overlay.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(15, 15, 15, 1)",
+    );
+    fireEvent.click(toggle);
+    expect(overlay.style.getPropertyValue("--panel-background")).toBe(
+      "rgba(15, 15, 15, 0.65)",
+    );
+    expect(app.backend.setAppearance).not.toHaveBeenCalled();
+  });
+
+  it("resets one appearance option without touching the others", async () => {
+    const app = setup();
+    await app.ready();
+    fireEvent.click(app.get<HTMLButtonElement>("#settings-toggle"));
+    const reset = (id: string) => app.get<HTMLButtonElement>(`#${id}-reset`);
+    // Nothing to reset while every option is at its default.
+    for (const id of [
+      "font-size",
+      "font-color",
+      "partial-color",
+      "panel-color",
+      "panel-opacity",
+      "caption-font",
+      "caption-background",
+    ])
+      expect(reset(id).disabled).toBe(true);
+    fireEvent.change(app.get<HTMLInputElement>("#font-size"), {
+      target: { value: "60" },
+    });
+    fireEvent.change(app.get<HTMLInputElement>("#panel-color"), {
+      target: { value: "#102a43" },
+    });
+    expect(reset("panel-color").disabled).toBe(false);
+    expect(reset("panel-color").getAttribute("aria-label")).toBe(
+      "Restaurar padrão: Cor da janela",
+    );
+    fireEvent.click(reset("panel-color"));
+    expect(app.get<HTMLInputElement>("#panel-color-value").value).toBe(
+      "#0F0F0F",
+    );
+    expect(reset("panel-color").disabled).toBe(true);
+    // The other change is still there.
+    expect(app.get<HTMLInputElement>("#font-size").value).toBe("60");
+    expect(reset("font-size").disabled).toBe(false);
+  });
+
+  it("keeps the app name readable over a light, solid window color", async () => {
+    const light = (revision: number, panelOpacity: number) =>
+      snapshot({
+        revision,
+        appearance: { ...snapshot().appearance, panelColor: "#F5F5F5", panelOpacity },
+      });
+    const app = setup(light(0, 90));
+    await app.ready();
+    const overlay = app.get<HTMLElement>(".overlay");
+    expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
+      "#111111",
+    );
+    // See-through: what is behind the window decides, so the light text stays.
+    app.emit(light(1, 20));
+    expect(overlay.style.getPropertyValue("--panel-foreground")).toBe(
+      "#FFFFFF",
     );
   });
 
@@ -527,6 +850,10 @@ describe("overlay controls", () => {
           partialColor: "#0088FF",
           background: true,
           font: "inter",
+          panelColor: "#0F0F0F",
+          panelOpacity: 65,
+          backgroundColor: "#000000",
+          backgroundOpacity: 60,
         },
       }),
     );
@@ -802,25 +1129,100 @@ describe("overlay controls", () => {
 });
 
 describe("model download", () => {
-  it("offers the download only while the selected engine's model is missing", async () => {
+  it("offers the download on the model's own card, selected or not", async () => {
     const app = setup(snapshot({ translationEngine: "riva" }));
     await app.ready();
-    const row = app.get("#model-download");
+    const row = app.get("#model-riva");
     expect(row.hidden).toBe(false);
-    expect(app.get("#model-download-status").textContent).toBe(
+    expect(app.get("#model-riva-status").textContent).toBe(
       "O modelo deste mecanismo ainda não foi baixado.",
     );
-    expect(app.get("#model-download-action").textContent).toBe(
-      "Baixar (2.8 GB)",
-    );
+    expect(app.get("#model-riva-action").textContent).toBe("Baixar (2.8 GB)");
+    expect(app.get("#model-riva-installed").hidden).toBe(true);
+    // A model can be fetched before it is chosen.
     app.emit(snapshot({ revision: 1, translationEngine: "opus" }));
-    expect(row.hidden).toBe(true);
+    expect(row.hidden).toBe(false);
+  });
+
+  it("removes a downloaded model only after the user confirms", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    const riva = {
+      model: RIVA_MODEL,
+      kind: "translation" as const,
+      engine: "riva" as const,
+      installed: true,
+      downloadable: true,
+      downloading: false,
+      totalBytes: RIVA_BYTES,
+    };
+    vi.mocked(app.backend.getModelDownloads).mockResolvedValue([riva]);
+    vi.mocked(app.backend.removeModel).mockResolvedValue([
+      { ...riva, installed: false },
+    ]);
+    await app.ready();
+    expect(app.get("#model-riva").hidden).toBe(true);
+    expect(app.get("#model-riva-installed").hidden).toBe(false);
+    expect(app.get("#model-riva-installed-status").textContent).toBe(
+      "Baixado · 2.8 GB em disco",
+    );
+
+    // First click only asks; "Manter" backs out without touching anything.
+    fireEvent.click(app.get("#model-riva-remove"));
+    expect(app.get("#model-riva-installed-status").textContent).toBe(
+      "Remover este modelo e liberar 2.8 GB? Você pode baixar de novo quando quiser.",
+    );
+    expect(app.backend.removeModel).not.toHaveBeenCalled();
+    fireEvent.click(app.get("#model-riva-remove-cancel"));
+    expect(app.root.querySelector("#model-riva-remove-cancel")).toBeNull();
+    expect(app.backend.removeModel).not.toHaveBeenCalled();
+
+    fireEvent.click(app.get("#model-riva-remove"));
+    fireEvent.click(app.get("#model-riva-remove"));
+    await vi.waitFor(() =>
+      expect(app.backend.removeModel).toHaveBeenCalledWith(RIVA_MODEL),
+    );
+    // Gone from disk: the download is offered again.
+    await vi.waitFor(() =>
+      expect(app.get("#model-riva-installed").hidden).toBe(true),
+    );
+    expect(app.get("#model-riva").hidden).toBe(false);
+    expect(app.get("#model-riva-action").textContent).toBe("Baixar (2.8 GB)");
+  });
+
+  it("explains why a model in use could not be removed and keeps it listed", async () => {
+    const app = setup(snapshot({ translationEngine: "riva" }));
+    vi.mocked(app.backend.getModelDownloads).mockResolvedValue([
+      {
+        model: RIVA_MODEL,
+        kind: "translation",
+        engine: "riva",
+        installed: true,
+        downloadable: true,
+        downloading: false,
+        totalBytes: RIVA_BYTES,
+      },
+    ]);
+    vi.mocked(app.backend.removeModel).mockRejectedValue({
+      kind: "model-in-use",
+    });
+    await app.ready();
+    fireEvent.click(app.get("#model-riva-remove"));
+    fireEvent.click(app.get("#model-riva-remove"));
+    await vi.waitFor(() =>
+      expect(app.root.textContent).toContain(
+        "O modelo está em uso e não pôde ser removido.",
+      ),
+    );
+    expect(app.get("#model-riva-installed").hidden).toBe(false);
+    expect(app.get("#model-riva-installed-status").textContent).toBe(
+      "Baixado · 2.8 GB em disco",
+    );
   });
 
   it("starts the download, shows progress and lets the user cancel", async () => {
     const app = setup(snapshot({ translationEngine: "riva" }));
     await app.ready();
-    fireEvent.click(app.get<HTMLButtonElement>("#model-download-action"));
+    fireEvent.click(app.get<HTMLButtonElement>("#model-riva-action"));
     expect(app.backend.downloadModel).toHaveBeenCalledWith(RIVA_MODEL);
     app.emitModelDownload({
       model: RIVA_MODEL,
@@ -829,11 +1231,11 @@ describe("model download", () => {
       totalBytes: RIVA_BYTES,
       reason: null,
     });
-    expect(app.get("#model-download-status").textContent).toBe("Baixando… 50%");
-    const progress = app.get<HTMLProgressElement>("#model-download-progress");
+    expect(app.get("#model-riva-status").textContent).toBe("Baixando… 50%");
+    const progress = app.get<HTMLProgressElement>("#model-riva-progress");
     expect(progress.hidden).toBe(false);
     expect(progress.value).toBe(50);
-    fireEvent.click(app.get<HTMLButtonElement>("#model-download-action"));
+    fireEvent.click(app.get<HTMLButtonElement>("#model-riva-action"));
     expect(app.backend.cancelModelDownload).toHaveBeenCalled();
   });
 
@@ -847,14 +1249,14 @@ describe("model download", () => {
       totalBytes: null,
       reason: "corrupted",
     });
-    expect(app.get("#model-download-status").textContent).toBe(
+    expect(app.get("#model-riva-status").textContent).toBe(
       "O arquivo baixado não passou na verificação. Tente de novo.",
     );
-    expect(app.get("#model-download-action").textContent).toBe(
+    expect(app.get("#model-riva-action").textContent).toBe(
       "Tentar de novo",
     );
     expect(
-      app.get<HTMLProgressElement>("#model-download-progress").hidden,
+      app.get<HTMLProgressElement>("#model-riva-progress").hidden,
     ).toBe(true);
   });
 
@@ -880,7 +1282,7 @@ describe("model download", () => {
       reason: null,
     });
     await vi.waitFor(() =>
-      expect(app.get("#model-download").hidden).toBe(true),
+      expect(app.get("#model-riva").hidden).toBe(true),
     );
   });
 });

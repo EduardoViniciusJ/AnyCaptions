@@ -69,10 +69,11 @@ All models run locally:
 | [NVIDIA Riva Translate 4B Instruct v2](https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2) | Translation into 37 languages | GPU | Downloaded inside the app (2.8 GB) |
 | [NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) | Speaker labels (streaming Sortformer, up to 8 generic speaker slots) | GPU (Vulkan), CPU fallback (alongside the ASR model) | Downloaded inside the app (107 MB) |
 | [Helsinki-NLP OPUS-MT](https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt) (en ↔ pt) | Fast English ↔ Portuguese translation | CPU | Ships with the installer |
+| [Meta M2M100 418M](https://huggingface.co/facebook/m2m100_418M) | Direct translation between any two of its languages (34 targets offered), no GPU needed | CPU | Downloaded inside the app (491 MB) |
 
-Inference runs on [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) (Apache-2.0) for recognition and Riva, and on [CTranslate2](https://github.com/OpenNMT/CTranslate2) (MIT) for OPUS-MT.
+Inference runs on [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) (Apache-2.0) for recognition and Riva, and on [CTranslate2](https://github.com/OpenNMT/CTranslate2) (MIT) for OPUS-MT and M2M100, through the small wrapper in [`backend/native/opus-ct2`](backend/native/opus-ct2).
 
-**Licenses:** Nemotron ASR and Nemotron 3 Diarization under [OpenMDW-1.1](https://openmdw.ai/license/1-1/); Riva Translate — Licensed by NVIDIA Corporation under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/); OPUS-MT under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (credits: Helsinki-NLP/OPUS-MT, Jörg Tiedemann). Selector flags from [flag-icons](https://github.com/lipis/flag-icons) (MIT).
+**Licenses:** Nemotron ASR and Nemotron 3 Diarization under [OpenMDW-1.1](https://openmdw.ai/license/1-1/); Riva Translate — Licensed by NVIDIA Corporation under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/); OPUS-MT English → Portuguese under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) and Portuguese → English under [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (credits: Helsinki-NLP/OPUS-MT, Jörg Tiedemann; both converted to CTranslate2 int8); M2M100 under the [MIT License](https://opensource.org/license/mit) (Meta; CTranslate2 int8 conversion by [jncraton](https://huggingface.co/jncraton/m2m100_418M-ct2-int8)). Selector flags from [flag-icons](https://github.com/lipis/flag-icons) (MIT).
 
 ## Getting started
 

@@ -43,9 +43,55 @@ pub const OPUS_MT_PT_EN: ModelProfile = ModelProfile {
     filename: "model.bin",
     revision: "4d4757865ab116b39daa3b4ca3cfe1e7daf43cbe",
     source: "https://huggingface.co/Helsinki-NLP/opus-mt-tc-bible-big-roa-en",
-    license: "CC-BY-4.0",
+    license: "Apache-2.0",
     sha256: "b52ae8251ae34d6c8fd7bcc3d5202d6810ec6a8c005b89d762420f89d2f55fb2",
     max_bytes: 512 * 1024 * 1024,
+};
+
+// M2M100 418M (Meta, MIT): one many-to-many model for 100 languages, run
+// through CTranslate2 int8 on the CPU like the OPUS models. The four files
+// below are the int8 conversion published at
+// https://huggingface.co/jncraton/m2m100_418M-ct2-int8 (also MIT), pinned to
+// one revision; the SHA-256 values were taken from that revision on
+// 2026-11-16. The download fetches all four into the same folder.
+
+/// Revision of the converted repository every M2M100 file is pinned to.
+pub const M2M100_REVISION: &str = "7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0";
+
+pub const M2M100_418M: ModelProfile = ModelProfile {
+    kind: ModelKind::Translation,
+    id: "m2m100-418m-ct2-int8",
+    directory: "m2m100-418m",
+    filename: "model.bin",
+    revision: M2M100_REVISION,
+    source: "https://huggingface.co/facebook/m2m100_418M",
+    license: "MIT",
+    sha256: "d6703dd9f920ff896e45c3d97b490761bed5944937b90bbe6a7245f5652542d4",
+    max_bytes: 1024 * 1024 * 1024,
+};
+
+pub const M2M100_CONFIG: ModelProfile = ModelProfile {
+    id: "m2m100-418m-config",
+    filename: "config.json",
+    sha256: "4244772990e30069563e3ddfb4ad6dc95bdfd2ac3de667ea8858c9b0a8433fa8",
+    max_bytes: 64 * 1024,
+    ..M2M100_418M
+};
+
+pub const M2M100_VOCABULARY: ModelProfile = ModelProfile {
+    id: "m2m100-418m-vocabulary",
+    filename: "shared_vocabulary.json",
+    sha256: "7eb5d0ff184c6095c7c10f9911c0aea492250abd12854f9c3d787c64b1c6397e",
+    max_bytes: 16 * 1024 * 1024,
+    ..M2M100_418M
+};
+
+pub const M2M100_TOKENIZER: ModelProfile = ModelProfile {
+    id: "m2m100-418m-tokenizer",
+    filename: "sentencepiece.bpe.model",
+    sha256: "d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a",
+    max_bytes: 16 * 1024 * 1024,
+    ..M2M100_418M
 };
 
 /// Streaming Sortformer (V3, eight speaker slots, 10 ms output frames) that

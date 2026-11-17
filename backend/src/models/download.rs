@@ -36,10 +36,23 @@ const RIVA_DOWNLOAD_URL: &str = "https://huggingface.co/EduardoVinicius/anycapti
 /// overrides it during development.
 const DIARIZATION_DOWNLOAD_URL: &str = "https://huggingface.co/nvidia/Nemotron-3-Diarization/resolve/f667ed73aee57d40cc39428eb768b4fd87a0a29e/Nemotron-3-Diarization.q8_0.gguf";
 
+/// Exact size of the M2M100 `model.bin` of the pinned revision.
+pub const M2M100_DOWNLOAD_BYTES: u64 = 490_667_713;
+
+/// Where the M2M100 files are served from: the converted repository, pinned
+/// to the revision the catalog hashes were taken from.
+/// `ANYCAPTIONS_M2M100_URL` overrides the `model.bin` URL during development;
+/// the other files are always fetched from the same folder.
+const M2M100_DOWNLOAD_URL: &str = "https://huggingface.co/jncraton/m2m100_418M-ct2-int8/resolve/7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0/model.bin";
+
 /// A catalog model the app offers for download, with its pinned source.
 pub struct DownloadSource {
     pub profile: &'static ModelProfile,
     pub url: String,
+    /// Small files the model needs in the same folder, each with its URL.
+    /// They are fetched first, so the model only counts as installed once
+    /// its main file (the last one) is verified in place.
+    pub companions: Vec<(&'static ModelProfile, String)>,
 }
 
 /// Every model the app can fetch: the catalog profile, its download size and
@@ -48,6 +61,8 @@ struct DownloadableModel {
     profile: &'static ModelProfile,
     url: &'static str,
     url_override: &'static str,
+    /// Files served next to `url` that belong in the model's folder.
+    companions: &'static [&'static ModelProfile],
 }
 
 const DOWNLOADABLE_MODELS: &[DownloadableModel] = &[
@@ -55,11 +70,23 @@ const DOWNLOADABLE_MODELS: &[DownloadableModel] = &[
         profile: &catalog::RIVA_TRANSLATE_Q4,
         url: RIVA_DOWNLOAD_URL,
         url_override: "ANYCAPTIONS_RIVA_URL",
+        companions: &[],
+    },
+    DownloadableModel {
+        profile: &catalog::M2M100_418M,
+        url: M2M100_DOWNLOAD_URL,
+        url_override: "ANYCAPTIONS_M2M100_URL",
+        companions: &[
+            &catalog::M2M100_CONFIG,
+            &catalog::M2M100_VOCABULARY,
+            &catalog::M2M100_TOKENIZER,
+        ],
     },
     DownloadableModel {
         profile: &catalog::NEMOTRON_3_DIARIZATION_Q8,
         url: DIARIZATION_DOWNLOAD_URL,
         url_override: "ANYCAPTIONS_DIARIZATION_URL",
+        companions: &[],
     },
 ];
 
@@ -71,8 +98,21 @@ pub fn source_for(model_id: &str) -> Option<DownloadSource> {
         .find(|model| model.profile.id == model_id)?;
     model.url().map(|url| DownloadSource {
         profile: model.profile,
+        companions: model
+            .companions
+            .iter()
+            .map(|companion| (*companion, sibling_url(&url, companion.filename)))
+            .collect(),
         url,
     })
+}
+
+/// The URL of `filename` in the same folder as `url`.
+fn sibling_url(url: &str, filename: &str) -> String {
+    match url.rsplit_once('/') {
+        Some((folder, _)) => format!("{folder}/{filename}"),
+        None => filename.to_owned(),
+    }
 }
 
 /// Whether `model_id` has a download URL (built in or from its override).
@@ -93,6 +133,52 @@ impl DownloadableModel {
             .filter(|url| !url.is_empty())
             .or_else(|| (!self.url.is_empty()).then(|| self.url.to_owned()))
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoveError {
+    /// Not a model the app can download again (bundled or unknown).
+    NotRemovable,
+    /// The file is still open somewhere and could not be deleted.
+    InUse,
+}
+
+/// Deletes a downloaded model from `root`, with its companion files, its
+/// verification stamps and any leftover partial download. Only models the app
+/// can fetch again are removable, so the user can always undo it; the models
+/// the installer ships are refused.
+///
+/// The main file goes first: while it exists the model is whole, and once it
+/// is gone the model counts as not installed whatever happens to the small
+/// files. Removing a model that is not on disk succeeds.
+pub fn remove(model_id: &str, root: &Path) -> Result<(), RemoveError> {
+    let model = DOWNLOADABLE_MODELS
+        .iter()
+        .find(|model| model.profile.id == model_id)
+        .ok_or(RemoveError::NotRemovable)?;
+    let main = model.profile.path_in(root);
+    delete(&main)?;
+    for companion in model.companions {
+        let _ = delete(&companion.path_in(root));
+    }
+    if let Some(dir) = main.parent() {
+        // Only succeeds when nothing else is left in the model's folder.
+        let _ = fs::remove_dir(dir);
+    }
+    Ok(())
+}
+
+fn delete(path: &Path) -> Result<(), RemoveError> {
+    match fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(RemoveError::InUse),
+    }
+    super::forget_verification(path);
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    let _ = fs::remove_file(PathBuf::from(part));
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -189,21 +275,15 @@ impl DownloadManager {
         let flag = Arc::clone(&cancel);
         let model = source.profile.id;
         let worker = thread::spawn(move || {
-            let result = run(
-                source.profile,
-                &source.url,
-                &root,
-                &flag,
-                &mut |received, total| {
-                    sink.download_changed(&DownloadUpdate {
-                        model,
-                        phase: DownloadPhase::Downloading,
-                        received_bytes: received,
-                        total_bytes: total,
-                        reason: None,
-                    });
-                },
-            );
+            let result = run(&source, &root, &flag, &mut |received, total| {
+                sink.download_changed(&DownloadUpdate {
+                    model,
+                    phase: DownloadPhase::Downloading,
+                    received_bytes: received,
+                    total_bytes: total,
+                    reason: None,
+                });
+            });
             match result {
                 Ok(received) => {
                     sink.download_changed(&DownloadUpdate {
@@ -237,10 +317,37 @@ const CHUNK_BYTES: usize = 64 * 1024;
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Downloads and installs one model; returns the byte count on success.
+/// Downloads and installs one model with its companion files; returns the
+/// byte count of the main file on success. Progress covers the main file: the
+/// companions are a few megabytes and arrive first.
 /// Kept free of Tauri types so tests can drive it against a local server.
 fn run(
-    profile: &'static ModelProfile,
+    source: &DownloadSource,
+    root: &Path,
+    cancel: &AtomicBool,
+    report: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<u64, DownloadFailure> {
+    // Without these a server that accepts the connection and then says
+    // nothing kept the download "running" forever: cancel is only seen
+    // between reads, and no other download or update could start.
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_recv_response(Some(RESPONSE_TIMEOUT))
+        .build()
+        .into();
+    for (companion, url) in &source.companions {
+        // An intact file from an earlier, interrupted attempt is kept.
+        if companion.verify(&companion.path_in(root)).is_err() {
+            fetch(&agent, companion, url, root, cancel, &mut |_, _| {})?;
+        }
+    }
+    fetch(&agent, source.profile, &source.url, root, cancel, report)
+}
+
+/// Streams one catalog file to its place under `root`, verifying its hash.
+fn fetch(
+    agent: &ureq::Agent,
+    profile: &ModelProfile,
     url: &str,
     root: &Path,
     cancel: &AtomicBool,
@@ -251,14 +358,6 @@ fn run(
     fs::create_dir_all(dir).map_err(|_| DownloadFailure::Disk)?;
     let part_path = dir.join(format!("{}.part", profile.filename));
 
-    // Without these a server that accepts the connection and then says
-    // nothing kept the download "running" forever: cancel is only seen
-    // between reads, and no other download or update could start.
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_connect(Some(CONNECT_TIMEOUT))
-        .timeout_recv_response(Some(RESPONSE_TIMEOUT))
-        .build()
-        .into();
     let mut response = agent
         .get(url)
         .call()
@@ -325,12 +424,7 @@ fn stream_to_part(
     }
     file.sync_all().map_err(|_| DownloadFailure::Disk)?;
     drop(file);
-    let digest: String = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    if !digest.eq_ignore_ascii_case(profile.sha256) {
+    if !super::digest_matches(hasher, profile.sha256) {
         return Err(DownloadFailure::Corrupted);
     }
     report(received, total);
@@ -341,6 +435,68 @@ fn stream_to_part(
 mod tests {
     use super::*;
     use crate::models::ModelKind;
+
+    fn temp_root(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("anycaptions-remove-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        root
+    }
+
+    #[test]
+    fn removing_a_model_deletes_its_files_stamps_and_folder() {
+        let root = temp_root("m2m");
+        let files = [
+            &catalog::M2M100_418M,
+            &catalog::M2M100_CONFIG,
+            &catalog::M2M100_VOCABULARY,
+            &catalog::M2M100_TOKENIZER,
+        ];
+        let dir = catalog::M2M100_418M.path_in(&root);
+        let dir = dir.parent().unwrap();
+        fs::create_dir_all(dir).unwrap();
+        for profile in files {
+            let path = profile.path_in(&root);
+            fs::write(&path, b"weights").unwrap();
+            fs::write(format!("{}.verified", path.display()), b"stamp").unwrap();
+        }
+        fs::write(dir.join("model.bin.part"), b"half").unwrap();
+
+        assert_eq!(remove(catalog::M2M100_418M.id, &root), Ok(()));
+        assert!(!dir.exists(), "nothing of the model is left behind");
+        // Removing again is not an error: the user only wants it gone.
+        assert_eq!(remove(catalog::M2M100_418M.id, &root), Ok(()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn removing_keeps_files_the_app_did_not_put_there() {
+        let root = temp_root("extra");
+        let model = catalog::NEMOTRON_3_DIARIZATION_Q8.path_in(&root);
+        let dir = model.parent().unwrap();
+        fs::create_dir_all(dir).unwrap();
+        fs::write(&model, b"weights").unwrap();
+        fs::write(dir.join("notes.txt"), b"mine").unwrap();
+
+        assert_eq!(remove(catalog::NEMOTRON_3_DIARIZATION_Q8.id, &root), Ok(()));
+        assert!(!model.exists());
+        assert!(dir.join("notes.txt").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn bundled_and_unknown_models_cannot_be_removed() {
+        let root = temp_root("bundled");
+        let bundled = catalog::NEMOTRON_STREAMING_Q8.path_in(&root);
+        fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        fs::write(&bundled, b"weights").unwrap();
+
+        for id in [catalog::NEMOTRON_STREAMING_Q8.id, "../../outside", ""] {
+            assert_eq!(remove(id, &root), Err(RemoveError::NotRemovable), "{id}");
+        }
+        assert!(bundled.is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
 
     // SHA-256 of the bytes "model".
     const TEST_PROFILE: ModelProfile = ModelProfile {
@@ -376,6 +532,15 @@ mod tests {
         format!("http://{addr}/model.bin")
     }
 
+    /// A download of `TEST_PROFILE` alone, served from `url`.
+    fn source(url: String) -> DownloadSource {
+        DownloadSource {
+            profile: &TEST_PROFILE,
+            url,
+            companions: Vec::new(),
+        }
+    }
+
     fn isolated_root(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!("anycaptions-download-{tag}-{}", std::process::id()))
     }
@@ -386,7 +551,7 @@ mod tests {
         let url = serve(b"model", Some(5));
         let mut updates = Vec::new();
         let never = AtomicBool::new(false);
-        let received = run(&TEST_PROFILE, &url, &root, &never, &mut |done, total| {
+        let received = run(&source(url), &root, &never, &mut |done, total| {
             updates.push((done, total));
         })
         .unwrap();
@@ -404,7 +569,7 @@ mod tests {
         let root = isolated_root("corrupt");
         let url = serve(b"not-the-model", Some(13));
         let never = AtomicBool::new(false);
-        let result = run(&TEST_PROFILE, &url, &root, &never, &mut |_, _| {});
+        let result = run(&source(url), &root, &never, &mut |_, _| {});
         assert_eq!(result, Err(DownloadFailure::Corrupted));
         let dir = TEST_PROFILE.path_in(&root);
         assert!(!dir.exists());
@@ -417,7 +582,7 @@ mod tests {
         let root = isolated_root("oversized");
         let url = serve(b"model", Some(4096));
         let never = AtomicBool::new(false);
-        let result = run(&TEST_PROFILE, &url, &root, &never, &mut |_, _| {});
+        let result = run(&source(url), &root, &never, &mut |_, _| {});
         assert_eq!(result, Err(DownloadFailure::Corrupted));
         let _ = fs::remove_dir_all(&root);
     }
@@ -427,12 +592,86 @@ mod tests {
         let root = isolated_root("cancel");
         let url = serve(b"model", Some(5));
         let cancelled = AtomicBool::new(true);
-        let result = run(&TEST_PROFILE, &url, &root, &cancelled, &mut |_, _| {});
+        let result = run(&source(url), &root, &cancelled, &mut |_, _| {});
         assert_eq!(result, Err(DownloadFailure::Cancelled));
         let dir = TEST_PROFILE.path_in(&root);
         assert!(!dir.exists());
         assert!(!dir.parent().unwrap().join("model.bin.part").exists());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // SHA-256 of the bytes "vocab".
+    const TEST_COMPANION: ModelProfile = ModelProfile {
+        id: "test-download-vocabulary",
+        filename: "vocabulary.json",
+        sha256: "c1a0dc2cb0f1d0a1d5a1c8b6b2b5b0e4a6a2f0f4b0c0d6f6b2f2b6c2a8e4d0f2",
+        ..TEST_PROFILE
+    };
+
+    #[test]
+    fn companion_files_arrive_before_the_model_and_gate_the_install() {
+        let never = AtomicBool::new(false);
+
+        // A companion that fails its hash stops the install before the main
+        // file is even requested.
+        let root = isolated_root("companion-bad");
+        let bad = DownloadSource {
+            profile: &TEST_PROFILE,
+            url: "http://127.0.0.1:1/model.bin".to_owned(),
+            companions: vec![(&TEST_COMPANION, serve(b"vocab", Some(5)))],
+        };
+        assert_eq!(
+            run(&bad, &root, &never, &mut |_, _| {}),
+            Err(DownloadFailure::Corrupted)
+        );
+        assert!(!TEST_PROFILE.path_in(&root).exists());
+        assert!(!TEST_COMPANION.path_in(&root).exists());
+        let _ = fs::remove_dir_all(&root);
+
+        // With a matching companion both files land in the same folder.
+        let root = isolated_root("companion-ok");
+        let companion = ModelProfile {
+            sha256: "9372c470eeadd5ecd9c3c74c2b3cb633f8e2f2fad799250a0f70d652b6b825e4",
+            ..TEST_COMPANION
+        };
+        let companion: &'static ModelProfile = Box::leak(Box::new(companion));
+        let good = DownloadSource {
+            profile: &TEST_PROFILE,
+            url: serve(b"model", Some(5)),
+            companions: vec![(companion, serve(b"model", Some(5)))],
+        };
+        assert_eq!(run(&good, &root, &never, &mut |_, _| {}), Ok(5));
+        assert_eq!(
+            TEST_PROFILE.path_in(&root).parent(),
+            companion.path_in(&root).parent()
+        );
+        assert_eq!(fs::read(companion.path_in(&root)).unwrap(), b"model");
+
+        // An intact companion from an earlier attempt is not fetched again:
+        // its URL now points nowhere and the install still succeeds.
+        fs::remove_file(TEST_PROFILE.path_in(&root)).unwrap();
+        let retry = DownloadSource {
+            profile: &TEST_PROFILE,
+            url: serve(b"model", Some(5)),
+            companions: vec![(companion, "http://127.0.0.1:1/gone".to_owned())],
+        };
+        assert_eq!(run(&retry, &root, &never, &mut |_, _| {}), Ok(5));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_m2m100_download_fetches_every_file_from_the_pinned_folder() {
+        let source = source_for(catalog::M2M100_418M.id).expect("m2m100 is downloadable");
+        assert_eq!(source.companions.len(), 3);
+        for (profile, url) in &source.companions {
+            assert!(url.contains(catalog::M2M100_REVISION), "{url}");
+            assert!(url.ends_with(&format!("/{}", profile.filename)), "{url}");
+            assert_eq!(profile.directory, catalog::M2M100_418M.directory);
+        }
+        assert_eq!(
+            sibling_url("https://host/repo/resolve/rev/model.bin", "config.json"),
+            "https://host/repo/resolve/rev/config.json"
+        );
     }
 
     #[test]

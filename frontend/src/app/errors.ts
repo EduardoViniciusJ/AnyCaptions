@@ -10,6 +10,8 @@ export function errorMessage(error: unknown): string {
       ? error.kind
       : null;
   if (kind === "update") return t("updateFailed");
+  if (kind === "model-in-use") return t("errModelInUse");
+  if (kind === "download-busy") return t("errDownloadBusy");
   if (kind === "dictation") {
     switch (code) {
       case "invalid-shortcut":

@@ -20,7 +20,10 @@ use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::update::{CURRENT_VERSION, newer};
+use crate::{
+    models::digest_matches,
+    update::{CURRENT_VERSION, newer},
+};
 
 /// Verifies every update. The private key never enters the repository.
 const PUBLIC_KEY: &str = "RWTcbjUZlwuKjzVjLhU49QKNIuIxHQ+8lu4VoAvJZgwDho+Mqf48H8Ap";
@@ -185,12 +188,7 @@ fn download_package(
         report(received);
     }
     file.flush().map_err(|_| UpdateFailure::Disk)?;
-    let hash = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    if received != manifest.size || !hash.eq_ignore_ascii_case(&manifest.sha256) {
+    if received != manifest.size || !digest_matches(hasher, &manifest.sha256) {
         return Err(UpdateFailure::Corrupted);
     }
     Ok(())

@@ -8,6 +8,7 @@ mod verify;
 use std::path::{Path, PathBuf};
 
 pub use verify::ModelProfileError;
+pub(crate) use verify::{digest_matches, forget as forget_verification};
 
 /// What a model does. Each kind owns a folder under the models root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -100,6 +101,10 @@ mod tests {
             &catalog::NEMOTRON_STREAMING_Q8,
             &catalog::NEMOTRON_3_DIARIZATION_Q8,
             &catalog::RIVA_TRANSLATE_Q4,
+            &catalog::M2M100_418M,
+            &catalog::M2M100_CONFIG,
+            &catalog::M2M100_VOCABULARY,
+            &catalog::M2M100_TOKENIZER,
         ] {
             assert_eq!(profile.sha256.len(), 64);
             assert!(profile.sha256.bytes().all(|b| b.is_ascii_hexdigit()));

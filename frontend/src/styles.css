@@ -57,12 +57,11 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: rgba(15, 15, 15, 0.65);
+  background: var(--panel-background, rgba(15, 15, 15, 0.65));
   border: 1px dashed rgba(255, 255, 255, 0.5);
   border-radius: 8px;
 }
 .toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 10px 0; flex: 0 0 auto; }
-.overlay[data-settings="open"][data-mode="edit"] { background: rgba(15, 15, 15, 0.96); }
 .brand { display: flex; align-items: center; gap: 8px; align-self: stretch; flex-shrink: 0; cursor: move; }
 .drag-region { flex: 1; align-self: stretch; cursor: move; }
 .brand-mark { font-size: 12px; font-weight: 700; border: 1px solid #ffffff80; border-radius: 4px; padding: 0 4px 2px; line-height: 17px; }
@@ -102,7 +101,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 /* Fundo escuro opcional: com ele, o contorno é dispensável. */
 .caption[data-background] {
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--caption-background, rgba(0, 0, 0, 0.6));
   -webkit-text-stroke: 0;
   text-shadow: none;
 }
@@ -366,3 +365,62 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .controls .language-picker ul:has(.picker-footer) { min-width: 300px; }
 /* Tradução provisória (modo Traduzir): mesma cor das palavras recentes. */
 .caption-provisional { font-weight: 700; }
+
+/* Settings split into tabs, one per thing the user came to do. */
+.settings-tabs { display: flex; gap: 2px; margin: 0 0 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow-x: auto; scrollbar-width: none; }
+.settings-tab { flex: 0 0 auto; margin-bottom: -1px; padding: 7px 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: #a3a3a3; font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.settings-tab:hover { color: #e5e5e5; }
+.settings-tab[aria-selected="true"] { color: #fff; border-bottom-color: var(--color-primary); }
+.settings-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; border-radius: 4px; }
+/* A section title that only repeats the tab's own name is not shown. */
+.settings-tabpanel > fieldset > .settings-subtitle:first-child { display: none; }
+.settings-hint { margin: 0 0 10px; line-height: 1.45; }
+/* Translation models: one card each, with where it runs (CPU or GPU). */
+.engine-list { display: grid; gap: 8px; }
+.engine-card { padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.engine-card[data-selected="true"] { border-color: var(--color-primary); background: rgba(255, 255, 255, 0.05); }
+.engine-choice { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.engine-name { font-weight: 600; }
+.engine-device { margin-left: auto; padding: 1px 7px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px; color: #c4c4c4; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; }
+.engine-device[data-device="gpu"] { color: #ffb36b; border-color: rgba(255, 179, 107, 0.5); }
+.engine-card > p { margin: 6px 0 0 28px; line-height: 1.45; }
+.engine-card .setting-row { padding: 6px 0 0 28px; }
+.engine-card .model-download-progress { width: calc(100% - 28px); margin: 6px 0 0 28px; }
+/* The actions stay in reach on every tab, however long it is. */
+.settings { padding-bottom: 0; }
+.settings-footer { position: sticky; bottom: 0; margin-top: 4px; padding: 22px 0 14px; background: linear-gradient(to bottom, transparent, #0f0f0f 16px); }
+.settings-footer #save-settings { transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+/* Drafts waiting for Save: a quiet note where the credit sits. */
+.settings-unsaved { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; color: #d4d4d4; font-size: 12px; animation: settings-unsaved-in 0.2s ease; }
+.settings-unsaved-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #f5c26b; box-shadow: 0 0 0 3px rgba(245, 194, 107, 0.16); }
+@keyframes settings-unsaved-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+/* The window color is the user's (Appearance). The app name follows it so it
+   stays readable over a light color; the settings keep their own dark panel,
+   whose controls are drawn for it. */
+.brand { color: var(--panel-foreground, inherit); }
+.brand-mark { border-color: currentColor; }
+/* With the settings open the window still wears the chosen color, so it is
+   seen for real while being picked; the settings sit on their own dark card. */
+.settings { margin-bottom: 8px; border-radius: 10px; background: rgba(15, 15, 15, 0.96); }
+.settings-footer { border-radius: 0 0 10px 10px; }
+/* One option back to its default. */
+.setting-with-reset { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.setting-with-reset > :first-child:not(input[type="color"]):not(.toggle) { flex: 1 1 auto; min-width: 0; }
+.setting-reset { flex: none; margin-left: auto; width: 26px; height: 26px; min-height: 0; padding: 0; color: #c4c4c4; }
+.setting-reset svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.setting-reset:disabled { opacity: 0.25; background: none; }
+/* The preview shows the chosen color over a checkerboard, so transparency is visible. */
+.appearance-preview { background: linear-gradient(var(--panel-background, #090909), var(--panel-background, #090909)), repeating-conic-gradient(#3a3a3a 0% 25%, #1c1c1c 0% 50%) 0 0 / 16px 16px; }
+.appearance-preview-label { text-shadow: 0 1px 2px #000; color: #e5e5e5; }
+/* The "i" next to a label: what the option does, in a small black-on-white
+   note that opens on hover or focus and never moves the layout. */
+.setting-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.setting-info { position: relative; flex: none; display: inline-flex; }
+.setting-info-button { width: 15px; height: 15px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 50%; background: none; color: #a3a3a3; font: italic 600 10px/1 Georgia, "Times New Roman", serif; cursor: help; transition: color 0.15s ease, border-color 0.15s ease; }
+.setting-info-button:hover, .setting-info-button:focus-visible { border-color: #fff; color: #fff; outline: none; }
+.setting-info-text { position: absolute; top: calc(100% + 8px); left: -10px; z-index: 30; width: max-content; max-width: 250px; padding: 8px 10px; border-radius: 8px; background: #fafafa; color: #111; font-size: 12px; font-weight: 400; line-height: 1.45; white-space: normal; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.12s ease, visibility 0.12s ease; }
+.setting-info-text::before { content: ""; position: absolute; top: -4px; left: 13px; width: 8px; height: 8px; background: inherit; transform: rotate(45deg); }
+.setting-info:hover .setting-info-text, .setting-info:focus-within .setting-info-text { opacity: 1; visibility: visible; }
+/* Room for the label and its "i" on one line. */
+.setting-row:not(.model-download):not(.update-status-row) { grid-template-columns: 170px minmax(0, 1fr); }
+@media (max-width: 480px) { .setting-row:not(.model-download):not(.update-status-row) { grid-template-columns: 1fr; } }

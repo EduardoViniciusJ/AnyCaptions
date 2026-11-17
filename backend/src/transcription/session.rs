@@ -35,6 +35,7 @@ use super::{
 };
 use crate::translation::{
     Translator, TranslatorError,
+    m2m::{M2mPaths, NativeM2mTranslator},
     opus::{NativeOpusTranslator, OpusPaths},
     riva::{NativeRivaTranslator, RivaPaths},
     stage::{StageEvent, TranslationStage},
@@ -121,12 +122,17 @@ pub trait ProcessorFactory: Send + Sync {
     ) -> Result<Box<dyn Translator>, DomainError> {
         Err(DomainError::TranslationUnavailable)
     }
+    /// Lets go of whatever keeps a downloadable model's file open, so it can
+    /// be deleted: `Some(engine)` is that engine's translator, `None` the
+    /// speaker-label model. Sessions still running keep their own handle.
+    fn unload(&self, _engine: Option<TranslationEngine>) {}
 }
 
 pub struct NativeProcessorFactory {
     paths: NemotronPaths,
     riva: RivaPaths,
     opus: OpusPaths,
+    m2m: M2mPaths,
     // Loaded once on first use and reused by every later session: reloading per
     // session cost seconds on each language switch and accumulated leaked GPU
     // memory in the native library until allocations failed. The ASR cache is
@@ -140,14 +146,17 @@ pub struct NativeProcessorFactory {
     diarization_failed: AtomicBool,
     opus_translator: Mutex<Option<Arc<Mutex<NativeOpusTranslator>>>>,
     riva_translator: Mutex<Option<Arc<Mutex<NativeRivaTranslator>>>>,
+    m2m_translator: Mutex<Option<Arc<Mutex<NativeM2mTranslator>>>>,
 }
 
 impl NativeProcessorFactory {
-    pub fn new(paths: NemotronPaths, riva: RivaPaths, opus: OpusPaths) -> Self {
+    pub fn new(paths: NemotronPaths, riva: RivaPaths, opus: OpusPaths, m2m: M2mPaths) -> Self {
         Self {
             paths,
             riva,
             opus,
+            m2m,
+            m2m_translator: Mutex::new(None),
             asr_models: Mutex::new(Vec::new()),
             diarization_failed: AtomicBool::new(false),
             opus_translator: Mutex::new(None),
@@ -247,10 +256,38 @@ impl NativeProcessorFactory {
             NativeRivaTranslator::load(&self.riva).ok()
         })
     }
+
+    /// Drops the cached engines other than `keep`. Captions and dictation
+    /// both translate with the engine chosen in the settings, so the others
+    /// are dead weight after a switch: Riva kept ~3 GB of VRAM (the cause of
+    /// stutter in games) and each CPU engine ~0.5 GB of RAM until the app
+    /// closed. A session still using one keeps it alive through its `Arc`;
+    /// the memory returns when that session ends.
+    fn release_other_engines(&self, keep: TranslationEngine) {
+        if keep != TranslationEngine::Opus {
+            release(&self.opus_translator);
+        }
+        if keep != TranslationEngine::Riva {
+            release(&self.riva_translator);
+        }
+        if keep != TranslationEngine::M2m100 {
+            release(&self.m2m_translator);
+        }
+    }
+
+    /// The cached M2M100 engine, loaded on first use (about 500 MB of RAM).
+    fn m2m_translator(&self) -> Option<Arc<Mutex<NativeM2mTranslator>>> {
+        if !self.m2m.translation_available() {
+            return None;
+        }
+        load_cached(&self.m2m_translator, || {
+            NativeM2mTranslator::load(&self.m2m).ok()
+        })
+    }
 }
 
 /// Returns the cached engine, loading it on first use. The factory outlives
-/// every session, so each engine is loaded at most once per app run.
+/// every session, so an engine stays loaded while it is the chosen one.
 fn load_cached<T>(
     cache: &Mutex<Option<Arc<Mutex<T>>>>,
     load: impl FnOnce() -> Option<T>,
@@ -262,6 +299,13 @@ fn load_cached<T>(
     let loaded = Arc::new(Mutex::new(load()?));
     *cached = Some(Arc::clone(&loaded));
     Some(loaded)
+}
+
+/// Empties one engine cache; the engine is freed once no session holds it.
+fn release<T>(cache: &Mutex<Option<Arc<Mutex<T>>>>) {
+    if let Ok(mut cached) = cache.lock() {
+        *cached = None;
+    }
 }
 
 /// A session's handle to one cached engine. Translation is stateless per call
@@ -325,15 +369,18 @@ impl ProcessorFactory for NativeProcessorFactory {
         match engine {
             TranslationEngine::Opus => self.opus.translation_available(),
             TranslationEngine::Riva => self.riva.translation_available(),
+            TranslationEngine::M2m100 => self.m2m.translation_available(),
         }
     }
 
     /// Only the chosen engine serves the session; an unsupported pair is an
-    /// error, never a silent switch to the other engine.
+    /// error, never a silent switch to the other engine. The engines that are
+    /// not chosen are released first, so only one translator is ever held.
     fn create_translator(
         &self,
         engine: TranslationEngine,
     ) -> Result<Box<dyn Translator>, DomainError> {
+        self.release_other_engines(engine);
         match engine {
             TranslationEngine::Opus => self
                 .opus_translator()
@@ -341,8 +388,26 @@ impl ProcessorFactory for NativeProcessorFactory {
             TranslationEngine::Riva => self
                 .riva_translator()
                 .map(|cached| Box::new(SharedTranslator(cached)) as Box<dyn Translator>),
+            TranslationEngine::M2m100 => self
+                .m2m_translator()
+                .map(|cached| Box::new(SharedTranslator(cached)) as Box<dyn Translator>),
         }
         .ok_or(DomainError::TranslationUnavailable)
+    }
+
+    fn unload(&self, engine: Option<TranslationEngine>) {
+        match engine {
+            Some(TranslationEngine::Opus) => release(&self.opus_translator),
+            Some(TranslationEngine::Riva) => release(&self.riva_translator),
+            Some(TranslationEngine::M2m100) => release(&self.m2m_translator),
+            // The diarizer lives inside a recognizer; the ones carrying it are
+            // dropped and the next session loads a plain one again.
+            None => {
+                if let Ok(mut cached) = self.asr_models.lock() {
+                    cached.retain(|(_, model)| !model.has_diarization());
+                }
+            }
+        }
     }
 }
 
@@ -393,6 +458,7 @@ impl CaptionSessionManager {
                 NemotronPaths::resolve(),
                 RivaPaths::resolve(),
                 OpusPaths::resolve(),
+                M2mPaths::resolve(),
             )),
         )
     }
@@ -417,6 +483,11 @@ impl CaptionSessionManager {
     /// Whether `engine` has its library and model on disk right now.
     pub fn translation_available(&self, engine: TranslationEngine) -> bool {
         self.factory.translation_available(engine)
+    }
+
+    /// Frees the loaded copy of a model that is about to be deleted.
+    pub fn unload_model(&self, engine: Option<TranslationEngine>) {
+        self.factory.unload(engine);
     }
 
     /// Whether the diarization model is installed and loadable right now.
@@ -965,6 +1036,42 @@ mod tests {
         fn translation_available(&self, engine: TranslationEngine) -> bool {
             engine == TranslationEngine::Opus
         }
+    }
+
+    #[test]
+    fn engine_caches_load_once_and_release_on_demand() {
+        let cache: Mutex<Option<Arc<Mutex<u32>>>> = Mutex::new(None);
+        let mut loads = 0;
+        let first = load_cached(&cache, || {
+            loads += 1;
+            Some(7)
+        })
+        .unwrap();
+        let again = load_cached(&cache, || {
+            loads += 1;
+            Some(8)
+        })
+        .unwrap();
+        assert_eq!(loads, 1, "a cached engine is not loaded twice");
+        assert!(Arc::ptr_eq(&first, &again));
+
+        // Released: the cache lets go, a running session keeps its handle,
+        // and the next request loads a fresh engine.
+        release(&cache);
+        drop(again);
+        assert_eq!(Arc::strong_count(&first), 1);
+        let reloaded = load_cached(&cache, || {
+            loads += 1;
+            Some(9)
+        })
+        .unwrap();
+        assert_eq!(loads, 2);
+        assert_eq!(*reloaded.lock().unwrap(), 9);
+
+        // A failed load caches nothing.
+        release(&cache);
+        assert!(load_cached(&cache, || None::<u32>).is_none());
+        assert!(cache.lock().unwrap().is_none());
     }
 
     #[test]

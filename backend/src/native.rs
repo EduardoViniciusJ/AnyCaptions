@@ -1,7 +1,10 @@
 //! Runtime loading of the NeMo-Speech C libraries. The app builds and starts
 //! without them; features report themselves unavailable when a library is missing.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 use libloading::Library;
 
@@ -59,6 +62,25 @@ pub(crate) fn open_in_browser(url: &str) -> Result<(), ()> {
 #[cfg(not(windows))]
 pub(crate) fn open_in_browser(_url: &str) -> Result<(), ()> {
     Err(())
+}
+
+/// Opens a library once per process and never unloads it; later calls return
+/// the same handle. Required for everything built on ggml (the NeMo-Speech
+/// recognizer, diarizer and translator): ggml installs a C++ terminate
+/// handler from a static initializer, and unloading and loading the DLL again
+/// re-runs it, which the ggml in NeMo-Speech.cpp v0.3.0 rejects with a fatal
+/// assertion (`ggml.cpp:22`; reproduced on 2026-11-16 by releasing the Riva
+/// translator and loading it again). Models are freed through the library's
+/// own destroy calls; only the code stays mapped.
+pub(crate) fn open_library_for_process(path: &Path) -> Option<&'static Library> {
+    static LIBRARIES: Mutex<Vec<(PathBuf, &'static Library)>> = Mutex::new(Vec::new());
+    let mut loaded = LIBRARIES.lock().ok()?;
+    if let Some((_, library)) = loaded.iter().find(|(loaded, _)| loaded == path) {
+        return Some(library);
+    }
+    let library: &'static Library = Box::leak(Box::new(open_library(path).ok()?));
+    loaded.push((path.to_path_buf(), library));
+    Some(library)
 }
 
 #[cfg(windows)]

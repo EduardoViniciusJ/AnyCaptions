@@ -7,10 +7,12 @@ import type {
   TranslationEngine,
 } from "../contracts";
 import { t, type MessageKey } from "../i18n";
+import { attach } from "../app/subscription";
 
 export interface ModelDownloads {
   models: ModelDownloadState[];
   update: ModelDownloadUpdate | null;
+  setModels(models: ModelDownloadState[]): void;
   setUpdate(update: ModelDownloadUpdate | null): void;
 }
 
@@ -22,45 +24,47 @@ export function useModelDownloads(backend: Backend): ModelDownloads {
   const [models, setModels] = useState<ModelDownloadState[]>([]);
   const [update, setUpdate] = useState<ModelDownloadUpdate | null>(null);
   useEffect(() => {
-    let cancelled = false;
-    let release: (() => void) | undefined;
+    let mounted = true;
     const refresh = async () => {
       try {
         const result = await backend.getModelDownloads();
-        if (!cancelled) setModels(result);
+        if (mounted) setModels(result);
       } catch {
         /* No offer without an authoritative catalog. */
       }
     };
-    void (async () => {
-      try {
-        const unsubscribe = await backend.subscribeModelDownloads((event) => {
-          if (cancelled) return;
-          setUpdate(event);
-          if (event.phase === "ready") void refresh();
-        });
-        if (cancelled) {
-          unsubscribe();
-          return;
-        }
-        release = unsubscribe;
-        await refresh();
-      } catch {
-        /* Optional download status; capture is independent. */
-      }
-    })();
+    // A failed subscription is silent: the download status is optional and
+    // capture does not depend on it.
+    const detach = attach(
+      backend.subscribeModelDownloads.bind(backend),
+      (event) => {
+        setUpdate(event);
+        if (event.phase === "ready") void refresh();
+      },
+      { ready: refresh },
+    );
     return () => {
-      cancelled = true;
-      release?.();
+      mounted = false;
+      detach();
     };
   }, [backend]);
-  return { models, update, setUpdate };
+  return { models, update, setModels, setUpdate };
+}
+
+/** "2.8 GB" or "491 MB": sizes under 1 GB in MB, so nothing reads "0.5 GB". */
+export function modelSize(bytes: number): string {
+  return bytes >= 1e9
+    ? t("sizeGb").replace("{size}", (bytes / 1e9).toFixed(1))
+    : t("sizeMb").replace("{size}", String(Math.round(bytes / 1e6)));
 }
 
 /**
- * Oferta de download de um modelo do catálogo: pelo mecanismo de tradução que
- * ele serve (`engine`) ou pelo tipo (`kind`, ex.: diarização). A interface só
- * passa o id do catálogo; o backend resolve e valida a origem.
+ * Um modelo do catálogo que o usuário baixa e remove: pelo mecanismo de
+ * tradução que ele serve (`engine`) ou pelo tipo (`kind`, ex.: diarização).
+ * Sem o modelo, oferece o download (com progresso, cancelar e tentar de
+ * novo); com ele, mostra o espaço ocupado e a remoção, confirmada na própria
+ * linha. A interface só passa o id do catálogo; o backend resolve a origem e
+ * decide o que pode ser apagado.
  */
 export function ModelDownload({
   backend,
@@ -79,7 +83,9 @@ export function ModelDownload({
   missingKey?: MessageKey;
   report(error: unknown): void;
 }) {
-  const { models, update, setUpdate } = downloads;
+  const { models, update, setModels, setUpdate } = downloads;
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const entry = kind
     ? models.find((model) => model.kind === kind)
     : models.find((model) => model.engine === engine);
@@ -101,14 +107,25 @@ export function ModelDownload({
   const visible =
     !!entry?.downloadable && !entry.installed && event?.phase !== "ready";
   const bytes = entry?.totalBytes ?? 0;
-  // Tamanhos abaixo de 1 GB em MB, para não mostrar "0.1 GB".
-  const sizeLabel =
-    bytes >= 1e9
-      ? t("modelDownloadAction").replace("{size}", (bytes / 1e9).toFixed(1))
-      : t("modelDownloadActionMb").replace(
-          "{size}",
-          String(Math.round(bytes / 1e6)),
-        );
+  const size = modelSize(bytes);
+  const sizeLabel = t(
+    bytes >= 1e9 ? "modelDownloadAction" : "modelDownloadActionMb",
+  ).replace("{size}", bytes >= 1e9 ? (bytes / 1e9).toFixed(1) : String(Math.round(bytes / 1e6)));
+  const remove = async () => {
+    if (!entry || removing) return;
+    setRemoving(true);
+    try {
+      const result = await backend.removeModel(entry.model);
+      // A finished download of this model must not keep hiding the offer.
+      setUpdate(null);
+      setModels(result);
+    } catch (error) {
+      report(error);
+    } finally {
+      setRemoving(false);
+      setConfirming(false);
+    }
+  };
   return (
     <>
       <div
@@ -169,6 +186,41 @@ export function ModelDownload({
         value={percent}
         hidden={!visible || !downloading}
       />
+      <div
+        id={`${idPrefix}-installed`}
+        className="setting-row model-download"
+        hidden={!entry?.installed}
+      >
+        <span id={`${idPrefix}-installed-status`} className="muted" role="status">
+          {removing
+            ? t("modelRemoving")
+            : confirming
+              ? t("modelRemoveConfirm").replace("{size}", size)
+              : t("modelInstalled").replace("{size}", size)}
+        </span>
+        <span className="setting-actions">
+          {confirming && (
+            <button
+              id={`${idPrefix}-remove-cancel`}
+              className="btn btn-sm"
+              type="button"
+              disabled={removing}
+              onClick={() => setConfirming(false)}
+            >
+              {t("modelRemoveCancel")}
+            </button>
+          )}
+          <button
+            id={`${idPrefix}-remove`}
+            className={`btn btn-sm${confirming ? " btn-error" : " btn-ghost"}`}
+            type="button"
+            disabled={removing}
+            onClick={() => (confirming ? void remove() : setConfirming(true))}
+          >
+            {t("modelRemove")}
+          </button>
+        </span>
+      </div>
     </>
   );
 }

@@ -111,16 +111,33 @@ pub(crate) fn edit<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// What the lock shortcut (and the tray's lock item) does next. A window the
+/// user cannot see is brought back for editing, whatever its mode: before,
+/// pressing the shortcut on a window closed to the tray only locked it, still
+/// hidden, and it looked like the shortcut did nothing. A visible window
+/// switches between locked and editable.
+fn next_window_mode(current: WindowMode, on_screen: bool) -> WindowMode {
+    if on_screen && current == WindowMode::Edit {
+        WindowMode::Locked
+    } else {
+        WindowMode::Edit
+    }
+}
+
 pub(crate) fn toggle<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("overlay")
         && let Ok(state) = app.state::<Controller>().snapshot()
     {
-        let next = if state.window_mode == WindowMode::Locked {
-            WindowMode::Edit
-        } else {
-            WindowMode::Locked
-        };
-        let _ = app.state::<Controller>().change_window_mode(&window, next);
+        let on_screen =
+            window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false);
+        match next_window_mode(state.window_mode, on_screen) {
+            WindowMode::Edit => edit(app),
+            locked => {
+                let _ = app
+                    .state::<Controller>()
+                    .change_window_mode(&window, locked);
+            }
+        }
     }
 }
 
@@ -231,4 +248,22 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_lock_shortcut_brings_a_hidden_window_back_instead_of_locking_it() {
+        // On screen: it switches between editable and locked.
+        assert_eq!(next_window_mode(WindowMode::Edit, true), WindowMode::Locked);
+        assert_eq!(next_window_mode(WindowMode::Locked, true), WindowMode::Edit);
+        // Closed to the tray or minimized: it always comes back editable.
+        assert_eq!(next_window_mode(WindowMode::Edit, false), WindowMode::Edit);
+        assert_eq!(
+            next_window_mode(WindowMode::Locked, false),
+            WindowMode::Edit
+        );
+    }
 }

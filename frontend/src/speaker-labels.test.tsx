@@ -31,6 +31,10 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       partialColor: "#B8B8B8",
       background: false,
       font: "inter",
+      panelColor: "#0F0F0F",
+      panelOpacity: 65,
+      backgroundColor: "#000000",
+      backgroundOpacity: 60,
     },
     resources: {
       audioCapture: true,
@@ -137,6 +141,7 @@ function setup(initial = snapshot(), diarizationInstalled = false) {
     getModelDownloads: vi.fn().mockResolvedValue(downloadStates(diarizationInstalled)),
     downloadModel: vi.fn().mockResolvedValue(undefined),
     cancelModelDownload: vi.fn().mockResolvedValue(undefined),
+    removeModel: vi.fn().mockResolvedValue([]),
     subscribe_: undefined,
     subscribeDictation: vi.fn(async () => vi.fn()),
     subscribeModelDownloads: vi.fn(async (callback) => {
@@ -255,8 +260,8 @@ describe("speaker labels", () => {
     });
     expect(app.get("#diarization-download-status").textContent).toBe("Baixando… 25%");
     expect(app.get<HTMLProgressElement>("#diarization-download-progress").hidden).toBe(false);
-    // The translation row (Riva, hidden under OPUS) is untouched by this event.
-    expect(app.get("#model-download").hidden).toBe(true);
+    // The translation model cards are untouched by this event.
+    expect(app.get<HTMLProgressElement>("#model-riva-progress").hidden).toBe(true);
     await app.emitModelDownload({
       model: DIARIZATION_MODEL,
       phase: "failed",

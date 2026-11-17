@@ -11,7 +11,7 @@ use std::{
 use libloading::Library;
 
 use super::{Translator, TranslatorError};
-use crate::{models::catalog::RIVA_TRANSLATE_Q4, native::open_library};
+use crate::{models::catalog::RIVA_TRANSLATE_Q4, native::open_library_for_process};
 
 #[cfg(windows)]
 pub const LIBRARY_FILENAME: &str = "nemo_speech_nmt_c.dll";
@@ -94,7 +94,10 @@ type ResultCountFn = unsafe extern "C" fn(*const NativeResult) -> usize;
 type ResultTextFn = unsafe extern "C" fn(*const NativeResult, usize) -> *const c_char;
 type ResultDestroyFn = unsafe extern "C" fn(*mut NativeResult);
 
-/// Function pointers resolved from the library; valid while `_library` is loaded.
+/// Function pointers resolved from the library, which stays loaded for the
+/// rest of the process: the translator is released and loaded again when the
+/// user switches engines, and this ggml-based library cannot be unloaded in
+/// between (see [`open_library_for_process`]).
 struct Api {
     create: CreateFn,
     destroy: DestroyFn,
@@ -102,14 +105,13 @@ struct Api {
     result_count: ResultCountFn,
     result_text: ResultTextFn,
     result_destroy: ResultDestroyFn,
-    // Declared last so it is dropped after every handle that uses these pointers.
-    _library: Library,
+    _library: &'static Library,
 }
 
 impl Api {
     fn load(library_dir: &std::path::Path) -> Result<Self, TranslatorError> {
         let path = library_dir.join(LIBRARY_FILENAME);
-        let library = open_library(&path).map_err(|_| TranslatorError::LibraryUnavailable)?;
+        let library = open_library_for_process(&path).ok_or(TranslatorError::LibraryUnavailable)?;
         // SAFETY: the names and signatures below follow nmt.h of the pinned NeMo-Speech.cpp
         // release; each pointer is copied out while `library` stays alive in the struct.
         unsafe {
