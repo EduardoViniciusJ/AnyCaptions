@@ -67,7 +67,8 @@ export interface SiteMessages {
     models: {
       heading: string;
       intro: string;
-      items: { name: string; desc: string }[];
+      /** `url` is the model's own page (where it comes from). */
+      items: { name: string; url: string; desc: string }[];
       summary: string;
     };
     privacy: {
@@ -81,10 +82,8 @@ export interface SiteMessages {
     licenses: {
       heading: string;
       intro: string;
-      nvidiaName: string;
-      nvidia: LinkedSentence;
-      opusName: string;
-      opus: LinkedSentence;
+      /** One entry per license: the models it covers and a link to its text. */
+      items: { name: string; before: string; link: string; url: string; after: string }[];
       code: LinkedSentence;
     };
     trouble: {

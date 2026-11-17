@@ -122,13 +122,15 @@ export const ru: SiteMessages = {
     },
     models: {
       heading: 'Модели и языки',
-      intro: 'AnyCaptions использует три модели искусственного интеллекта, все работают локально:',
+      intro: 'AnyCaptions использует перечисленные ниже модели искусственного интеллекта; все они работают локально на вашем компьютере:',
       items: [
-        { name: 'Nemotron Streaming (NVIDIA)', desc: ' — распознавание речи в реальном времени. Входит в установщик.' },
-        { name: 'OPUS-MT (Helsinki-NLP)', desc: ' — перевод английский ↔ португальский на CPU. Входит в установщик.' },
-        { name: 'Riva Translate (NVIDIA)', desc: ' — перевод на 37 языков на GPU. В установщик не входит: при выборе модели Riva в настройках приложение показывает кнопку «Скачать (2.8 ГБ)» и устанавливает всё само, с проверкой целостности.' },
+        { name: 'Nemotron 3.5 ASR Streaming (NVIDIA)', url: 'https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b', desc: ' — распознавание речи в реальном времени. Входит в установщик.' },
+        { name: 'OPUS-MT (Helsinki-NLP)', url: 'https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt', desc: ' — перевод английский ↔ португальский на процессоре, самый быстрый вариант. Входит в установщик.' },
+        { name: 'M2M100 418M (Meta)', url: 'https://huggingface.co/facebook/m2m100_418M', desc: ' — прямой перевод между 34 языками на процессоре, видеокарта не нужна. Медленнее, чем OPUS-MT. Не входит в установщик: выберите M2M100 в настройках, и приложение покажет кнопку «Скачать» (491 МБ).' },
+        { name: 'Riva Translate 4B (NVIDIA)', url: 'https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2', desc: ' — перевод на 37 языков на видеокарте. Не входит в установщик: выберите Riva в настройках, и приложение покажет кнопку «Скачать» (2,8 ГБ).' },
+        { name: 'Nemotron 3 Diarization (NVIDIA)', url: 'https://huggingface.co/nvidia/Nemotron-3-Diarization', desc: ' — необязательные метки говорящих (Человек 1, Человек 2…). Не входит в установщик: включите эту опцию в настройках, и приложение покажет кнопку «Скачать» (107 МБ).' },
       ],
-      summary: 'Итого: после установки скачивать что-то нужно, только если вам нужны 37 языков Riva — и это один клик внутри самого приложения.',
+      summary: 'Коротко: после установки что-то скачивать нужно только если вам нужны дополнительные языки (M2M100 или Riva) или метки говорящих — и каждое скачивание делается одним нажатием в самом приложении, с проверкой целостности.',
     },
     privacy: {
       heading: 'Конфиденциальность',
@@ -140,11 +142,14 @@ export const ru: SiteMessages = {
     },
     licenses: {
       heading: 'Лицензии',
-      intro: 'У моделей собственные лицензии, разрешающие такое использование и распространение:',
-      nvidiaName: 'Nemotron Streaming и Riva Translate',
-      nvidia: { before: ' — Licensed by NVIDIA Corporation under the ', link: 'NVIDIA Open Model License', after: '.' },
-      opusName: 'OPUS-MT (Helsinki-NLP)',
-      opus: { before: ' — лицензия ', link: 'CC-BY 4.0', after: '.' },
+      intro: 'У каждой модели своя лицензия, которая разрешает такое использование и распространение:',
+      items: [
+        { name: 'Nemotron ASR и Nemotron 3 Diarization (NVIDIA)', before: ' — лицензия ', link: 'OpenMDW-1.1', url: 'https://openmdw.ai/license/1-1/', after: '.' },
+        { name: 'Riva Translate', before: ' — Licensed by NVIDIA Corporation under the ', link: 'NVIDIA Open Model License', url: 'https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/', after: '.' },
+        { name: 'OPUS-MT английский → португальский (Helsinki-NLP)', before: ' — лицензия ', link: 'CC-BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/', after: '; преобразована в CTranslate2 int8.' },
+        { name: 'OPUS-MT португальский → английский (Helsinki-NLP)', before: ' — лицензия ', link: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0', after: '; преобразована в CTranslate2 int8.' },
+        { name: 'M2M100 (Meta)', before: ' — лицензия ', link: 'MIT', url: 'https://opensource.org/license/mit', after: '; преобразована в CTranslate2 int8.' },
+      ],
       code: { before: 'Исходный код AnyCaptions находится на ', link: 'GitHub', after: '.' },
     },
     trouble: {

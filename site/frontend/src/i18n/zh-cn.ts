@@ -110,13 +110,15 @@ export const zhCn: SiteMessages = {
     },
     models: {
       heading: '模型与语言',
-      intro: 'AnyCaptions 使用三个人工智能模型，全部在本地运行：',
+      intro: 'AnyCaptions 使用以下人工智能模型，全部在你的电脑上本地运行：',
       items: [
-        { name: 'Nemotron Streaming（NVIDIA）', desc: ' —— 实时语音识别。随安装程序提供。' },
-        { name: 'OPUS-MT（Helsinki-NLP）', desc: ' —— 在 CPU 上进行英语 ↔ 葡萄牙语翻译。随安装程序提供。' },
-        { name: 'Riva Translate（NVIDIA）', desc: ' —— 在 GPU 上翻译 37 种语言。不随安装程序提供：在设置中选择 Riva 模型后，应用会显示“下载（2.8 GB）”按钮并自动完成安装，带完整性校验。' },
+        { name: 'Nemotron 3.5 ASR Streaming (NVIDIA)', url: 'https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b', desc: ' —— 实时语音识别。随安装包提供。' },
+        { name: 'OPUS-MT (Helsinki-NLP)', url: 'https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-pt', desc: ' —— 在 CPU 上进行英语 ↔ 葡萄牙语翻译，速度最快。随安装包提供。' },
+        { name: 'M2M100 418M (Meta)', url: 'https://huggingface.co/facebook/m2m100_418M', desc: ' —— 在 CPU 上直接互译 34 种语言，无需显卡。比 OPUS-MT 慢。不在安装包内：在设置中选择 M2M100，应用会显示“下载（491 MB）”按钮。' },
+        { name: 'Riva Translate 4B (NVIDIA)', url: 'https://huggingface.co/nvidia/Riva-Translate-4B-Instruct-v2', desc: ' —— 在 GPU 上翻译为 37 种语言。不在安装包内：在设置中选择 Riva，应用会显示“下载（2.8 GB）”按钮。' },
+        { name: 'Nemotron 3 Diarization (NVIDIA)', url: 'https://huggingface.co/nvidia/Nemotron-3-Diarization', desc: ' —— 可选的说话人标签（人物 1、人物 2……）。不在安装包内：在设置中开启该选项，应用会显示“下载（107 MB）”按钮。' },
       ],
-      summary: '简而言之：安装后，只有想要 Riva 的 37 种语言时才需要下载——而这只是应用内的一次点击。',
+      summary: '简而言之：安装后，只有在需要更多语言（M2M100 或 Riva）或说话人标签时才需要下载——每一项都只需在应用内点击一次，并带有完整性校验。',
     },
     privacy: {
       heading: '隐私',
@@ -127,12 +129,15 @@ export const zhCn: SiteMessages = {
       deleteNote: { before: '你可以随时在', link: '我的账户', after: '页面删除账户；这会永久删除资料和下载记录。已安装的应用会继续正常工作。' },
     },
     licenses: {
-      heading: '许可',
-      intro: '各模型有自己的许可协议，允许这样使用和再分发：',
-      nvidiaName: 'Nemotron Streaming 和 Riva Translate',
-      nvidia: { before: ' —— Licensed by NVIDIA Corporation under the ', link: 'NVIDIA Open Model License', after: '.' },
-      opusName: 'OPUS-MT（Helsinki-NLP）',
-      opus: { before: ' —— ', link: 'CC-BY 4.0', after: ' 许可。' },
+      heading: '许可证',
+      intro: '每个模型都有自己的许可证，允许这样的使用和再分发：',
+      items: [
+        { name: 'Nemotron ASR 与 Nemotron 3 Diarization（NVIDIA）', before: ' —— ', link: 'OpenMDW-1.1', url: 'https://openmdw.ai/license/1-1/', after: ' 许可证。' },
+        { name: 'Riva Translate', before: ' —— Licensed by NVIDIA Corporation under the ', link: 'NVIDIA Open Model License', url: 'https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/', after: '。' },
+        { name: 'OPUS-MT 英语 → 葡萄牙语（Helsinki-NLP）', before: ' —— ', link: 'CC-BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/', after: ' 许可证；已转换为 CTranslate2 int8。' },
+        { name: 'OPUS-MT 葡萄牙语 → 英语（Helsinki-NLP）', before: ' —— ', link: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0', after: ' 许可证；已转换为 CTranslate2 int8。' },
+        { name: 'M2M100（Meta）', before: ' —— ', link: 'MIT', url: 'https://opensource.org/license/mit', after: ' 许可证；已转换为 CTranslate2 int8。' },
+      ],
       code: { before: 'AnyCaptions 的源代码在 ', link: 'GitHub', after: '。' },
     },
     trouble: {
