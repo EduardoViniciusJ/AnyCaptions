@@ -51,12 +51,14 @@ pub const OPUS_MT_PT_EN: ModelProfile = ModelProfile {
 // M2M100 418M (Meta, MIT): one many-to-many model for 100 languages, run
 // through CTranslate2 int8 on the CPU like the OPUS models. The four files
 // below are the int8 conversion published at
-// https://huggingface.co/jncraton/m2m100_418M-ct2-int8 (also MIT), pinned to
-// one revision; the SHA-256 values were taken from that revision on
-// 2026-11-16. The download fetches all four into the same folder.
+// https://huggingface.co/jncraton/m2m100_418M-ct2-int8 (also MIT), mirrored
+// unchanged at https://huggingface.co/EduardoVinicius/anycaptions-m2m100 so
+// the download does not depend on a repository the project does not control.
+// The SHA-256 values were taken from the conversion on 2026-11-16 and checked
+// again against the mirror. The download fetches all four into one folder.
 
-/// Revision of the converted repository every M2M100 file is pinned to.
-pub const M2M100_REVISION: &str = "7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0";
+/// Revision of the mirror every M2M100 file is pinned to.
+pub const M2M100_REVISION: &str = "a7fece59547a8d6ceeb053db979d348016cc5671";
 
 pub const M2M100_418M: ModelProfile = ModelProfile {
     kind: ModelKind::Translation,
