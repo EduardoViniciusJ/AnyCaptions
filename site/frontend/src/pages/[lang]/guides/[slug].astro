@@ -1,0 +1,10 @@
+---
+import GuidePage from '../../../components/pages/GuidePage.astro';
+import { defaultLang, isLang } from '../../../i18n';
+import { isGuideSlug } from '../../../i18n/guides';
+const { lang, slug } = Astro.params;
+if (!slug || !isGuideSlug(slug)) return new Response(null, { status: 404 });
+if (lang === defaultLang) return Astro.redirect(`/guides/${slug}`, 301);
+if (!lang || !isLang(lang)) return new Response(null, { status: 404 });
+---
+<GuidePage lang={lang} slug={slug} />

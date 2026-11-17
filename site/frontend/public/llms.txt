@@ -1,22 +1,43 @@
 # AnyCaptions
 
-> AnyCaptions is a free Windows desktop app that shows real-time captions for any audio playing on the computer — games, videos, calls and streams — with on-device AI. It can also translate the captions and type dictated speech into any app. All speech recognition and translation run locally: no audio or text ever leaves the machine.
+> AnyCaptions is a free Windows 11 desktop app that shows real-time captions for any audio playing on the computer (games, videos, calls and streams) with on-device AI. It can translate the captions into up to 37 languages and type dictated speech into any app. All speech recognition and translation run locally: no audio or text ever leaves the machine.
 
-AnyCaptions é um aplicativo gratuito para Windows que mostra legendas em tempo real de qualquer áudio do computador (jogos, vídeos, chamadas), com reconhecimento de voz e tradução rodando 100% localmente — nenhum áudio ou texto sai da máquina.
+AnyCaptions é um aplicativo gratuito para Windows 11 que mostra legendas em tempo real de qualquer áudio do computador (jogos, vídeos, chamadas), com reconhecimento de voz e tradução rodando 100% localmente. Nenhum áudio ou texto sai da máquina.
 
 ## Key facts
 
-- Platform: Windows 11 x64 (desktop app, Tauri + Rust)
-- Price: free; account (Google, GitHub or Discord) required only to download
-- Speech recognition: NVIDIA Nemotron streaming ASR, on device (Vulkan GPU or CPU)
-- Translation: local models (OPUS-MT, Riva Translate), dozens of target languages
-- Dictation: push-to-talk speech-to-text pasted into the focused app, with optional translation
-- Privacy: audio and captions stay in memory only — no history, no logs, no cloud
-- Overlay: transparent, click-through caption window that works over games and videos
+- Platform: Windows 11 x64 desktop app (Tauri + Rust). Installer of about 1.1 GB.
+- Current version: 0.3.0 (November 2026)
+- Price: free, no ads, no paid plan. Source code public on GitHub.
+- Download: https://anycaptions.app, after signing in with Google, GitHub or Discord
+- Works offline after installing; the network is used only to download optional models and updates
+- Speech recognition: NVIDIA Nemotron 3.5 ASR Streaming, on device (GPU through Vulkan, with CPU fallback), with automatic language detection and punctuation
+- Translation models, all local:
+  - OPUS-MT: English <-> Portuguese, on the CPU, included in the installer
+  - M2M100 418M: 34 languages in any direction, on the CPU, 491 MB download inside the app
+  - Riva Translate 4B: 37 target languages, on the GPU (about 3 GB of video memory), 2.8 GB download inside the app
+- Speaker labels: optional (Person 1, Person 2), from the voices alone, 107 MB download
+- Dictation: shortcut (Ctrl + Space by default), speech typed into the focused app, with optional translation
+- Overlay: transparent caption window that stays on top; when locked, clicks pass through it (Ctrl + Alt + L). In games, use windowed or borderless mode.
+- Audio capture: the Windows audio output (WASAPI loopback); no microphone or virtual cable needed for captions
+- Privacy: audio and captions stay in memory only. No history, no telemetry, no cloud.
+- Interface languages: Portuguese (Brazil), English, Spanish, French, Russian, Simplified Chinese
+
+## Compared with Windows live captions
+
+Both caption any audio on the device, for free. Windows live captions translate only on Copilot+ PCs (Windows 11 24H2 or later) and only into English and Simplified Chinese. AnyCaptions translates on any Windows 11 x64 PC, into up to 37 languages, and adds voice dictation and speaker labels.
+
+## Guides
+
+- [Live captions for games on Windows](https://anycaptions.app/en/guides/live-captions-for-games)
+- [Live captions for Discord, Meet, Zoom and Teams calls](https://anycaptions.app/en/guides/live-captions-for-calls)
+- [Translate videos and streams in real time](https://anycaptions.app/en/guides/translate-videos-in-real-time)
+- [Offline voice dictation for Windows](https://anycaptions.app/en/guides/offline-voice-dictation)
+- [Alternative to Windows live captions with translation](https://anycaptions.app/en/guides/windows-live-captions-alternative)
 
 ## Links
 
-- Website: https://anycaptions.app
-- User guide: https://anycaptions.app/docs
-- Changelog: https://anycaptions.app/changelog
-- Source code: https://github.com/EduardoViniciusJ/AnyCaptions
+- [Website](https://anycaptions.app/en/)
+- [User guide](https://anycaptions.app/en/docs)
+- [Changelog](https://anycaptions.app/en/changelog)
+- [Source code](https://github.com/EduardoViniciusJ/AnyCaptions)

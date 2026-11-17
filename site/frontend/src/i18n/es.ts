@@ -19,7 +19,7 @@ export const es: SiteMessages = {
     language: 'Idioma del sitio',
   },
   home: {
-    title: 'Subtítulos en tiempo real',
+    title: 'Subtítulos en vivo y traducción sin conexión para Windows',
     description: 'Transcribe y traduce el audio de juegos, vídeos y llamadas en Windows. Habla en vez de escribir con dictado local.',
     jsonLd: 'Subtítulos en tiempo real de cualquier audio del ordenador, con reconocimiento de voz y traducción ejecutados localmente. Incluye dictado por voz pegado en cualquier aplicación.',
     heroTitle: 'Subtítulos en tiempo real',
@@ -51,7 +51,7 @@ export const es: SiteMessages = {
         alt: 'Ajustes de AnyCaptions para el aspecto de los subtítulos, los idiomas y la identificación de hablantes',
         items: [
           { title: 'Aspecto', text: 'Tamaño del texto, colores del texto confirmado y de las palabras recientes, fuente y fondo oscuro, con vista previa.' },
-          { title: 'Idioma y traducción', text: 'Define el idioma de la app y el idioma hablado, o déjalo en automático. Traduce con OPUS-MT en la CPU o Riva en la GPU, con 37 idiomas.' },
+          { title: 'Idioma y traducción', text: 'Define el idioma de la app y el idioma hablado, o déjalo en automático. Traduce con OPUS-MT o M2M100 en la CPU, o con Riva en la GPU, hasta 37 idiomas.' },
           { title: 'Quién habla', text: 'Cada voz recibe una etiqueta como Persona 1 o Persona 2, solo por el sonido. La app no reconoce nombres.' },
           { title: 'Audio y ventana', text: 'Elige la salida de audio que se subtitula y el atajo que bloquea la ventana.' },
         ],

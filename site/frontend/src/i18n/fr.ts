@@ -19,7 +19,7 @@ export const fr: SiteMessages = {
     language: 'Langue du site',
   },
   home: {
-    title: 'Sous-titres en temps réel',
+    title: 'Sous-titres en direct et traduction hors ligne pour Windows',
     description: 'Transcrivez et traduisez le son des jeux, vidéos et appels sur Windows. Parlez au lieu de taper grâce à la dictée locale.',
     jsonLd: 'Sous-titres en temps réel pour tout le son de votre ordinateur, avec reconnaissance vocale et traduction exécutées localement. Inclut la dictée vocale collée dans n’importe quelle application.',
     heroTitle: 'Sous-titres en temps réel',
@@ -51,7 +51,7 @@ export const fr: SiteMessages = {
         alt: "Réglages d'AnyCaptions pour l'apparence des sous-titres, les langues et l'identification des locuteurs",
         items: [
           { title: 'Apparence', text: 'Taille du texte, couleurs du texte confirmé et des mots récents, police et fond sombre, avec un aperçu.' },
-          { title: 'Langue et traduction', text: "Définissez la langue de l'application et la langue parlée, ou laissez le mode automatique. Traduisez avec OPUS-MT sur le CPU ou Riva sur le GPU, avec 37 langues." },
+          { title: 'Langue et traduction', text: "Définissez la langue de l'application et la langue parlée, ou laissez le mode automatique. Traduisez avec OPUS-MT ou M2M100 sur le CPU, ou Riva sur le GPU, jusqu'à 37 langues." },
           { title: 'Qui parle', text: "Chaque voix reçoit une étiquette comme Personne 1 ou Personne 2, à partir du son seul. L'application ne reconnaît pas les noms." },
           { title: 'Audio et fenêtre', text: 'Choisissez la sortie audio à sous-titrer et le raccourci qui verrouille la fenêtre.' },
         ],

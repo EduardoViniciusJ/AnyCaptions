@@ -1,5 +1,6 @@
 ---
 import { localePath, messages, type Lang } from '../i18n';
+import { guideMessages } from '../i18n/guides';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = messages[lang].layout.footer;
@@ -19,6 +20,7 @@ const home = messages[lang].home;
       <h2>{t.product}</h2>
       <a href={localePath(lang, '/changelog')}>{t.changelog}</a>
       <a href={localePath(lang, '/docs')}>{t.docs}</a>
+      <a href={localePath(lang, '/guides')}>{guideMessages[lang].label}</a>
     </nav>
     <nav aria-label={t.legal}>
       <h2>{t.legal}</h2>

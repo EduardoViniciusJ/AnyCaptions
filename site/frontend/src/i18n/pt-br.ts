@@ -19,7 +19,7 @@ export const ptBr: SiteMessages = {
     language: 'Idioma do site',
   },
   home: {
-    title: 'Legendas em tempo real',
+    title: 'Legendas ao vivo e tradução offline para Windows',
     description: 'Transcreva e traduza o áudio de jogos, vídeos e chamadas no Windows. Fale em vez de digitar com ditado local.',
     jsonLd: 'Legendas em tempo real de qualquer áudio do computador, com reconhecimento de voz e tradução rodando localmente. Inclui ditado por voz colado em qualquer aplicativo.',
     heroTitle: 'Legendas em tempo real',
@@ -51,7 +51,7 @@ export const ptBr: SiteMessages = {
         alt: 'Configurações do AnyCaptions para aparência das legendas, idiomas e identificação de quem fala',
         items: [
           { title: 'Aparência', text: 'Tamanho do texto, cores do texto confirmado e das palavras recentes, fonte e fundo escuro, com prévia.' },
-          { title: 'Idioma e tradução', text: 'Defina o idioma do app e o idioma falado, ou deixe no automático. Traduza com OPUS-MT na CPU ou Riva na GPU, com 37 idiomas.' },
+          { title: 'Idioma e tradução', text: 'Defina o idioma do app e o idioma falado, ou deixe no automático. Traduza com OPUS-MT ou M2M100 na CPU, ou com Riva na GPU, em até 37 idiomas.' },
           { title: 'Quem está falando', text: 'Cada voz recebe um rótulo como Pessoa 1 ou Pessoa 2, só pelo som. O app não reconhece nomes.' },
           { title: 'Áudio e janela', text: 'Escolha a saída de áudio que vira legenda e o atalho que trava a janela.' },
         ],
