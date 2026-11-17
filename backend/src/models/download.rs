@@ -39,11 +39,12 @@ const DIARIZATION_DOWNLOAD_URL: &str = "https://huggingface.co/nvidia/Nemotron-3
 /// Exact size of the M2M100 `model.bin` of the pinned revision.
 pub const M2M100_DOWNLOAD_BYTES: u64 = 490_667_713;
 
-/// Where the M2M100 files are served from: the converted repository, pinned
-/// to the revision the catalog hashes were taken from.
+/// Where the M2M100 files are served from: the project's own mirror of the
+/// converted repository, pinned to the revision whose files match the
+/// catalog hashes, so a later upload can never change what the app installs.
 /// `ANYCAPTIONS_M2M100_URL` overrides the `model.bin` URL during development;
 /// the other files are always fetched from the same folder.
-const M2M100_DOWNLOAD_URL: &str = "https://huggingface.co/jncraton/m2m100_418M-ct2-int8/resolve/7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0/model.bin";
+const M2M100_DOWNLOAD_URL: &str = "https://huggingface.co/EduardoVinicius/anycaptions-m2m100/resolve/a7fece59547a8d6ceeb053db979d348016cc5671/model.bin";
 
 /// A catalog model the app offers for download, with its pinned source.
 pub struct DownloadSource {
