@@ -1,0 +1,7 @@
+---
+import GuidePage from '../../components/pages/GuidePage.astro';
+import { isGuideSlug } from '../../i18n/guides';
+const { slug } = Astro.params;
+if (!slug || !isGuideSlug(slug)) return new Response(null, { status: 404 });
+---
+<GuidePage lang="pt-br" slug={slug} />

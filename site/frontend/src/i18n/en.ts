@@ -14,7 +14,7 @@ export const en: SiteMessages = {
   },
   nav: { docs: 'Docs', changelog: 'Changelog', signIn: 'Sign in', language: 'Site language' },
   home: {
-    title: 'Live captions',
+    title: 'Live captions and offline translation for Windows',
     description: 'Transcribe and translate the audio of games, videos and calls on Windows. Speak instead of typing with local dictation.',
     jsonLd: 'Live captions for any audio on your computer, with speech recognition and translation running locally. Includes voice dictation pasted into any application.',
     heroTitle: 'Live captions',
@@ -46,7 +46,7 @@ export const en: SiteMessages = {
         alt: 'AnyCaptions settings for caption appearance, languages and speaker identification',
         items: [
           { title: 'Appearance', text: 'Text size, colors for confirmed text and recent words, font and dark background, with a preview.' },
-          { title: 'Language and translation', text: 'Set the app language and the spoken language, or leave it on automatic. Translate with OPUS-MT on the CPU or Riva on the GPU, with 37 languages.' },
+          { title: 'Language and translation', text: 'Set the app language and the spoken language, or leave it on automatic. Translate with OPUS-MT or M2M100 on the CPU, or Riva on the GPU, into up to 37 languages.' },
           { title: 'Who is speaking', text: 'Each voice gets a label like Person 1 or Person 2, from the sound alone. The app does not recognize names.' },
           { title: 'Audio and window', text: 'Choose the audio output to caption and the shortcut that locks the window.' },
         ],

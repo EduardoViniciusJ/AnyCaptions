@@ -1,0 +1,19 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { localePath, type Lang } from '../../i18n';
+import { guideMessages, guideSlugs } from '../../i18n/guides';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = guideMessages[lang];
+---
+<Layout lang={lang} title={t.index.title} description={t.index.description}>
+  <div class="guide-page container">
+    <h1>{t.index.heading}</h1>
+    <p class="guide-answer">{t.index.intro}</p>
+    <ul class="guide-list">
+      {guideSlugs.map(slug => (
+        <li><a href={localePath(lang, `/guides/${slug}`)}><h2>{t.guides[slug].title}</h2><p>{t.guides[slug].description}</p></a></li>
+      ))}
+    </ul>
+  </div>
+</Layout>

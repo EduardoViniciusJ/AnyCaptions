@@ -14,7 +14,7 @@ export const zhCn: SiteMessages = {
   },
   nav: { docs: '文档', changelog: '更新日志', signIn: '登录', language: '网站语言' },
   home: {
-    title: '实时字幕',
+    title: 'Windows 实时字幕与离线翻译',
     description: '在 Windows 上转写并翻译游戏、视频和通话的音频。用本地听写代替打字。',
     jsonLd: '为电脑上的任何音频生成实时字幕，语音识别和翻译完全在本地运行。包含可粘贴到任何应用的语音听写。',
     heroTitle: '实时字幕',
@@ -46,7 +46,7 @@ export const zhCn: SiteMessages = {
         alt: 'AnyCaptions 设置：字幕外观、语言和说话人识别',
         items: [
           { title: '外观', text: '文字大小、已确认文字和最新词语的颜色、字体和深色背景，并可预览。' },
-          { title: '语言和翻译', text: '设置应用语言和说话语言，或保持自动。可使用 CPU 上的 OPUS-MT，或 GPU 上支持 37 种语言的 Riva 进行翻译。' },
+          { title: '语言和翻译', text: '设置应用语言和说话语言，或保持自动。可使用 CPU 上的 OPUS-MT 或 M2M100，或 GPU 上支持 37 种语言的 Riva 进行翻译。' },
           { title: '谁在说话', text: '仅根据声音为每个人分配“说话人 1”“说话人 2”这样的标签。应用不会识别姓名。' },
           { title: '音频和窗口', text: '选择要生成字幕的音频输出，以及锁定窗口的快捷键。' },
         ],
